@@ -267,6 +267,19 @@ result.errors[:employees][0][:age] # ["must be a Numeric"]
 
 
 
+### Hash maps
+
+You can also use Hash syntax to define a hash map with specific types for all keys and values:
+
+```ruby
+currencies = Types::Hash[Types::Symbol, Types::String]
+
+currencies.parse(usd: 'USD', gbp: 'GBP') # Ok
+currencies.parse('usd' => 'USD') # Error. Keys must be Symbols
+```
+
+
+
 ## `Schema`
 
 TODO
