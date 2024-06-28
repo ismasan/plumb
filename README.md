@@ -101,7 +101,15 @@ Types::String.present.resolve('') # Failure with errors
 Types::Array[Types::String].resolve([]) # Failure with errors
 ```
 
+### `#not`
 
+Negates a type. 
+```ruby
+NotEmail = Types::Email.not
+
+NotEmail.parse('hello') # "hello"
+NotEmail.parse('hello@server.com') # error
+```
 
 ### `#options`
 
