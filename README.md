@@ -1,24 +1,355 @@
 # Plumb
 
-TODO: Delete this and the text below, and describe your gem
-
-Welcome to your new gem! In this directory, you'll find the files you need to be able to package up your Ruby library into a gem. Put your Ruby code in the file `lib/plumb`. To experiment with that code, run `bin/console` for an interactive prompt.
+Composable data validation and coercion in Ruby. WiP.
 
 ## Installation
 
-TODO: Replace `UPDATE_WITH_YOUR_GEM_NAME_IMMEDIATELY_AFTER_RELEASE_TO_RUBYGEMS_ORG` with your gem name right after releasing it to RubyGems.org. Please do not do it earlier due to security reasons. Alternatively, replace this section with instructions to install your gem from git if you don't plan to release to RubyGems.org.
-
-Install the gem and add to the application's Gemfile by executing:
-
-    $ bundle add UPDATE_WITH_YOUR_GEM_NAME_IMMEDIATELY_AFTER_RELEASE_TO_RUBYGEMS_ORG
-
-If bundler is not being used to manage dependencies, install the gem by executing:
-
-    $ gem install UPDATE_WITH_YOUR_GEM_NAME_IMMEDIATELY_AFTER_RELEASE_TO_RUBYGEMS_ORG
+TODO
 
 ## Usage
 
-TODO: Write usage instructions here
+### Include base types
+
+Include base types in your own namespace:
+
+```ruby
+module Types
+  # Include Plumb base types, such as String, Integer, Boolean
+  include Plumb::Types
+  
+  # Define your own types
+  Email = String[/&/]
+end
+
+# Use them
+result = Types::String.resolve("hello")
+result.success? # true
+result.errors # nil
+
+result = Types::Email.resolve("foo")
+result.success? # false
+result.errors # ""
+```
+
+
+
+### `#resolve(value) => Result`
+
+`#resolve` takes an input value and returns a `Result::Success` or `Result::Halt`
+
+```ruby
+result = Types::Integer.resolve(10)
+result.success? # true
+result.value # 10
+
+result = Types::Integer.resolve('10')
+result.success? # false
+result.value # '10'
+result.errors # 'must be an Integer'
+```
+
+
+
+## #parse(value) => value
+
+`#parse` takes an input value and returns the parsed/coerced value if successful. or it raises an exception if failed.
+
+```ruby
+Types::Integer.parse(10) # 10
+Types::Integer.parse('10') # raises Plumb::TypeError
+```
+
+
+
+## Built-in types
+
+* `Types::Value`
+* `Types::Array`
+* `Types::True`
+* `Types::Symbol`
+* `Types::Boolean`
+* `Types::Interface`
+* `Types::False`
+* `Types::Tuple`
+* `Types::Split`
+* `Types::Blank`
+* `Types::Any`
+* `Types::Static`
+* `Types::Undefined`
+* `Types::Nil`
+* `Types::Present`
+* `Types::Integer`
+* `Types::Numeric`
+* `Types::String`
+* `Types::Hash`
+* `Types::Lax::Integer`
+* `Types::Lax::String`
+* `Types::Lax::Symbol`
+* `Types::Forms::Boolean`
+* `Types::Forms::Nil`
+* `Types::Forms::True`
+* `Types::Forms::False`
+
+
+
+### `#present`
+
+Checks that the value is not blank (`""` if string, `[]` if array, `{}` if Hash, or `nil`)
+
+```ruby
+Types::String.present.resolve('') # Failure with errors
+Types::Array[Types::String].resolve([]) # Failure with errors
+```
+
+
+
+### `#options`
+
+Sets allowed options for value.
+
+```ruby
+type = Types::String.options(['a', 'b', 'c'])
+type.resolve('a') # Success
+type.resolve('x') # Failure
+```
+
+For arrays, it checks that all elements in array are included in options.
+
+```ruby
+type = Types::Array.options(['a', 'b'])
+type.resolve(['a', 'a', 'b']) # Success
+type.resolve(['a', 'x', 'b']) # Failure
+```
+
+
+
+### `#transform`
+
+Transform value. Requires specifying the resulting type of the value after transformation.
+
+```ruby
+StringToInt = Types::String.transform(Integer) { |value| value.to_i }
+# Same as
+StringToInt = Types::String.transform(Integer, &:to_i)
+
+StringToInteger.parse('10') # => 10
+```
+
+
+
+### `#match` and `#[]`
+
+Checks the value against a regular expression (or anything that responds to `#===`).
+
+```ruby
+email = Types::String.match(/@/)
+# Same as
+email = Types::String[/@/]
+email.parse('hello') # fails
+email.parse('hello@server.com') # 'hello@server.com'
+```
+
+It can be combined with other methods. For example to cast strings as integers, but only if they _look_ like integers.
+
+```ruby
+StringToInt = Types::String[/^\d+$/].transform(::Integer, &:to_i)
+
+StringToInt.parse('100') # => 100
+StringToInt.parse('100lol') # fails
+```
+
+It can be used with other `#===` interfaces.
+
+```ruby
+AgeBracket = Types::Integer[21..45]
+
+AgeBracket.parse(22) # 22
+AgeBracket.parse(20) # fails
+
+# With literal values
+Twenty = Types::Integer[20]
+Twenty.parse(20) # 20
+Twenty.parse(21) # type error
+```
+
+
+
+### `#check`
+
+Pass the value through an arbitrary validation
+
+```ruby
+type = Types::String.check('must start with "Role:"') { |value| value.start_with?('Role:') }
+type.parse('Role: Manager') # 'Role: Manager'
+type.parse('Manager') # fails
+```
+
+
+
+### `#value` 
+
+Constrain a type to a specific value. Compares with `#==`
+
+```ruby
+hello = Types::String.value('hello')
+hello.parse('hello') # 'hello'
+hello.parse('bye') # fails
+hello.parse(10) # fails 'not a string'
+```
+
+All scalar types support this:
+
+```ruby
+ten = Types::Integer.value(10)
+```
+
+
+
+### `#meta` and `#metadata`
+
+Add metadata to a type
+
+```ruby
+type = Types::String.meta(description: 'A long text')
+type.metadata[:description] # 'A long text'
+```
+
+`#metadata` combines keys from type compositions.
+
+```ruby
+type = Types::String.meta(description: 'A long text') >> Types::String.match(/@/).meta(note: 'An email address')
+type.metadata[:description] # 'A long text'
+type.metadata[:note] # 'An email address'
+```
+
+
+
+## `Types::Hash`
+
+```ruby
+Employee = Types::Hash[
+  name: Types::String.present,
+  age?: Types::Lax::Integer,
+  role: Types::String.options(%w[product accounts sales]).default('product')
+]
+
+Company = Types::Hash[
+  name: Types::String.present,
+  employees: Types::Array[Employee]
+]
+
+result = Company.resolve(
+  name: 'ACME',
+  employees: [
+  	{ name: 'Joe', age: 40, role: 'product' },
+    { name: 'Joan', age: 38, role: 'engineer' }
+  ]
+)
+
+result.success? # true
+
+result = Company.resolve(
+  name: 'ACME',
+  employees: [{ name: 'Joe' }]
+)
+
+result.success? # false
+result.errors[:employees][0][:age] # ["must be a Numeric"]
+```
+
+
+
+## `Schema`
+
+TODO
+
+## Pipeline
+
+TODO
+
+## Composing types with `#>>` ("And")
+
+```ruby
+Email = Types::String.match(/@/)
+Greeting = Email >> ->(result) { result.success("Your email is #{result.value}") }
+
+Greeting.parse('joe@bloggs.com') # "Your email is joe@bloggs.com"
+```
+
+
+
+## Disjunction with `#|` ("Or")
+
+```ruby
+StringOrInt = Types::String | Types::Integer
+StringOrInt.parse('hello') # "hello"
+StringOrInt.parse(10) # 10
+StringOrInt.parse({}) # raises Plumb::TypeError
+```
+
+Custom default value logic for non-emails
+
+```ruby
+EmailOrDefault = Greeting | Types::Static['no email']
+EmailOrDefault.parse('joe@bloggs.com') # "Your email is joe@bloggs.com"
+EmailOrDefault.parse('nope') # "no email"
+```
+
+## Composing with `#>>` and `#|`
+
+```ruby
+require 'money'
+
+module Types
+  include Plumb::Types
+  
+  Money = Any.is_a(::Money)
+  IntToMoney = Integer.transform(::Money) { |v| ::Money.new(v, 'USD') }
+  StringToInt = String.match(/^\d+$/).transform(::Integer, &:to_i)
+  USD = Money.check { |amount| amount.currency.code == 'UDS' }
+  ToUSD = Money.transform(::Money) { |amount| amount.exchange_to('USD') }
+  
+  FlexibleUSD = (Money | ((Integer | StringToInt) >> IntToMoney)) >> (USD | ToUSD)
+end
+
+FlexibleUSD.parse('1000') # Money(USD 10.00)
+FlexibleUSD.parse(1000) # Money(USD 10.00)
+FlexibleUSD.parse(Money.new(1000, 'GBP')) # Money(USD 15.00)
+```
+
+
+
+## `#transform`
+
+TODO
+
+## Rules
+
+TODO
+
+## Custom types
+
+Compose procs or lambdas directly
+
+```ruby
+Greeting = Types::String >> ->(result) { result.success("Hello #{result.value}") }
+```
+
+or a custom class that responds to `#call(Result::Success) => Result::Success | Result::Halt`
+
+```ruby
+class Greeting
+  def initialize(gr = 'Hello')
+    @gr = gr
+  end
+
+  def call(result)
+    result.success("#{gr} #{result.value}")
+  end
+end
+
+MyType = Types::String >> Greeting.new('Hola')
+```
 
 ## Development
 
@@ -28,7 +359,7 @@ To install this gem onto your local machine, run `bundle exec rake install`. To 
 
 ## Contributing
 
-Bug reports and pull requests are welcome on GitHub at https://github.com/[USERNAME]/plumb.
+Bug reports and pull requests are welcome on GitHub at https://github.com/ismasan/plumb.
 
 ## License
 
