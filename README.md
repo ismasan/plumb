@@ -280,6 +280,15 @@ currencies.parse('usd' => 'USD') # Error. Keys must be Symbols
 
 
 
+### Array
+
+```ruby
+names = Types::Array[Types::String.present]
+names_or_ages = Types::Array[Types::String.present | Types::Integer[21..]]
+```
+
+
+
 ## `Schema`
 
 TODO
