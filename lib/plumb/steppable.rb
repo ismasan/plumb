@@ -29,7 +29,7 @@ module Plumb
       call(Result.wrap(value))
     end
 
-    def cast(value)
+    def parse(value)
       result = resolve(value)
       raise TypeError, result.errors if result.halt?
 

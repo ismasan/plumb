@@ -115,10 +115,10 @@ RSpec.describe Plumb::Types do
       end
     end
 
-    specify '#cast' do
+    specify '#parse' do
       integer = Types::Any[::Integer]
-      expect { integer.cast('10') }.to raise_error(Plumb::TypeError)
-      expect(integer.cast(10)).to eq(10)
+      expect { integer.parse('10') }.to raise_error(Plumb::TypeError)
+      expect(integer.parse(10)).to eq(10)
     end
 
     specify '#|' do
