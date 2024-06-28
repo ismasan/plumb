@@ -331,11 +331,44 @@ FlexibleUSD.parse(Money.new(1000, 'GBP')) # Money(USD 15.00)
 
 TODO
 
-## Rules
+### Recursive types
+
+You can use a proc to defer evaluation of recursive definitions.
+
+```ruby
+LinkedList = Types::Hash[
+  value: Types::Any,
+  next: Types::Nil | proc { |result| LinkedList.(result) }
+]
+
+LinkedList.parse(
+  value: 1, 
+  next: { 
+    value: 2, 
+    next: { 
+      value: 3, 
+      next: nil 
+    }
+  }
+)
+```
+
+You can also use `#defer`
+
+```ruby
+LinkedList = Types::Hash[
+  value: Types::Any,
+  next: Types::Any.defer { LinkedList } | Types::Nil
+]
+```
+
+
+
+### Rules
 
 TODO
 
-## Custom types
+### Custom types
 
 Compose procs or lambdas directly
 
@@ -358,6 +391,10 @@ end
 
 MyType = Types::String >> Greeting.new('Hola')
 ```
+
+
+
+
 
 ## Development
 
