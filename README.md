@@ -289,6 +289,26 @@ names_or_ages = Types::Array[Types::String.present | Types::Integer[21..]]
 
 
 
+### Tuple
+
+```ruby
+Status = Types::Symbol.options(%i[ok error])
+Result = Types::Tuple[Status, Types::String]
+
+Result.parse([:ok, 'all good']) # [:ok, 'all good']
+Result.parse([:ok, 'all bad', 'nope']) # type error
+```
+
+Note that literal values can be used too.
+
+```ruby
+Ok = Types::Tuple[:ok, nil]
+Error = Types::Tuple[:error, Types::String.present]
+Status = Ok | Error
+```
+
+
+
 ## `Schema`
 
 TODO
