@@ -365,7 +365,19 @@ names = Types::Array[Types::String.present]
 names_or_ages = Types::Array[Types::String.present | Types::Integer[21..]]
 ```
 
+#### Concurrent arrays
 
+Use `Types::Array#concurrent` to process array elements concurrently (using Concurrent Ruby for now).
+
+```ruby
+ImageDownload = Types::URL >> ->(result) { HTTP.get(result.value) }
+Images = Types::Array[ImageDownload].concurrent
+
+# Images are downloaded concurrently and returned in order.
+Images.parse(['https://images.com/1.png', 'https://images.com/2.png'])
+```
+
+TODO: pluggable concurrently engines (Async?)
 
 ### `Types::Tuple`
 
