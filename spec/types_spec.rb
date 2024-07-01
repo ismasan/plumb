@@ -20,7 +20,7 @@ RSpec.describe Plumb::Types do
     end
   end
 
-  specify do
+  specify 'constraining with #[]' do
     assert_result(Types::Any[String].resolve('hello'), 'hello', true)
     assert_result(Types::Any['hello'].resolve('hello'), 'hello', true)
     assert_result(Types::Any['hello'].resolve('nope'), 'nope', false)
@@ -192,7 +192,7 @@ RSpec.describe Plumb::Types do
 
     specify '#default' do
       assert_result(Types::Any.default('hello').resolve('bye'), 'bye', true)
-      assert_result(Types::Any.default('hello').resolve(), 'hello', true)
+      assert_result(Types::Any.default('hello').resolve, 'hello', true)
       assert_result(Types::String.default('hello').resolve('bye'), 'bye', true)
       assert_result(Types::String.default('hello').resolve(nil), nil, false)
       assert_result(Types::String.default('hello').resolve(Undefined), 'hello', true)
