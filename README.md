@@ -1,6 +1,6 @@
 # Plumb
 
-Composable data validation and coercion in Ruby. WiP.
+Composable data validation and coercion in Ruby. WiP. Takes over from https://github.com/ismasan/parametric
 
 ## Installation
 
