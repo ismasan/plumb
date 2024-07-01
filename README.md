@@ -166,7 +166,7 @@ StringToInteger.parse('10') # => 10
 
 ### `#default`
 
-Default value when no value given (ie. when key is missin in Hash payloads. See `Types::Hash` below).
+Default value when no value given (ie. when key is missing in Hash payloads. See `Types::Hash` below).
 
 ```ruby
 str = Types::String.default('nope'.freeze)
