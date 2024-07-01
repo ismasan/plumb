@@ -182,6 +182,43 @@ Twenty.parse(21) # type error
 
 
 
+### `#build`
+
+Build a custom object or class.
+
+```ruby
+User = Data.define(:name)
+UserType = Types::String.build(User)
+
+UserType.parse('Joe') # #<data User name="Joe">
+```
+
+It takes an argument for a custom factory method on the object constructor.
+
+```ruby
+class User
+  def self.create(attrs)
+    new(attrs)
+  end
+end
+
+UserType = Types::String.build(User, :create)
+```
+
+You can also pass a block
+
+```ruby
+UserType = Types::String.build(User) { |name| User.new(name) }
+```
+
+Note that this case is identical to `#transform` with a block.
+
+```ruby
+UserType = Types::String.transform(User) { |name| User.new(name) }
+```
+
+
+
 ### `#check`
 
 Pass the value through an arbitrary validation
@@ -366,9 +403,7 @@ FlexibleUSD.parse(1000) # Money(USD 10.00)
 FlexibleUSD.parse(Money.new(1000, 'GBP')) # Money(USD 15.00)
 ```
 
-## `#transform`
 
-TODO
 
 ### Recursive types
 
