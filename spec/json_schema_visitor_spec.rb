@@ -63,6 +63,11 @@ RSpec.describe Plumb::JSONSchemaVisitor do
       expect(described_class.visit(type)).to eq('type' => 'number')
     end
 
+    specify 'Not' do
+      type = Types::Decimal.not
+      expect(described_class.visit(type)).to eq('not' => { 'type' => 'number' })
+    end
+
     specify 'Types::Match with RegExp' do
       type = Types::String[/[a-z]+/]
       expect(described_class.visit(type)).to eq('type' => 'string', 'pattern' => '[a-z]+')

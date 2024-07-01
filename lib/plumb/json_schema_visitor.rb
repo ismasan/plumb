@@ -20,8 +20,8 @@ module Plumb
     MAXIMUM = 'maximum'
 
     def self.call(type)
-      { 
-        '$schema' => 'https://json-schema.org/draft-08/schema#',
+      {
+        '$schema' => 'https://json-schema.org/draft-08/schema#'
       }.merge(new.visit(type))
     end
 
@@ -73,13 +73,17 @@ module Plumb
       end
     end
 
+    on(:not) do |type, props|
+      props.merge('not' => visit(type.step))
+    end
+
     on(:value) do |type, props|
       props = case type.value
-      when ::String, ::Symbol, ::Numeric
-        props.merge(CONST => type.value)
-      else
-        props
-      end
+              when ::String, ::Symbol, ::Numeric
+                props.merge(CONST => type.value)
+              else
+                props
+              end
 
       visit(type.value, props)
     end
@@ -94,11 +98,11 @@ module Plumb
 
     on(:static) do |type, props|
       props = case type.value
-      when ::String, ::Symbol, ::Numeric
-        props.merge(CONST => type.value, DEFAULT => type.value)
-      else
-        props
-      end
+              when ::String, ::Symbol, ::Numeric
+                props.merge(CONST => type.value, DEFAULT => type.value)
+              else
+                props
+              end
 
       visit(type.value, props)
     end
@@ -165,7 +169,7 @@ module Plumb
     end
 
     on(:metadata) do |type, props|
-      # TODO: here we should filter out the metadata that is not relevant for JSON Schema
+      #  TODO: here we should filter out the metadata that is not relevant for JSON Schema
       props.merge(stringify_keys(type.metadata))
     end
 
@@ -200,7 +204,7 @@ module Plumb
       }
 
       key = type.key.to_s
-      children  = type.types.map { |c| visit(c) }
+      children = type.types.map { |c| visit(c) }
       key_enum =  children.map { |c| c[PROPERTIES][key][CONST] }
       key_type =  children.map { |c| c[PROPERTIES][key][TYPE] }
       required << key
