@@ -50,7 +50,7 @@ result.errors # 'must be an Integer'
 
 
 
-## #parse(value) => value
+### `#parse(value) => value`
 
 `#parse` takes an input value and returns the parsed/coerced value if successful. or it raises an exception if failed.
 
@@ -300,6 +300,47 @@ result = Company.resolve(
 
 result.valid? # false
 result.errors[:employees][0][:age] # ["must be a Numeric"]
+```
+
+
+
+#### Merging hash definitions
+
+Use `Types::Hash#+` to merge two definitions. Keys in the second hash override the first one's.
+
+```ruby
+User = Types::Hash[name: Types::String, age: Types::Integer]
+Employee = Types::Hash[name: Types::String, company: Types::String]
+StaffMember = User + Employee # Hash[:name, :age, :company]
+```
+
+
+
+#### Hash intersections
+
+Use `Types::Hash#&` to produce a new Hash definition with keys present in both.
+
+```ruby
+intersection = User & Employee # Hash[:name]
+```
+
+
+
+#### `Types::Hash#tagged_by`
+
+Use `#tagged_by` to resolve what definition to use based on the value of a common key.
+
+```ruby
+NameUpdatedEvent = Types::Hash[type: 'name_updated', name: Types::String]
+AgeUpdatedEvent = Types::Hash[type: 'age_updated', age: Types::Integer]
+
+Events = Types::Hash.tagged_by(
+  :type,
+  NameUpdatedEvent,
+  AgeUpdatedEvent
+)
+
+Events.parse(type: 'name_updated', name: 'Joe') # Uses NameUpdatedEvent definition
 ```
 
 
