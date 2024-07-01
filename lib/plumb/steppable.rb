@@ -210,18 +210,6 @@ module Plumb
       end
     end
 
-    def coerce(type, coercion = nil, &block)
-      coercion ||= block
-      step = lambda { |result|
-        if type === result.value
-          result.valid(coercion.call(result.value))
-        else
-          result.invalid(errors: "%s can't be coerced" % result.value.inspect)
-        end
-      }
-      self >> step
-    end
-
     def build(cns, factory_method = :new, &block)
       self >> Build.new(cns, factory_method:, &block)
     end

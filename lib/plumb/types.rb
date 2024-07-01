@@ -104,8 +104,8 @@ module Plumb
       NUMBER_EXPR = /^\d{1,3}(?:,\d{3})*(?:\.\d+)?$/
 
       String = Types::String \
-        | Any.coerce(BigDecimal) { |v| v.to_s('F') } \
-        | Any.coerce(::Numeric, &:to_s)
+        | Types::Decimal.transform(::String) { |v| v.to_s('F') } \
+        | Types::Numeric.transform(::String, &:to_s)
 
       Symbol = Types::Symbol | Types::String.transform(::Symbol, &:to_sym)
 
@@ -123,14 +123,18 @@ module Plumb
 
     module Forms
       True = Types::True \
-        | Types::String >> Any.coerce(/^true$/i) { |_| true } \
-        | Any.coerce('1') { |_| true } \
-        | Any.coerce(1) { |_| true }
+        | (
+          Types::String[/^true$/i] \
+          | Types::String['1'] \
+          | Types::Integer[1]
+        ).transform(::TrueClass) { |_| true }
 
       False = Types::False \
-        | Types::String >> Any.coerce(/^false$/i) { |_| false } \
-        | Any.coerce('0') { |_| false } \
-        | Any.coerce(0) { |_| false }
+        | (
+          Types::String[/^false$/i] \
+          | Types::String['0'] \
+          | Types::Integer[0]
+        ).transform(::FalseClass) { |_| false }
 
       Boolean = True | False
 

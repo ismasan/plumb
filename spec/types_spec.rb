@@ -196,17 +196,6 @@ RSpec.describe Plumb::Types do
       assert_result(Types::String.nullable.resolve(nil), nil, true)
     end
 
-    specify '#coerce' do
-      assert_result(Types::Any.coerce(::Numeric, &:to_i).resolve(10.5), 10, true)
-      assert_result(Types::Any.coerce(::Numeric, &:to_i).resolve('10.5'), '10.5', false)
-      assert_result(Types::Any.coerce((0..3), &:to_s).resolve(2), '2', true)
-      assert_result(Types::Any.coerce((0..3), &:to_s).resolve(4), 4, false)
-      assert_result(Types::Any.coerce(/true/i) { |_| true }.resolve('True'), true, true)
-      assert_result(Types::Any.coerce(/true/i) { |_| true }.resolve('TRUE'), true, true)
-      assert_result(Types::Any.coerce(/true/i) { |_| true }.resolve('nope'), 'nope', false)
-      assert_result(Types::Any.coerce(1) { |_| true }.resolve(1), true, true)
-    end
-
     specify '#===' do
       expect(Types::String === '1').to be(true)
       expect(Types::String === 1).to be(false)
