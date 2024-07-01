@@ -6,6 +6,8 @@ This library takes ideas from the excellent https://dry-rb.org ecosystem, with s
 
 If you're after raw performance and versatiliy I strongly recommend you use the Dry gems.
 
+For a description of the core architecture you can read [this article](https://ismaelcelis.com/posts/composable-pipelines-in-ruby/).
+
 ## Installation
 
 TODO
