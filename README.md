@@ -23,11 +23,11 @@ end
 
 # Use them
 result = Types::String.resolve("hello")
-result.success? # true
+result.valid? # true
 result.errors # nil
 
 result = Types::Email.resolve("foo")
-result.success? # false
+result.valid? # false
 result.errors # ""
 ```
 
@@ -35,15 +35,15 @@ result.errors # ""
 
 ### `#resolve(value) => Result`
 
-`#resolve` takes an input value and returns a `Result::Success` or `Result::Halt`
+`#resolve` takes an input value and returns a `Result::Valid` or `Result::Invalid`
 
 ```ruby
 result = Types::Integer.resolve(10)
-result.success? # true
+result.valid? # true
 result.value # 10
 
 result = Types::Integer.resolve('10')
-result.success? # false
+result.valid? # false
 result.value # '10'
 result.errors # 'must be an Integer'
 ```
@@ -117,7 +117,7 @@ Sets allowed options for value.
 
 ```ruby
 type = Types::String.options(['a', 'b', 'c'])
-type.resolve('a') # Success
+type.resolve('a') # Valid
 type.resolve('x') # Failure
 ```
 
@@ -125,7 +125,7 @@ For arrays, it checks that all elements in array are included in options.
 
 ```ruby
 type = Types::Array.options(['a', 'b'])
-type.resolve(['a', 'a', 'b']) # Success
+type.resolve(['a', 'a', 'b']) # Valid
 type.resolve(['a', 'x', 'b']) # Failure
 ```
 
@@ -291,14 +291,14 @@ result = Company.resolve(
   ]
 )
 
-result.success? # true
+result.valid? # true
 
 result = Company.resolve(
   name: 'ACME',
   employees: [{ name: 'Joe' }]
 )
 
-result.success? # false
+result.valid? # false
 result.errors[:employees][0][:age] # ["must be a Numeric"]
 ```
 
@@ -362,7 +362,7 @@ TODO
 
 ```ruby
 Email = Types::String.match(/@/)
-Greeting = Email >> ->(result) { result.success("Your email is #{result.value}") }
+Greeting = Email >> ->(result) { result.valid("Your email is #{result.value}") }
 
 Greeting.parse('joe@bloggs.com') # "Your email is joe@bloggs.com"
 ```
@@ -451,10 +451,10 @@ TODO
 Compose procs or lambdas directly
 
 ```ruby
-Greeting = Types::String >> ->(result) { result.success("Hello #{result.value}") }
+Greeting = Types::String >> ->(result) { result.valid("Hello #{result.value}") }
 ```
 
-or a custom class that responds to `#call(Result::Success) => Result::Success | Result::Halt`
+or a custom class that responds to `#call(Result::Valid) => Result::Valid | Result::Invalid`
 
 ```ruby
 class Greeting
@@ -463,13 +463,14 @@ class Greeting
   end
 
   def call(result)
-    result.success("#{gr} #{result.value}")
+    result.valid("#{gr} #{result.value}")
   end
 end
 
 MyType = Types::String >> Greeting.new('Hola')
 ```
 
+You can return `result.invalid(errors: "this is invalid")` to halt processing.
 
 
 ### JSON Schema
@@ -492,8 +493,6 @@ json_schema = Plumb::JSONSchemaVisitor.call(User)
   'required' =>['name', 'age']
 }
 ```
-
-
 
 
 

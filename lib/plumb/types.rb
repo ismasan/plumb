@@ -97,7 +97,7 @@ module Plumb
       | Array.value(BLANK_ARRAY)
     )
 
-    Present = Blank.halt(errors: 'must be present')
+    Present = Blank.invalid(errors: 'must be present')
     Split = String.transform(::String) { |v| v.split(/\s*,\s*/) }
 
     module Lax

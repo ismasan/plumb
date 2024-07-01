@@ -9,13 +9,13 @@ RSpec.describe Plumb::Types do
   describe 'Result' do
     specify '#success and #halt' do
       result = Result.wrap(10)
-      expect(result.success?).to be(true)
+      expect(result.valid?).to be(true)
       expect(result.value).to eq(10)
-      result = result.success(20)
+      result = result.valid(20)
       expect(result.value).to eq(20)
-      result = result.halt(errors: 'nope')
-      expect(result.success?).to be(false)
-      expect(result.halt?).to be(true)
+      result = result.invalid(errors: 'nope')
+      expect(result.valid?).to be(false)
+      expect(result.invalid?).to be(true)
       expect(result.errors).to eq('nope')
     end
   end
@@ -26,23 +26,23 @@ RSpec.describe Plumb::Types do
     assert_result(Types::Any['hello'].resolve('nope'), 'nope', false)
     assert_result(Types::Any[String][/@/].resolve('hello@server.com'), 'hello@server.com', true)
     Types::Any[String][/@/].resolve('hello').tap do |result|
-      expect(result.success?).to be(false)
+      expect(result.valid?).to be(false)
       expect(result.errors).to eq('Must match /@/')
     end
   end
 
   describe 'Step' do
     specify '#>>' do
-      step1 = Step.new { |r| r.success(r.value + 5) }
-      step2 = Step.new { |r| r.success(r.value - 2) }
-      step3 = Step.new { |r| r.halt }
-      step4 = ->(minus) { Step.new { |r| r.success(r.value - minus) } }
-      pipeline = Types::Any >> step1 >> step2 >> step3 >> ->(r) { r.success(r.value + 1) }
+      step1 = Step.new { |r| r.valid(r.value + 5) }
+      step2 = Step.new { |r| r.valid(r.value - 2) }
+      step3 = Step.new { |r| r.invalid }
+      step4 = ->(minus) { Step.new { |r| r.valid(r.value - minus) } }
+      pipeline = Types::Any >> step1 >> step2 >> step3 >> ->(r) { r.valid(r.value + 1) }
 
-      expect(pipeline.resolve(10).success?).to be(false)
+      expect(pipeline.resolve(10).valid?).to be(false)
       expect(pipeline.resolve(10).value).to eq(13)
       expect((step1 >> step2 >> step4.call(1)).resolve(10).value).to eq(12)
-      expect((step1 >> ->(r) { r.success(r.value.to_s) }).resolve(10).value).to eq('15')
+      expect((step1 >> ->(r) { r.valid(r.value.to_s) }).resolve(10).value).to eq('15')
     end
 
     specify '#transform' do
@@ -59,8 +59,8 @@ RSpec.describe Plumb::Types do
 
     specify '#check' do
       is_a_string = Types::Any.check('not a string') { |value| value.is_a?(::String) }
-      expect(is_a_string.resolve('yup').success?).to be(true)
-      expect(is_a_string.resolve(10).success?).to be(false)
+      expect(is_a_string.resolve('yup').valid?).to be(true)
+      expect(is_a_string.resolve(10).valid?).to be(false)
       expect(is_a_string.resolve(10).errors).to eq('not a string')
     end
 
@@ -104,8 +104,8 @@ RSpec.describe Plumb::Types do
 
       it 'is aliased as #match' do
         type = Types::Any.match(/^(\([0-9]{3}\))?[0-9]{3}-[0-9]{4}$/)
-        expect(type.resolve('(888)555-1212x').success?).to be(false)
-        expect(type.resolve('(888)555-1212').success?).to be(true)
+        expect(type.resolve('(888)555-1212x').valid?).to be(false)
+        expect(type.resolve('(888)555-1212').valid?).to be(true)
       end
 
       specify '#match works for Hash' do
@@ -175,7 +175,7 @@ RSpec.describe Plumb::Types do
     end
 
     specify '#halt' do
-      type = Types::Integer.rule(lte: 10).halt(errors: 'nope')
+      type = Types::Integer.rule(lte: 10).invalid(errors: 'nope')
       assert_result(type.resolve(9), 9, false)
       assert_result(type.resolve(19), 19, true)
       expect(type.resolve(9).errors).to eq('nope')
@@ -217,9 +217,9 @@ RSpec.describe Plumb::Types do
     describe '#pipeline' do
       let(:pipeline) do
         Types::Lax::Integer.pipeline do |pl|
-          pl.step { |r| r.success(r.value * 2) }
+          pl.step { |r| r.valid(r.value * 2) }
           pl.step Types::Any.transform(::Integer, &:to_s)
-          pl.step { |r| r.success('The number is %s' % r.value) }
+          pl.step { |r| r.valid('The number is %s' % r.value) }
         end
       end
 
@@ -238,7 +238,7 @@ RSpec.describe Plumb::Types do
       it 'is a Steppable and can be further composed' do
         expect(pipeline).to be_a(Plumb::Steppable)
         pipeline2 = pipeline.pipeline do |pl|
-          pl.step { |r| r.success(r.value + ' the end') }
+          pl.step { |r| r.valid(r.value + ' the end') }
         end
 
         assert_result(pipeline2.resolve(2), 'The number is 4 the end', true)
@@ -561,7 +561,7 @@ RSpec.describe Plumb::Types do
           true
         )
         Types::Array.of(Types::Boolean).resolve([true, 'nope', false, 1]).tap do |result|
-          expect(result.success?).to be false
+          expect(result.valid?).to be false
           expect(result.value).to eq [true, 'nope', false, 1]
           expect(result.errors[1]).to eq(['Must be a TrueClass', 'Must be a FalseClass'])
           expect(result.errors[3]).to eq(['Must be a TrueClass', 'Must be a FalseClass'])
@@ -646,7 +646,7 @@ RSpec.describe Plumb::Types do
                       { title: 'Mr', name: 'Ismael', age: 42, friend: { name: 'Joe' } }, true)
 
         hash.resolve({ title: 'Dr', name: 'Ismael', friend: {} }).tap do |result|
-          expect(result.success?).to be false
+          expect(result.valid?).to be false
           expect(result.value).to eq({ title: 'Dr', name: 'Ismael', friend: {} })
           expect(result.errors[:age].any?).to be(true)
           expect(result.errors[:friend][:name]).to be_a(::String)
@@ -819,7 +819,7 @@ RSpec.describe Plumb::Types do
   def assert_result(result, value, is_success, debug: false)
     debugger if debug
     expect(result.value).to eq value
-    expect(result.success?).to be(is_success)
+    expect(result.valid?).to be(is_success)
   end
 
   def bench

@@ -93,7 +93,7 @@ module Plumb
       end
       return result unless errors.any?
 
-      result.halt(errors: errors.join(', '))
+      result.invalid(errors: errors.join(', '))
     end
 
     private def _inspect

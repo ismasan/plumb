@@ -17,7 +17,7 @@ module Plumb
     def [](value) = self.class.new(value)
 
     def call(result)
-      @value == result.value ? result : result.halt(errors: "Must be equal to #{@value}")
+      @value == result.value ? result : result.invalid(errors: "Must be equal to #{@value}")
     end
   end
 end

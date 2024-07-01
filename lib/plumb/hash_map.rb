@@ -18,15 +18,15 @@ module Plumb
       failed = result.value.lazy.filter_map do |key, value|
         key_r = @key_type.resolve(key)
         value_r = @value_type.resolve(value)
-        if !key_r.success?
+        if !key_r.valid?
           [:key, key, key_r]
-        elsif !value_r.success?
+        elsif !value_r.valid?
           [:value, value, value_r]
         end
       end
       if (first = failed.next)
         field, val, halt = failed.first
-        result.halt(errors: "#{field} #{val.inspect} #{halt.errors}")
+        result.invalid(errors: "#{field} #{val.inspect} #{halt.errors}")
       end
     rescue StopIteration
       result

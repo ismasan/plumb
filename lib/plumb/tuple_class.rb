@@ -23,20 +23,20 @@ module Plumb
     end
 
     def call(result)
-      return result.halt(errors: 'must be an Array') unless result.value.is_a?(::Array)
-      return result.halt(errors: 'must have the same size') unless result.value.size == @types.size
+      return result.invalid(errors: 'must be an Array') unless result.value.is_a?(::Array)
+      return result.invalid(errors: 'must have the same size') unless result.value.size == @types.size
 
       errors = {}
       values = @types.map.with_index do |type, idx|
         val = result.value[idx]
         r = type.resolve(val)
-        errors[idx] = ["expected #{type.inspect}, got #{val.inspect}", r.errors].flatten unless r.success?
+        errors[idx] = ["expected #{type.inspect}, got #{val.inspect}", r.errors].flatten unless r.valid?
         r.value
       end
 
-      return result.success(values) unless errors.any?
+      return result.valid(values) unless errors.any?
 
-      result.halt(errors:)
+      result.invalid(errors:)
     end
   end
 end

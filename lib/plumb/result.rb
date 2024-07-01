@@ -3,18 +3,18 @@
 module Plumb
   class Result
     class << self
-      def success(value)
-        Success.new(value)
+      def valid(value)
+        Valid.new(value)
       end
 
-      def halt(value = nil, errors: nil)
-        Halt.new(value, errors:)
+      def invalid(value = nil, errors: nil)
+        Invalid.new(value, errors:)
       end
 
       def wrap(value)
         return value if value.is_a?(Result)
 
-        success(value)
+        valid(value)
       end
     end
 
@@ -25,8 +25,8 @@ module Plumb
       @errors = errors
     end
 
-    def success? = true
-    def halt? = false
+    def valid? = true
+    def invalid? = false
 
     def inspect
       %(<#{self.class}##{object_id} value:#{value.inspect} errors:#{errors.inspect}>)
@@ -38,23 +38,23 @@ module Plumb
       self
     end
 
-    def success(val = value)
-      Result.success(val)
+    def valid(val = value)
+      Result.valid(val)
     end
 
-    def halt(val = value, errors: nil)
-      Result.halt(val, errors:)
+    def invalid(val = value, errors: nil)
+      Result.invalid(val, errors:)
     end
 
-    class Success < self
+    class Valid < self
       def map(callable)
         callable.call(self)
       end
     end
 
-    class Halt < self
-      def success? = false
-      def halt? = true
+    class Invalid < self
+      def valid? = false
+      def invalid? = true
 
       def map(_)
         self

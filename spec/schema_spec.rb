@@ -30,7 +30,7 @@ RSpec.describe Plumb::Schema do
         }
       }
       result = schema.resolve(data)
-      expect(result.success?).to be true
+      expect(result.valid?).to be true
       expect(result.value).to eq({
                                    title: 'Mr',
                                    name: 'Ismael',
@@ -97,7 +97,7 @@ RSpec.describe Plumb::Schema do
 
     it 'returns errors for invalid data' do
       result = schema.resolve({ friend: {} })
-      expect(result.success?).to be false
+      expect(result.valid?).to be false
       expect(result.errors[:name]).to eq('Must be a String')
       expect(result.errors[:friend][:name]).to eq('Must be a String')
     end
@@ -142,10 +142,10 @@ RSpec.describe Plumb::Schema do
     end
 
     result = s1.resolve(friends: [{ name: 'Joe' }])
-    expect(result.success?).to be true
+    expect(result.valid?).to be true
 
     result = s1.resolve(friends: [])
-    expect(result.success?).to be false
+    expect(result.valid?).to be false
   end
 
   specify 'merge with #+' do
@@ -194,12 +194,12 @@ RSpec.describe Plumb::Schema do
 
   describe '#before' do
     it 'runs before schema fields' do
-      populate_name = ->(result) { result.success(result.value.merge(name: 'Ismael')) }
+      populate_name = ->(result) { result.valid(result.value.merge(name: 'Ismael')) }
 
       schema = described_class.new do |sc|
         # As block
         sc.before do |result|
-          result.success(result.value.merge(title: 'Dr'))
+          result.valid(result.value.merge(title: 'Dr'))
         end
         # As callable
         sc.before populate_name
@@ -214,7 +214,7 @@ RSpec.describe Plumb::Schema do
     it 'can halt processing' do
       schema = described_class.new do |sc|
         sc.before do |result|
-          result.halt(errors: 'Halted')
+          result.invalid(errors: 'Halted')
         end
 
         sc.field(:title).type(Plumb::Types::String).default('Mr')
@@ -222,7 +222,7 @@ RSpec.describe Plumb::Schema do
       end
 
       result = schema.resolve({})
-      expect(result.success?).to be false
+      expect(result.valid?).to be false
       expect(result.value).to eq({})
       expect(result.errors).to eq('Halted')
     end
@@ -230,7 +230,7 @@ RSpec.describe Plumb::Schema do
 
   describe '#after' do
     it 'runs after schema fields' do
-      change_name = ->(result) { result.success(result.value.merge(name: 'Ismael')) }
+      change_name = ->(result) { result.valid(result.value.merge(name: 'Ismael')) }
 
       schema = described_class.new do |sc|
         # As callable
@@ -246,7 +246,7 @@ RSpec.describe Plumb::Schema do
     it 'can halt processing' do
       schema = described_class.new do |sc|
         sc.before do |result|
-          result.halt(errors: 'Halted')
+          result.invalid(errors: 'Halted')
         end
 
         sc.field(:title).type(Plumb::Types::String).default('Mr')
@@ -254,7 +254,7 @@ RSpec.describe Plumb::Schema do
       end
 
       result = schema.resolve({})
-      expect(result.success?).to be false
+      expect(result.valid?).to be false
       expect(result.value).to eq({})
       expect(result.errors).to eq('Halted')
     end
@@ -315,6 +315,6 @@ RSpec.describe Plumb::Schema do
   def assert_result(result, value, is_success, debug: false)
     debugger if debug
     expect(result.value).to eq value
-    expect(result.success?).to be is_success
+    expect(result.valid?).to be is_success
   end
 end

@@ -13,6 +13,6 @@ module Plumb
       @block = block || ->(value) { type.send(factory_method, value) }
     end
 
-    def call(result) = result.success(@block.call(result.value))
+    def call(result) = result.valid(@block.call(result.value))
   end
 end

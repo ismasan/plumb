@@ -74,7 +74,7 @@ module Plumb
     end
 
     def call(result)
-      return result.halt(errors: 'must be a Hash') unless result.value.is_a?(::Hash)
+      return result.invalid(errors: 'must be a Hash') unless result.value.is_a?(::Hash)
       return result unless _schema.any?
 
       input = result.value
@@ -84,16 +84,16 @@ module Plumb
         key_s = key.to_sym
         if input.key?(key_s)
           r = field.call(field_result.reset(input[key_s]))
-          errors[key_s] = r.errors unless r.success?
+          errors[key_s] = r.errors unless r.valid?
           ret[key_s] = r.value
         elsif !key.optional?
           r = field.call(BLANK_RESULT)
-          errors[key_s] = r.errors unless r.success?
+          errors[key_s] = r.errors unless r.valid?
           ret[key_s] = r.value unless r.value == Undefined
         end
       end
 
-      errors.any? ? result.halt(output, errors:) : result.success(output)
+      errors.any? ? result.invalid(output, errors:) : result.valid(output)
     end
 
     private

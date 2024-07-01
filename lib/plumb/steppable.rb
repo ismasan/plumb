@@ -31,7 +31,7 @@ module Plumb
 
     def parse(value)
       result = resolve(value)
-      raise TypeError, result.errors if result.halt?
+      raise TypeError, result.errors if result.invalid?
 
       result.value
     end
@@ -109,7 +109,7 @@ module Plumb
 
     def check(errors = 'did not pass the check', &block)
       a_check = lambda { |result|
-        block.call(result.value) ? result : result.halt(errors:)
+        block.call(result.value) ? result : result.invalid(errors:)
       }
 
       self >> a_check
@@ -123,7 +123,7 @@ module Plumb
       Not.new(other)
     end
 
-    def halt(errors: nil)
+    def invalid(errors: nil)
       Not.new(self, errors:)
     end
 
@@ -139,7 +139,7 @@ module Plumb
 
     DefaultProc = proc do |callable|
       proc do |result|
-        result.success(callable.call)
+        result.valid(callable.call)
       end
     end
 
@@ -206,7 +206,7 @@ module Plumb
       when Steppable
         other == self
       else
-        resolve(other).success?
+        resolve(other).valid?
       end
     end
 
@@ -214,9 +214,9 @@ module Plumb
       coercion ||= block
       step = lambda { |result|
         if type === result.value
-          result.success(coercion.call(result.value))
+          result.valid(coercion.call(result.value))
         else
-          result.halt(errors: "%s can't be coerced" % result.value.inspect)
+          result.invalid(errors: "%s can't be coerced" % result.value.inspect)
         end
       }
       self >> step

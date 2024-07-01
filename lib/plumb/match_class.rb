@@ -20,7 +20,7 @@ module Plumb
     end
 
     def call(result)
-      @matcher === result.value ? result : result.halt(errors: @error)
+      @matcher === result.value ? result : result.invalid(errors: @error)
     end
 
     private def build_error(matcher)

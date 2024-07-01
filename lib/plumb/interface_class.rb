@@ -27,7 +27,7 @@ module Plumb
     def call(result)
       obj = result.value
       missing_methods = @method_names.reject { |m| obj.respond_to?(m) }
-      return result.halt(errors: "missing methods: #{missing_methods.join(', ')}") if missing_methods.any?
+      return result.invalid(errors: "missing methods: #{missing_methods.join(', ')}") if missing_methods.any?
 
       result
     end

@@ -14,7 +14,7 @@ module Plumb
     end
 
     def call(result)
-      result.success(@callable.call(result.value))
+      result.valid(@callable.call(result.value))
     end
   end
 end

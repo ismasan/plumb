@@ -20,7 +20,7 @@ module Plumb
 
     def call(result)
       result = @step.call(result)
-      result.success? ? result.halt(errors: @errors) : result.success
+      result.valid? ? result.invalid(errors: @errors) : result.valid
     end
   end
 end

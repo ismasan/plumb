@@ -20,10 +20,10 @@ module Plumb
 
     def call(result)
       left_result = @left.call(result)
-      return left_result if left_result.success?
+      return left_result if left_result.valid?
 
       right_result = @right.call(result)
-      right_result.success? ? right_result : result.halt(errors: [left_result.errors, right_result.errors].flatten)
+      right_result.valid? ? right_result : result.invalid(errors: [left_result.errors, right_result.errors].flatten)
     end
   end
 end

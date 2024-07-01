@@ -40,12 +40,12 @@ module Plumb
     end
 
     def call(result)
-      return result.halt(errors: 'is not an Array') unless result.value.is_a?(::Enumerable)
+      return result.invalid(errors: 'is not an Array') unless result.value.is_a?(::Enumerable)
 
       values, errors = map_array_elements(result.value)
-      return result.success(values) unless errors.any?
+      return result.valid(values) unless errors.any?
 
-      result.halt(errors:)
+      result.invalid(errors:)
     end
 
     private
@@ -59,7 +59,7 @@ module Plumb
       errors = {}
       values = list.map.with_index do |e, idx|
         re = element_type.call(element_result.reset(e))
-        errors[idx] = re.errors unless re.success?
+        errors[idx] = re.errors unless re.valid?
         re.value
       end
 
