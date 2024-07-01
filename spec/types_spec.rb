@@ -45,6 +45,15 @@ RSpec.describe Plumb::Types do
       expect((step1 >> ->(r) { r.valid(r.value.to_s) }).resolve(10).value).to eq('15')
     end
 
+    specify 'with custom #metadata' do
+      klass = Class.new do
+        def metadata = { foo: 'bar', type: self.class }
+        def call(result) = result
+      end
+      type = (Types::Any >> klass.new) | Types::String
+      expect(type.metadata).to eq(foo: 'bar', type: [klass, ::String])
+    end
+
     specify '#transform' do
       to_i = Types::Any.transform(::Integer, &:to_i)
       plus_ten = Types::Any.transform(::Integer) { |value| value + 10 }
