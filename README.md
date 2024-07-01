@@ -317,7 +317,7 @@ currencies.parse('usd' => 'USD') # Error. Keys must be Symbols
 
 
 
-### Array
+### `Types::Array`
 
 ```ruby
 names = Types::Array[Types::String.present]
@@ -326,7 +326,7 @@ names_or_ages = Types::Array[Types::String.present | Types::Integer[21..]]
 
 
 
-### Tuple
+### `Types::Tuple`
 
 ```ruby
 Status = Types::Symbol.options(%i[ok error])
@@ -346,11 +346,15 @@ Status = Ok | Error
 
 
 
-## `Schema`
+### Plumb::Schema
 
 TODO
 
-## Pipeline
+### Plumb::Pipeline
+
+TODO
+
+### Plumb::Struct
 
 TODO
 
