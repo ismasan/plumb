@@ -3,12 +3,10 @@
 require 'spec_helper'
 require 'plumb'
 
-include Plumb
-
 RSpec.describe Plumb::Types do
   describe 'Result' do
     specify '#success and #halt' do
-      result = Result.wrap(10)
+      result = Plumb::Result.wrap(10)
       expect(result.valid?).to be(true)
       expect(result.value).to eq(10)
       result = result.valid(20)
@@ -33,10 +31,10 @@ RSpec.describe Plumb::Types do
 
   describe 'Step' do
     specify '#>>' do
-      step1 = Step.new { |r| r.valid(r.value + 5) }
-      step2 = Step.new { |r| r.valid(r.value - 2) }
-      step3 = Step.new { |r| r.invalid }
-      step4 = ->(minus) { Step.new { |r| r.valid(r.value - minus) } }
+      step1 = Plumb::Step.new { |r| r.valid(r.value + 5) }
+      step2 = Plumb::Step.new { |r| r.valid(r.value - 2) }
+      step3 = Plumb::Step.new { |r| r.invalid }
+      step4 = ->(minus) { Plumb::Step.new { |r| r.valid(r.value - minus) } }
       pipeline = Types::Any >> step1 >> step2 >> step3 >> ->(r) { r.valid(r.value + 1) }
 
       expect(pipeline.resolve(10).valid?).to be(false)
@@ -74,7 +72,7 @@ RSpec.describe Plumb::Types do
     end
 
     specify '#present' do
-      assert_result(Types::Any.present.resolve, Undefined, false)
+      assert_result(Types::Any.present.resolve, Plumb::Undefined, false)
       assert_result(Types::Any.present.resolve(''), '', false)
       assert_result(Types::Any.present.resolve('foo'), 'foo', true)
       assert_result(Types::Any.present.resolve([]), [], false)
@@ -195,8 +193,8 @@ RSpec.describe Plumb::Types do
       assert_result(Types::Any.default('hello').resolve, 'hello', true)
       assert_result(Types::String.default('hello').resolve('bye'), 'bye', true)
       assert_result(Types::String.default('hello').resolve(nil), nil, false)
-      assert_result(Types::String.default('hello').resolve(Undefined), 'hello', true)
-      assert_result(Types::String.default { 'hi' }.resolve(Undefined), 'hi', true)
+      assert_result(Types::String.default('hello').resolve(Plumb::Undefined), 'hello', true)
+      assert_result(Types::String.default { 'hi' }.resolve(Plumb::Undefined), 'hi', true)
     end
 
     specify '#nullable' do
@@ -573,7 +571,7 @@ RSpec.describe Plumb::Types do
           true
         )
         assert_result(
-          Types::Array.of(Types::Boolean).default([true].freeze).resolve(Undefined),
+          Types::Array.of(Types::Boolean).default([true].freeze).resolve(Plumb::Undefined),
           [true],
           true
         )

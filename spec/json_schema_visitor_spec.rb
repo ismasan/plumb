@@ -7,9 +7,9 @@ RSpec.describe Plumb::JSONSchemaVisitor do
   subject(:visitor) { described_class }
 
   specify 'simplest possible case with one-level keys and types' do
-    type = Plumb::Types::Hash[
-      name: Plumb::Types::String.meta(description: 'the name'),
-      age?: Plumb::Types::Integer
+    type = Types::Hash[
+      name: Types::String.meta(description: 'the name'),
+      age?: Types::Integer
     ]
 
     expect(described_class.call(type)).to eq(
@@ -27,9 +27,9 @@ RSpec.describe Plumb::JSONSchemaVisitor do
 
   describe 'building properties' do
     specify 'Hash with key and value types' do
-      type = Plumb::Types::Hash.schema(
-        Plumb::Types::String,
-        Plumb::Types::Integer
+      type = Types::Hash.schema(
+        Types::String,
+        Types::Integer
       )
 
       expect(described_class.visit(type)).to eq(
@@ -39,87 +39,87 @@ RSpec.describe Plumb::JSONSchemaVisitor do
     end
 
     specify 'Types::String' do
-      type = Plumb::Types::String
+      type = Types::String
       expect(described_class.visit(type)).to eq('type' => 'string')
     end
 
     specify 'Types::Integer' do
-      type = Plumb::Types::Integer
+      type = Types::Integer
       expect(described_class.visit(type)).to eq('type' => 'integer')
     end
 
     specify 'Types::Numeric' do
-      type = Plumb::Types::Numeric
+      type = Types::Numeric
       expect(described_class.visit(type)).to eq('type' => 'number')
     end
 
     specify 'Types::Decimal' do
-      type = Plumb::Types::Decimal
+      type = Types::Decimal
       expect(described_class.visit(type)).to eq('type' => 'number')
     end
 
     specify 'Float' do
-      type = Plumb::Types::Any[Float]
+      type = Types::Any[Float]
       expect(described_class.visit(type)).to eq('type' => 'number')
     end
 
     specify 'Types::Match with RegExp' do
-      type = Plumb::Types::String[/[a-z]+/]
+      type = Types::String[/[a-z]+/]
       expect(described_class.visit(type)).to eq('type' => 'string', 'pattern' => '[a-z]+')
     end
 
     specify 'Types::Match with Range' do
-      type = Plumb::Types::Integer[10..100]
+      type = Types::Integer[10..100]
       expect(described_class.visit(type)).to eq('type' => 'integer', 'minimum' => 10, 'maximum' => 100)
 
-      type = Plumb::Types::Integer[10...100]
+      type = Types::Integer[10...100]
       expect(described_class.visit(type)).to eq('type' => 'integer', 'minimum' => 10, 'maximum' => 99)
 
-      type = Plumb::Types::Integer[10..]
+      type = Types::Integer[10..]
       expect(described_class.visit(type)).to eq('type' => 'integer', 'minimum' => 10)
 
-      type = Plumb::Types::Integer[..100]
+      type = Types::Integer[..100]
       expect(described_class.visit(type)).to eq('type' => 'integer', 'maximum' => 100)
     end
 
     specify '#default' do
       # JSON schema's semantics for default values means a default only applies
       # when the key is missing from the payload.
-      type = Plumb::Types::String.default('foo')
+      type = Types::String.default('foo')
       expect(described_class.visit(type)).to eq('type' => 'string', 'default' => 'foo')
 
-      type = Plumb::Types::String | (Plumb::Types::Undefined >> 'bar')
+      type = Types::String | (Types::Undefined >> 'bar')
       expect(described_class.visit(type)).to eq('type' => 'string', 'default' => 'bar')
 
-      type = (Plumb::Types::Undefined >> 'bar2') | Plumb::Types::String
+      type = (Types::Undefined >> 'bar2') | Types::String
       expect(described_class.visit(type)).to eq('type' => 'string', 'default' => 'bar2')
     end
 
     specify '#match' do
-      type = Plumb::Types::String.match(/[a-z]+/)
+      type = Types::String.match(/[a-z]+/)
       expect(described_class.visit(type)).to eq('type' => 'string', 'pattern' => '[a-z]+')
     end
 
     specify '#build' do
-      type = Plumb::Types::Any.build(::String)
+      type = Types::Any.build(::String)
       expect(described_class.visit(type)).to eq('type' => 'string')
     end
 
     specify 'Types::String >> Types::Integer' do
-      type = Plumb::Types::String >> Plumb::Types::Integer
+      type = Types::String >> Types::Integer
       expect(described_class.visit(type)).to eq('type' => 'integer')
     end
 
     specify 'Types::String | Types::Integer' do
-      type = Plumb::Types::String | Plumb::Types::Integer
+      type = Types::String | Types::Integer
       expect(described_class.visit(type)).to eq(
         'anyOf' => [{ 'type' => 'string' }, { 'type' => 'integer' }]
       )
     end
 
     specify 'complex type with AND and OR branches' do
-      type = Plumb::Types::String \
-        | (Plumb::Types::Integer.transform(::Integer) { |v| v * 2 }).options([2, 4])
+      type = Types::String \
+        | (Types::Integer.transform(::Integer) { |v| v * 2 }).options([2, 4])
 
       expect(visitor.visit(type)).to eq(
         'anyOf' => [
@@ -130,7 +130,7 @@ RSpec.describe Plumb::JSONSchemaVisitor do
     end
 
     specify 'Types::Array' do
-      type = Plumb::Types::Array[Plumb::Types::String]
+      type = Types::Array[Types::String]
       expect(described_class.visit(type)).to eq(
         'type' => 'array',
         'items' => { 'type' => 'string' }
@@ -138,12 +138,12 @@ RSpec.describe Plumb::JSONSchemaVisitor do
     end
 
     specify 'Types::Boolean' do
-      type = Plumb::Types::Boolean
+      type = Types::Boolean
       expect(described_class.visit(type)).to eq('type' => 'boolean')
     end
 
     specify 'Types.nullable' do
-      type = Plumb::Types::String.nullable.default('bar')
+      type = Types::String.nullable.default('bar')
       expect(described_class.visit(type)).to eq(
         'anyOf' => [{ 'type' => 'null' }, { 'type' => 'string' }],
         'default' => 'bar'
@@ -151,21 +151,21 @@ RSpec.describe Plumb::JSONSchemaVisitor do
     end
 
     specify 'Types::True' do
-      type = Plumb::Types::True
+      type = Types::True
       expect(described_class.visit(type)).to eq('type' => 'boolean')
     end
 
     specify 'Pipeline' do
-      type = Plumb::Types::String.pipeline do |pl|
+      type = Types::String.pipeline do |pl|
         pl.step { |result| result }
       end
       expect(described_class.visit(type)).to eq('type' => 'string')
     end
 
     specify 'Types::Array with union member type' do
-      type = Plumb::Types::Array[
-        Plumb::Types::String | Plumb::Types::Hash.schema(
-          name: Plumb::Types::String
+      type = Types::Array[
+        Types::String | Types::Hash.schema(
+          name: Types::String
         )
       ]
 
@@ -187,10 +187,10 @@ RSpec.describe Plumb::JSONSchemaVisitor do
     end
 
     specify 'Types::Tuple' do
-      type = Plumb::Types::Tuple[
+      type = Types::Tuple[
         'ok',
-        Plumb::Types::String,
-        Plumb::Types::Integer
+        Types::String,
+        Types::Integer
       ]
 
       expect(described_class.visit(type)).to eq(
@@ -204,12 +204,12 @@ RSpec.describe Plumb::JSONSchemaVisitor do
     end
 
     specify 'Types::Hash.tagged_by' do
-      t1 = Plumb::Types::Hash[
-        kind: 't1', name: Plumb::Types::String,
-        age: Plumb::Types::Integer
+      t1 = Types::Hash[
+        kind: 't1', name: Types::String,
+        age: Types::Integer
       ]
-      t2 = Plumb::Types::Hash[kind: 't2', name: Plumb::Types::String]
-      type = Plumb::Types::Hash.tagged_by(:kind, t1, t2)
+      t2 = Types::Hash[kind: 't2', name: Types::String]
+      type = Types::Hash.tagged_by(:kind, t1, t2)
 
       expect(described_class.visit(type)).to eq(
         'type' => 'object',
