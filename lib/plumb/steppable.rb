@@ -29,7 +29,7 @@ module Plumb
       call(Result.wrap(value))
     end
 
-    def parse(value)
+    def parse(value = Undefined)
       result = resolve(value)
       raise TypeError, result.errors if result.invalid?
 
