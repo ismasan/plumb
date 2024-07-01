@@ -327,7 +327,6 @@ Greeting.parse('joe@bloggs.com') # "Your email is joe@bloggs.com"
 ```
 
 
-
 ## Disjunction with `#|` ("Or")
 
 ```ruby
@@ -353,7 +352,7 @@ require 'money'
 module Types
   include Plumb::Types
   
-  Money = Any.is_a(::Money)
+  Money = Any[::Money]
   IntToMoney = Integer.transform(::Money) { |v| ::Money.new(v, 'USD') }
   StringToInt = String.match(/^\d+$/).transform(::Integer, &:to_i)
   USD = Money.check { |amount| amount.currency.code == 'UDS' }
@@ -366,8 +365,6 @@ FlexibleUSD.parse('1000') # Money(USD 10.00)
 FlexibleUSD.parse(1000) # Money(USD 10.00)
 FlexibleUSD.parse(Money.new(1000, 'GBP')) # Money(USD 15.00)
 ```
-
-
 
 ## `#transform`
 
