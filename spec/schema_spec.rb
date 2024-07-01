@@ -52,13 +52,13 @@ RSpec.describe Plumb::Schema do
       data = schema.json_schema
       expect(data).to eq({
                            '$schema' => 'https://json-schema.org/draft-08/schema#',
-                           type: 'object',
-                           properties: {
-                             'title' => { type: 'string', default: 'Mr' },
-                             'age' => { type: 'integer' },
-                             'foo' => { type: 'integer' }
+                           'type' => 'object',
+                           'properties' => {
+                             'title' => { 'type' => 'string', 'default' => 'Mr' },
+                             'age' => { 'type' => 'integer' },
+                             'foo' => { 'type' => 'integer' }
                            },
-                           required: %w[title]
+                           'required' => %w[title]
                          })
     end
 

@@ -442,7 +442,7 @@ LinkedList = Types::Hash[
 
 
 
-### Rules
+### Type-specific Rules
 
 TODO
 
@@ -468,6 +468,29 @@ class Greeting
 end
 
 MyType = Types::String >> Greeting.new('Hola')
+```
+
+
+
+### JSON Schema
+
+```ruby
+User = Types::Hash[
+  name: Types::String,
+  age: Types::Integer[21..]
+]
+
+json_schema = Plumb::JSONSchemaVisitor.call(User)
+
+{
+  '$schema'=>'https://json-schema.org/draft-08/schema#', 
+  'type' => 'object', 
+  'properties' => {
+    'name' => {'type' => 'string'}, 
+    'age' => {'type' =>'integer', 'minimum' => 21}
+  }, 
+  'required' =>['name', 'age']
+}
 ```
 
 
