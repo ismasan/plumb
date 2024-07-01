@@ -322,7 +322,16 @@ type.metadata[:description] # 'A long text'
 type.metadata[:note] # 'An email address'
 ```
 
+`#metadata` also computes the target type.
 
+```ruby
+Types::String.metadata[:type] # String
+Types::String.transform(Integer, &:to_i).metadata[:type] # Integer
+# Multiple target types for unions
+(Types::String | Types::Integer).metadata[:type] # [String, Integer]
+```
+
+TODO: document custom visitors.
 
 ## `Types::Hash`
 
