@@ -18,7 +18,7 @@ module Types
   include Plumb::Types
   
   # Define your own types
-  Email = String[/&/]
+  Email = String[/@/]
 end
 
 # Use them
@@ -251,25 +251,23 @@ UserType.parse('Joe') # #<data User name="Joe">
 It takes an argument for a custom factory method on the object constructor.
 
 ```ruby
-class User
-  def self.create(attrs)
-    new(attrs)
-  end
-end
+# https://github.com/RubyMoney/monetize
+require 'monetize'
 
-UserType = Types::String.build(User, :create)
+StringToMoney = Types::String.build(Monetize, :parse)
+money = StringToMoney.parse('£10,300.00') # #<Money fractional:1030000 currency:GBP>
 ```
 
 You can also pass a block
 
 ```ruby
-UserType = Types::String.build(User) { |name| User.new(name) }
+StringToMoney = Types::String.build(Money) { |value| Monetize.parse(value) }
 ```
 
 Note that this case is identical to `#transform` with a block.
 
 ```ruby
-UserType = Types::String.transform(User) { |name| User.new(name) }
+StringToMoney = Types::String.transform(Money) { |value| Monetize.parse(value) }
 ```
 
 
