@@ -101,6 +101,25 @@ Types::String.present.resolve('') # Failure with errors
 Types::Array[Types::String].resolve([]) # Failure with errors
 ```
 
+### `#nullable`
+
+Allow `nil` values.
+
+```ruby
+nullable_str = Types::String.nullable
+nullable_srt.parse(nil) # nil
+nullable_str.parse('hello') # 'hello'
+nullable_str.parse(10) # TypeError
+```
+
+Note that this is syntax sugar for 
+
+```ruby
+nullable_str = Types::String | Types::Nil
+```
+
+
+
 ### `#not`
 
 Negates a type. 
@@ -141,6 +160,42 @@ StringToInt = Types::String.transform(Integer) { |value| value.to_i }
 StringToInt = Types::String.transform(Integer, &:to_i)
 
 StringToInteger.parse('10') # => 10
+```
+
+
+
+### `#default`
+
+Default value when no value given (ie. when key is missin in Hash payloads. See `Types::Hash` below).
+
+```ruby
+str = Types::String.default('nope'.freeze)
+str.parse() # 'nope'
+str.parse('yup') # 'yup'
+```
+
+Note that this is syntax sugar for:
+
+```ruby
+# A String, or if it's Undefined pipe to a static string value.
+str = Types::String | (Types::Undefined >> 'nope'.freeze)
+```
+
+Meaning that you can compose your own semantics for a "default" value.
+
+Example when you want to apply a default when the given value is `nil`.
+
+```ruby
+str = Types::String | (Types::Nil >> 'nope'.freeze)
+
+str.parse(nil) # 'nope'
+str.parse('yup') # 'yup'
+```
+
+Same if you want to apply a default to several cases.
+
+```ruby
+str = Types::String | ((Types::Nil | Types::Undefined) >> 'nope'.freeze)
 ```
 
 
