@@ -3,7 +3,7 @@
 require 'plumb/steppable'
 
 module Plumb
-  class Constructor
+  class Build
     include Steppable
 
     attr_reader :type

@@ -100,8 +100,8 @@ RSpec.describe Plumb::JSONSchemaVisitor do
       expect(described_class.visit(type)).to eq(type: 'string', pattern: '[a-z]+')
     end
 
-    specify '#constructor' do
-      type = Plumb::Types::Any.constructor(::String)
+    specify '#build' do
+      type = Plumb::Types::Any.build(::String)
       expect(described_class.visit(type)).to eq(type: 'string')
     end
 

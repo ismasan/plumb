@@ -287,11 +287,12 @@ RSpec.describe Plumb::Types do
           new(name)
         end
       end
-      assert_result(Types::Any.constructor(custom).resolve('Ismael'), custom.new('Ismael'), true)
-      with_block = Types::Any.constructor(custom) { |v| custom.new('mr. %s' % v) }
+      assert_result(Types::Any.build(custom).resolve('Ismael'), custom.new('Ismael'), true)
+      with_block = Types::Any.build(custom) { |v| custom.new('mr. %s' % v) }
       expect(with_block.resolve('Ismael').value.name).to eq('mr. Ismael')
-      with_symbol = Types::Any.constructor(custom, :build)
+      with_symbol = Types::Any.build(custom, :build)
       expect(with_symbol.resolve('Ismael').value.name).to eq('Ismael')
+      expect(with_symbol.metadata[:type]).to eq(custom)
     end
 
     describe '#rule' do

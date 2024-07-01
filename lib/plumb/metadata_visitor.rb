@@ -97,7 +97,7 @@ module Plumb
       props.merge(type: Hash)
     end
 
-    on(:constructor) do |type, props|
+    on(:build) do |type, props|
       visit(type.type, props)
     end
 

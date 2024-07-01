@@ -222,8 +222,8 @@ module Plumb
       self >> step
     end
 
-    def constructor(cns, factory_method = :new, &block)
-      self >> Constructor.new(cns, factory_method:, &block)
+    def build(cns, factory_method = :new, &block)
+      self >> Build.new(cns, factory_method:, &block)
     end
 
     def pipeline(&block)
@@ -238,5 +238,5 @@ end
 
 require 'plumb/deferred'
 require 'plumb/transform'
-require 'plumb/constructor'
+require 'plumb/build'
 require 'plumb/metadata'
