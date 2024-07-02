@@ -19,39 +19,39 @@ module Plumb
     MINIMUM = 'minimum'
     MAXIMUM = 'maximum'
 
-    def self.call(type)
+    def self.call(node)
       {
         '$schema' => 'https://json-schema.org/draft-08/schema#'
-      }.merge(new.visit(type))
+      }.merge(new.visit(node))
     end
 
     private def stringify_keys(hash) = hash.transform_keys(&:to_s)
 
-    on(:any) do |type, props|
+    on(:any) do |_node, props|
       props
     end
 
-    on(:pipeline) do |type, props|
-      visit(type.type, props)
+    on(:pipeline) do |node, props|
+      visit(node.type, props)
     end
 
-    on(:step) do |type, props|
-      props.merge(stringify_keys(type._metadata))
+    on(:step) do |node, props|
+      props.merge(stringify_keys(node._metadata))
     end
 
-    on(:hash) do |type, props|
+    on(:hash) do |node, props|
       props.merge(
         TYPE => 'object',
-        PROPERTIES => type._schema.each_with_object({}) do |(key, value), hash|
+        PROPERTIES => node._schema.each_with_object({}) do |(key, value), hash|
           hash[key.to_s] = visit(value)
         end,
-        REQUIRED => type._schema.select { |key, value| !key.optional? }.keys.map(&:to_s)
+        REQUIRED => node._schema.reject { |key, _value| key.optional? }.keys.map(&:to_s)
       )
     end
 
-    on(:and) do |type, props|
-      left = visit(type.left)
-      right = visit(type.right)
+    on(:and) do |node, props|
+      left = visit(node.left)
+      right = visit(node.right)
       type = right[TYPE] || left[TYPE]
       props = props.merge(left).merge(right)
       props = props.merge(TYPE => type) if type
@@ -59,152 +59,152 @@ module Plumb
     end
 
     # A "default" value is usually an "or" of expected_value | (undefined >> static_value)
-    on(:or) do |type, props|
-      left = visit(type.left)
-      right = visit(type.right)
+    on(:or) do |node, props|
+      left = visit(node.left)
+      right = visit(node.right)
       any_of = [left, right].uniq
       if any_of.size == 1
         props.merge(left)
       elsif any_of.size == 2 && (defidx = any_of.index { |p| p.key?(DEFAULT) })
-        val = any_of[defidx == 0 ? 1 : 0]
+        val = any_of[defidx.zero? ? 1 : 0]
         props.merge(val).merge(DEFAULT => any_of[defidx][DEFAULT])
       else
         props.merge(ANY_OF => any_of)
       end
     end
 
-    on(:not) do |type, props|
-      props.merge('not' => visit(type.step))
+    on(:not) do |node, props|
+      props.merge('not' => visit(node.step))
     end
 
-    on(:value) do |type, props|
-      props = case type.value
+    on(:value) do |node, props|
+      props = case node.value
               when ::String, ::Symbol, ::Numeric
-                props.merge(CONST => type.value)
+                props.merge(CONST => node.value)
               else
                 props
               end
 
-      visit(type.value, props)
+      visit(node.value, props)
     end
 
-    on(:transform) do |type, props|
-      visit(type.target_type, props)
+    on(:transform) do |node, props|
+      visit(node.target_type, props)
     end
 
-    on(:undefined) do |type, props|
+    on(:undefined) do |_node, props|
       props
     end
 
-    on(:static) do |type, props|
-      props = case type.value
+    on(:static) do |node, props|
+      props = case node.value
               when ::String, ::Symbol, ::Numeric
-                props.merge(CONST => type.value, DEFAULT => type.value)
+                props.merge(CONST => node.value, DEFAULT => node.value)
               else
                 props
               end
 
-      visit(type.value, props)
+      visit(node.value, props)
     end
 
-    on(:rules) do |type, props|
-      type.rules.reduce(props) do |acc, rule|
+    on(:rules) do |node, props|
+      node.rules.reduce(props) do |acc, rule|
         acc.merge(visit(rule))
       end
     end
 
-    on(:rule_included_in) do |type, props|
-      props.merge(ENUM => type.arg_value)
+    on(:rule_included_in) do |node, props|
+      props.merge(ENUM => node.arg_value)
     end
 
-    on(:match) do |type, props|
-      visit(type.matcher, props)
+    on(:match) do |node, props|
+      visit(node.matcher, props)
     end
 
-    on(:boolean) do |type, props|
+    on(:boolean) do |_node, props|
       props.merge(TYPE => 'boolean')
     end
 
-    on(::String) do |type, props|
+    on(::String) do |_node, props|
       props.merge(TYPE => 'string')
     end
 
-    on(::Integer) do |type, props|
+    on(::Integer) do |_node, props|
       props.merge(TYPE => 'integer')
     end
 
-    on(::Numeric) do |type, props|
+    on(::Numeric) do |_node, props|
       props.merge(TYPE => 'number')
     end
 
-    on(::BigDecimal) do |type, props|
+    on(::BigDecimal) do |_node, props|
       props.merge(TYPE => 'number')
     end
 
-    on(::Float) do |type, props|
+    on(::Float) do |_node, props|
       props.merge(TYPE => 'number')
     end
 
-    on(::TrueClass) do |type, props|
+    on(::TrueClass) do |_node, props|
       props.merge(TYPE => 'boolean')
     end
 
-    on(::NilClass) do |type, props|
+    on(::NilClass) do |_node, props|
       props.merge(TYPE => 'null')
     end
 
-    on(::FalseClass) do |type, props|
+    on(::FalseClass) do |_node, props|
       props.merge(TYPE => 'boolean')
     end
 
-    on(::Regexp) do |type, props|
-      props.merge(PATTERN => type.source)
+    on(::Regexp) do |node, props|
+      props.merge(PATTERN => node.source)
     end
 
-    on(::Range) do |type, props|
+    on(::Range) do |node, props|
       opts = {}
-      opts[MINIMUM] = type.min if type.begin
-      opts[MAXIMUM] = type.max if type.end
+      opts[MINIMUM] = node.min if node.begin
+      opts[MAXIMUM] = node.max if node.end
       props.merge(opts)
     end
 
-    on(:metadata) do |type, props|
+    on(:metadata) do |node, props|
       #  TODO: here we should filter out the metadata that is not relevant for JSON Schema
-      props.merge(stringify_keys(type.metadata))
+      props.merge(stringify_keys(node.metadata))
     end
 
-    on(:hash_map) do |type, props|
+    on(:hash_map) do |node, _props|
       {
         TYPE => 'object',
         'patternProperties' => {
-          '.*' => visit(type.value_type)
+          '.*' => visit(node.value_type)
         }
       }
     end
 
-    on(:build) do |type, props|
-      visit(type.type, props)
+    on(:build) do |node, props|
+      visit(node.type, props)
     end
 
-    on(:array) do |type, props|
-      items = visit(type.element_type)
+    on(:array) do |node, _props|
+      items = visit(node.element_type)
       { TYPE => 'array', ITEMS => items }
     end
 
-    on(:tuple) do |type, props|
-      items = type.types.map { |t| visit(t) }
+    on(:tuple) do |node, _props|
+      items = node.types.map { |t| visit(t) }
       { TYPE => 'array', 'prefixItems' => items }
     end
 
-    on(:tagged_hash) do |type, props|
+    on(:tagged_hash) do |node, _props|
       required = Set.new
       result = {
         TYPE => 'object',
         PROPERTIES => {}
       }
 
-      key = type.key.to_s
-      children = type.types.map { |c| visit(c) }
+      key = node.key.to_s
+      children = node.types.map { |c| visit(c) }
       key_enum =  children.map { |c| c[PROPERTIES][key][CONST] }
       key_type =  children.map { |c| c[PROPERTIES][key][TYPE] }
       required << key
