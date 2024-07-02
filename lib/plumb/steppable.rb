@@ -58,6 +58,8 @@ module Plumb
         callable
       elsif callable.respond_to?(:call)
         Step.new(callable)
+      elsif callable.is_a?(::Class)
+        MatchClass.new(callable)
       else
         StaticClass.new(callable)
       end
