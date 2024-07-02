@@ -75,14 +75,14 @@ module Plumb
       freeze
     end
 
-    def field(key)
+    def field(key, type = nil, &block)
       key = Key.new(key.to_sym)
-      @fields[key] = Field.new(key)
+      @fields[key] = Field.new(key, type, &block)
     end
 
-    def field?(key)
+    def field?(key, type = nil, &block)
       key = Key.new(key.to_sym, optional: true)
-      @fields[key] = Field.new(key)
+      @fields[key] = Field.new(key, type, &block)
     end
 
     def +(other)
@@ -117,32 +117,23 @@ module Plumb
 
       attr_reader :_type, :key
 
-      def initialize(key)
+      def initialize(key, type = nil, &block)
         @key = key.to_sym
-        @_type = Types::Any
+        @_type = case type
+                 when ArrayClass, Array
+                   block_given? ? ArrayClass.new(element_type: Schema.new(&block)) : type
+                 when nil
+                   block_given? ? Schema.new(&block) : Types::Any
+                 when Steppable
+                   type
+                 when Class
+                   Types::Any[type]
+                 else
+                   raise ArgumentError, "expected a Plumb type, but got #{type.inspect}"
+                 end
       end
 
       def call(result) = _type.call(result)
-
-      def type(steppable)
-        unless steppable.respond_to?(:call)
-          raise ArgumentError,
-            "expected a Plumb type, but got #{steppable.inspect}"
-        end
-
-        @_type >>= steppable
-        self
-      end
-
-      def schema(...)
-        @_type >>= Schema.wrap(...)
-        self
-      end
-
-      def array(...)
-        @_type >>= Types::Array[Schema.wrap(...)]
-        self
-      end
 
       def default(v, &block)
         @_type = @_type.default(v, &block)
@@ -157,12 +148,12 @@ module Plumb
       def metadata = @_type.metadata
 
       def options(opts)
-        @_type = @_type.rule(included_in: opts)
+        @_type = @_type.options(opts)
         self
       end
 
-      def optional
-        @_type = Types::Nil | @_type
+      def nullable
+        @_type = @_type.nullable
         self
       end
 
@@ -173,6 +164,11 @@ module Plumb
 
       def required
         @_type = Types::Undefined.invalid(errors: 'is required') >> @_type
+        self
+      end
+
+      def match(matcher)
+        @_type = @_type.match(matcher)
         self
       end
 
