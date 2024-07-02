@@ -537,6 +537,12 @@ RSpec.describe Plumb::Types do
           false
         )
       end
+
+      specify 'with primitive classes' do
+        type = Types::Tuple[::String, ::Integer]
+        assert_result(type.resolve(['Ismael', 42]), ['Ismael', 42], true)
+        assert_result(type.resolve([23, 42]), [23, 42], false)
+      end
     end
 
     describe Types::Array do
@@ -652,8 +658,8 @@ RSpec.describe Plumb::Types do
       specify '#schema with static values' do
         hash = Types::Hash.schema(
           title: Types::String.default('Mr'),
-          name: 'Ismael',
-          age: 45,
+          name: Types::Static['Ismael'],
+          age: Types::Static[45],
           friend: Types::Hash.schema(name: Types::String)
         )
 
@@ -759,8 +765,8 @@ RSpec.describe Plumb::Types do
       end
 
       specify '#tagged_by' do
-        t1 = Types::Hash[kind: 't1', name: Types::String]
-        t2 = Types::Hash[kind: 't2', name: Types::String]
+        t1 = Types::Hash[kind: Types::Static['t1'], name: Types::String]
+        t2 = Types::Hash[kind: Types::Static['t2'], name: Types::String]
         type = Types::Hash.tagged_by(:kind, t1, t2)
 
         assert_result(type.resolve(kind: 't1', name: 'T1'), { kind: 't1', name: 'T1' }, true)

@@ -46,7 +46,7 @@ module Plumb
 
     def self.included(base)
       nname = base.name.split('::').last
-      nname.gsub!(/([a-z\d])([A-Z])/,'\1_\2')
+      nname.gsub!(/([a-z\d])([A-Z])/, '\1_\2')
       nname.downcase!
       nname.gsub!(/_class$/, '')
       nname = nname.to_sym
@@ -58,10 +58,8 @@ module Plumb
         callable
       elsif callable.respond_to?(:call)
         Step.new(callable)
-      elsif callable.is_a?(::Class)
-        MatchClass.new(callable)
       else
-        StaticClass.new(callable)
+        MatchClass.new(callable)
       end
     end
 
@@ -147,10 +145,10 @@ module Plumb
 
     def default(val = Undefined, &block)
       val_type = if val == Undefined
-        DefaultProc.call(block)
-      else
-        Types::Static[val]
-      end
+                   DefaultProc.call(block)
+                 else
+                   Types::Static[val]
+                 end
 
       self | (Types::Undefined >> val_type)
     end
@@ -188,13 +186,13 @@ module Plumb
 
     def rule(*args)
       specs = case args
-        in [::Symbol => rule_name, value]
-        { rule_name => value }
-        in [::Hash => rules]
-        rules
-      else
-        raise ArgumentError, "expected 1 or 2 arguments, but got #{args.size}"
-      end
+              in [::Symbol => rule_name, value]
+                { rule_name => value }
+              in [::Hash => rules]
+                rules
+              else
+                raise ArgumentError, "expected 1 or 2 arguments, but got #{args.size}"
+              end
 
       self >> Rules.new(specs, metadata[:type])
     end
