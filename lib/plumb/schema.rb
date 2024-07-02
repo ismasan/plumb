@@ -148,7 +148,7 @@ module Plumb
       def metadata = @_type.metadata
 
       def options(opts)
-        @_type = @_type.rule(included_in: opts)
+        @_type = @_type.options(opts)
         self
       end
 
@@ -164,6 +164,11 @@ module Plumb
 
       def required
         @_type = Types::Undefined.invalid(errors: 'is required') >> @_type
+        self
+      end
+
+      def match(matcher)
+        @_type = @_type.match(matcher)
         self
       end
 

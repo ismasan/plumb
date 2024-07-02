@@ -326,6 +326,12 @@ RSpec.describe Plumb::Schema do
     assert_result(field.resolve, [], true)
   end
 
+  specify 'Field#match' do
+    field = described_class::Field.new(:age, Integer).match(21..)
+    assert_result(field.resolve(22), 22, true)
+    assert_result(field.resolve(20), 20, false)
+  end
+
   specify 'self-contained Array type' do
     array_type = Types::Array[Types::Integer | Types::String.transform(::Integer, &:to_i)]
     schema = described_class.new do |sc|
