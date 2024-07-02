@@ -13,14 +13,13 @@ module Plumb
 
     def initialize(element_type: Types::Any)
       @element_type = case element_type
-      when Steppable
-        element_type
-      when ::Hash
-        HashClass.new(element_type)
-      else
-        raise ArgumentError,
-          "element_type #{element_type.inspect} must be a Steppable"
-      end
+                      when Steppable
+                        element_type
+                      when ::Hash
+                        HashClass.new(element_type)
+                      else
+                        Steppable.wrap(element_type)
+                      end
 
       freeze
     end
@@ -73,12 +72,12 @@ module Plumb
         errors = {}
 
         values = list
-          .map { |e| Concurrent::Future.execute { element_type.resolve(e) } }
-          .map.with_index do |f, idx|
-            re = f.value
-            errors[idx] = f.reason if f.rejected?
-            re.value
-          end
+                 .map { |e| Concurrent::Future.execute { element_type.resolve(e) } }
+                 .map.with_index do |f, idx|
+          re = f.value
+          errors[idx] = f.reason if f.rejected?
+          re.value
+        end
 
         [values, errors]
       end

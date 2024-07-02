@@ -588,10 +588,15 @@ RSpec.describe Plumb::Types do
         assert_result(type.resolve([{ foo: 'bar' }]), [{ foo: 'bar' }], true)
       end
 
-      specify '#[] (#of) with non-steppable argument' do
-        expect do
-          Types::Array['bar']
-        end.to raise_error(ArgumentError)
+      specify '#[] with primitive values' do
+        type = Types::Array[::String]
+        assert_result(type.resolve(%w[Ismael Joe]), %w[Ismael Joe], true)
+      end
+
+      specify '#[] (#of) with literal argument' do
+        type = Types::Array['bar']
+        assert_result(type.resolve(%w[bar]), %w[bar], true)
+        assert_result(type.resolve(%w[foo]), %w[foo], false)
       end
 
       specify '#present (non-empty)' do
