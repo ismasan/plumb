@@ -818,6 +818,12 @@ RSpec.describe Plumb::Types do
         assert_result(s1.present.resolve({}), {}, false)
       end
 
+      specify 'hash map with primitive values and classes' do
+        s1 = Types::Hash[::String, ::Integer]
+        assert_result(s1.resolve('ok' => 1, 'foo' => 2), { 'ok' => 1, 'foo' => 2 }, true)
+        assert_result(s1.resolve(:ok => 1, 'foo' => 2), { :ok => 1, 'foo' => 2 }, false)
+      end
+
       specify '#[] alias to #schema' do
         s1 = Types::Hash[Types::String, Types::Integer]
         expect(s1.metadata).to eq(type: Hash)
