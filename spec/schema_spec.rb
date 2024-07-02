@@ -7,17 +7,17 @@ RSpec.describe Plumb::Schema do
   describe 'a schema with nested schemas' do
     subject(:schema) do
       described_class.new do |sc|
-        sc.field(:title).type(Types::String).default('Mr')
-        sc.field(:name).type(Types::String)
-        sc.field?(:age).type(Types::Lax::Integer)
-        sc.field(:friend).schema do |s|
-          s.field(:name).type(Types::String)
+        sc.field(:title, Types::String).default('Mr')
+        sc.field(:name, Types::String)
+        sc.field?(:age, Types::Lax::Integer)
+        sc.field(:friend) do |s|
+          s.field(:name, Types::String)
         end
-        sc.field(:tags).array(Types::Lax::String).default([].freeze)
-        sc.field(:friends).default([].freeze).array do |f|
-          f.field(:name).type(Types::String).default('Anonymous')
-          f.field(:age).type(Types::Lax::Integer)
-        end
+        sc.field(:tags, Types::Array[Types::Lax::String]).default([].freeze)
+        sc.field(:friends, Types::Array) do |f|
+          f.field(:name, Types::String).default('Anonymous')
+          f.field(:age, Types::Lax::Integer)
+        end.default([].freeze)
       end
     end
 
@@ -45,9 +45,9 @@ RSpec.describe Plumb::Schema do
 
     specify '#json_schema' do
       schema = described_class.new do |sc|
-        sc.field(:title).type(Types::String).default('Mr')
-        sc.field?(:age).type(Types::Integer)
-        sc.field?(:foo).type(Types::String.transform(::Integer, &:to_i))
+        sc.field :title, Types::String.default('Mr')
+        sc.field? :age, Types::Integer
+        sc.field? :foo, Types::String.transform(::Integer, &:to_i)
       end
       data = schema.json_schema
       expect(data).to eq({
@@ -110,8 +110,8 @@ RSpec.describe Plumb::Schema do
 
   specify 'optional keys' do
     schema = described_class.new do |s|
-      s.field(:name).type(Types::String)
-      s.field?(:age).type(Types::Lax::Integer)
+      s.field(:name, Types::String)
+      s.field?(:age, Types::Lax::Integer)
     end
 
     assert_result(schema.resolve({ name: 'Ismael', age: '42' }), { name: 'Ismael', age: 42 }, true)
@@ -120,14 +120,14 @@ RSpec.describe Plumb::Schema do
 
   specify 'reusing schemas' do
     friend_schema = described_class.new do |s|
-      s.field(:name).type(Types::String)
+      s.field(:name, Types::String)
     end
 
     schema = described_class.new do |sc|
-      sc.field(:title).type(Types::String).default('Mr')
-      sc.field(:name).type(Types::String)
-      sc.field?(:age).type(Types::Lax::Integer)
-      sc.field(:friend).schema friend_schema
+      sc.field(:title, Types::String).default('Mr')
+      sc.field(:name, Types::String)
+      sc.field?(:age, Types::Lax::Integer)
+      sc.field(:friend, friend_schema)
     end
 
     assert_result(schema.resolve({ name: 'Ismael', age: '42', friend: { name: 'Joe' } }),
@@ -136,8 +136,8 @@ RSpec.describe Plumb::Schema do
 
   specify 'array schemas with rules' do
     s1 = described_class.new do |sc|
-      sc.field(:friends).array do |f|
-        f.field(:name).type(Types::String)
+      sc.field(:friends, Types::Array) do |f|
+        f.field(:name, Types::String)
       end.rule(size: (1..))
     end
 
@@ -148,13 +148,38 @@ RSpec.describe Plumb::Schema do
     expect(result.valid?).to be false
   end
 
+  specify 'array schemas literal [] notation' do
+    s1 = described_class.new do |sc|
+      sc.field(:friends, []) do |f|
+        f.field(:name, Types::String)
+      end
+    end
+
+    result = s1.resolve(friends: [{ name: 'Joe' }])
+    expect(result.valid?).to be true
+  end
+
+  specify 'fields with primitive types' do
+    s1 = described_class.new do |sc|
+      sc.field :name, String
+      sc.field(:age, Integer).default(10)
+      sc.field(:friends, Array) do |f|
+        f.field(:name, Types::String)
+      end
+    end
+
+    result = s1.resolve(name: 'Joe', friends: [{ name: 'Joe' }])
+    expect(result.valid?).to be true
+    expect(result.value).to eq(name: 'Joe', age: 10, friends: [{ name: 'Joe' }])
+  end
+
   specify 'merge with #+' do
     s1 = described_class.new do |sc|
-      sc.field(:name).type(Types::String)
+      sc.field(:name, Types::String)
     end
     s2 = described_class.new do |sc|
-      sc.field?(:name).type(Types::String)
-      sc.field(:age).type(Types::Integer).default(10)
+      sc.field?(:name, Types::String)
+      sc.field(:age, Types::Integer).default(10)
     end
     s3 = s1 + s2
     assert_result(s3.resolve({}), { age: 10 }, true)
@@ -166,10 +191,10 @@ RSpec.describe Plumb::Schema do
 
   specify '#merge' do
     s1 = described_class.new do |sc|
-      sc.field(:name).type(Types::String)
+      sc.field(:name, Types::String)
     end
     s2 = s1.merge do |sc|
-      sc.field?(:age).type(Types::Integer)
+      sc.field?(:age, Types::Integer)
     end
     assert_result(s2.resolve(name: 'Joe'), { name: 'Joe' }, true)
     assert_result(s2.resolve(name: 'Joe', age: 20), { name: 'Joe', age: 20 }, true)
@@ -177,15 +202,15 @@ RSpec.describe Plumb::Schema do
 
   specify '#&' do
     s1 = described_class.new do |sc|
-      sc.field(:name).type(Types::String)
-      sc.field?(:title).type(Types::String)
-      sc.field?(:age).type(Types::Integer)
+      sc.field(:name, Types::String)
+      sc.field?(:title, Types::String)
+      sc.field?(:age, Types::Integer)
     end
 
     s2 = described_class.new do |sc|
-      sc.field(:name).type(Types::String)
-      sc.field?(:age).type(Types::Integer)
-      sc.field?(:email).type(Types::String)
+      sc.field(:name, Types::String)
+      sc.field?(:age, Types::Integer)
+      sc.field?(:email, Types::String)
     end
 
     s3 = s1 & s2
@@ -204,8 +229,8 @@ RSpec.describe Plumb::Schema do
         # As callable
         sc.before populate_name
 
-        sc.field(:title).type(Types::String).default('Mr')
-        sc.field(:name).type(Types::String)
+        sc.field(:title, Types::String).default('Mr')
+        sc.field(:name, Types::String)
       end
 
       assert_result(schema.resolve({}), { title: 'Dr', name: 'Ismael' }, true)
@@ -217,8 +242,8 @@ RSpec.describe Plumb::Schema do
           result.invalid(errors: 'Halted')
         end
 
-        sc.field(:title).type(Types::String).default('Mr')
-        sc.field(:name).type(Types::String)
+        sc.field(:title, Types::String).default('Mr')
+        sc.field(:name, Types::String)
       end
 
       result = schema.resolve({})
@@ -236,8 +261,8 @@ RSpec.describe Plumb::Schema do
         # As callable
         sc.before change_name
 
-        sc.field(:title).type(Types::String).default('Mr')
-        sc.field(:name).type(Types::String)
+        sc.field(:title, Types::String).default('Mr')
+        sc.field(:name, Types::String)
       end
 
       assert_result(schema.resolve({ name: 'Joe' }), { title: 'Mr', name: 'Ismael' }, true)
@@ -249,8 +274,8 @@ RSpec.describe Plumb::Schema do
           result.invalid(errors: 'Halted')
         end
 
-        sc.field(:title).type(Types::String).default('Mr')
-        sc.field(:name).type(Types::String)
+        sc.field(:title, Types::String).default('Mr')
+        sc.field(:name, Types::String)
       end
 
       result = schema.resolve({})
@@ -261,23 +286,23 @@ RSpec.describe Plumb::Schema do
   end
 
   specify 'Field#meta' do
-    field = described_class::Field.new(:name).type(Types::String).meta(foo: 1).meta(bar: 2)
+    field = described_class::Field.new(:name, Types::String).meta(foo: 1).meta(bar: 2)
     expect(field.metadata).to eq(type: ::String, foo: 1, bar: 2)
     expect(field.metadata).to eq(field.metadata)
   end
 
   specify 'Field#options' do
-    field = described_class::Field.new(:name).type(Types::String).options(%w[aa bb cc])
+    field = described_class::Field.new(:name, Types::String).options(%w[aa bb cc])
     assert_result(field.resolve('aa'), 'aa', true)
     assert_result(field.resolve('cc'), 'cc', true)
     assert_result(field.resolve('dd'), 'dd', false)
     expect(field.metadata[:included_in]).to eq(%w[aa bb cc])
   end
 
-  specify 'Field#optional' do
-    field = described_class::Field.new(:name).type(Types::String.transform(::String) do |v|
-                                                     "Hello #{v}"
-                                                   end).optional
+  specify 'Field#nullable' do
+    field = described_class::Field.new(:name, Types::String.transform(::String) do |v|
+                                                "Hello #{v}"
+                                              end).nullable
     assert_result(field.resolve('Ismael'), 'Hello Ismael', true)
     assert_result(field.resolve(nil), nil, true)
   end
@@ -297,14 +322,14 @@ RSpec.describe Plumb::Schema do
   end
 
   specify 'Field#default' do
-    field = described_class::Field.new(:friends).default([].freeze).array(Types::String)
+    field = described_class::Field.new(:friends, Types::Array[Types::String]).default([].freeze)
     assert_result(field.resolve, [], true)
   end
 
   specify 'self-contained Array type' do
     array_type = Types::Array[Types::Integer | Types::String.transform(::Integer, &:to_i)]
     schema = described_class.new do |sc|
-      sc.field(:numbers).type(array_type)
+      sc.field(:numbers, array_type)
     end
 
     assert_result(schema.resolve(numbers: [1, 2, '3']), { numbers: [1, 2, 3] }, true)
