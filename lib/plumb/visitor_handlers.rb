@@ -9,26 +9,30 @@ module Plumb
     module ClassMethods
       def on(node_name, &block)
         name = node_name.is_a?(Symbol) ? node_name : :"#{node_name}_class"
-        self.define_method("visit_#{name}", &block)
+        define_method("visit_#{name}", &block)
       end
 
-      def visit(type, props = BLANK_HASH)
-        new.visit(type, props)
+      def visit(node, props = BLANK_HASH)
+        new.visit(node, props)
       end
     end
 
-    def visit(type, props = BLANK_HASH)
-      method_name = type.respond_to?(:node_name) ? type.node_name : :"#{(type.is_a?(::Class) ? type : type.class)}_class"
+    def visit(node, props = BLANK_HASH)
+      method_name = if node.respond_to?(:node_name)
+                      node.node_name
+                    else
+                      :"#{(node.is_a?(::Class) ? node : node.class)}_class"
+                    end
       method_name = "visit_#{method_name}"
       if respond_to?(method_name)
-        send(method_name, type, props)
+        send(method_name, node, props)
       else
-        on_missing_handler(type, props, method_name)
+        on_missing_handler(node, props, method_name)
       end
     end
 
-    def on_missing_handler(type, _props, method_name)
-      raise "No handler for #{type.inspect} with :#{method_name}"
+    def on_missing_handler(node, _props, method_name)
+      raise "No handler for #{node.inspect} with :#{method_name}"
     end
   end
 end
