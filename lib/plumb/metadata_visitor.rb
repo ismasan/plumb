@@ -6,60 +6,60 @@ module Plumb
   class MetadataVisitor
     include VisitorHandlers
 
-    def self.call(type)
-      new.visit(type)
+    def self.call(node)
+      new.visit(node)
     end
 
-    def on_missing_handler(type, props, method_name)
-      return props.merge(type: type) if type.class == Class
+    def on_missing_handler(node, props, method_name)
+      return props.merge(type: node) if node.class == Class
 
-      puts "Missing handler for #{type.inspect} with props #{props.inspect} and method_name :#{method_name}"
+      puts "Missing handler for #{node.inspect} with props #{node.inspect} and method_name :#{method_name}"
       props
     end
 
-    on(:undefined) do |type, props|
+    on(:undefined) do |_node, props|
       props
     end
 
-    on(:any) do |type, props|
+    on(:any) do |_node, props|
       props
     end
 
-    on(:pipeline) do |type, props|
-      visit(type.type, props)
+    on(:pipeline) do |node, props|
+      visit(node.type, props)
     end
 
-    on(:step) do |type, props|
-      props.merge(type._metadata)
+    on(:step) do |node, props|
+      props.merge(node._metadata)
     end
 
-    on(::Regexp) do |type, props|
-      props.merge(pattern: type)
+    on(::Regexp) do |node, props|
+      props.merge(pattern: node)
     end
 
-    on(::Range) do |type, props|
-      props.merge(match: type)
+    on(::Range) do |node, props|
+      props.merge(match: node)
     end
 
-    on(:match) do |type, props|
-      visit(type.matcher, props)
+    on(:match) do |node, props|
+      visit(node.matcher, props)
     end
 
-    on(:hash) do |type, props|
+    on(:hash) do |_node, props|
       props.merge(type: Hash)
     end
 
-    on(:and) do |type, props|
-      left = visit(type.left)
-      right = visit(type.right)
+    on(:and) do |node, props|
+      left = visit(node.left)
+      right = visit(node.right)
       type = right[:type] || left[:type]
       props = props.merge(left).merge(right)
-      props = props.merge(type:) if type
+      props = props.merge(type: type) if type
       props
     end
 
-    on(:or) do |type, props|
-      child_metas = [visit(type.left), visit(type.right)]
+    on(:or) do |node, props|
+      child_metas = [visit(node.left), visit(node.right)]
       types = child_metas.map { |child| child[:type] }.flatten.compact
       types = types.first if types.size == 1
       child_metas.reduce(props) do |acc, child|
@@ -67,49 +67,49 @@ module Plumb
       end.merge(type: types)
     end
 
-    on(:value) do |type, props|
-      visit(type.value, props)
+    on(:value) do |node, props|
+      visit(node.value, props)
     end
 
-    on(:transform) do |type, props|
-      props.merge(type: type.target_type)
+    on(:transform) do |node, props|
+      props.merge(type: node.target_type)
     end
 
-    on(:static) do |type, props|
-      props.merge(static: type.value)
+    on(:static) do |node, props|
+      props.merge(static: node.value)
     end
 
-    on(:rules) do |type, props|
-      type.rules.reduce(props) do |acc, rule|
+    on(:rules) do |node, props|
+      node.rules.reduce(props) do |acc, rule|
         acc.merge(rule.name => rule.arg_value)
       end
     end
 
-    on(:boolean) do |type, props|
+    on(:boolean) do |_node, props|
       props.merge(type: 'boolean')
     end
 
-    on(:metadata) do |type, props|
-      props.merge(type.metadata)
+    on(:metadata) do |node, props|
+      props.merge(node.metadata)
     end
 
-    on(:hash_map) do |type, props|
+    on(:hash_map) do |_node, props|
       props.merge(type: Hash)
     end
 
-    on(:build) do |type, props|
-      visit(type.type, props)
+    on(:build) do |node, props|
+      visit(node.type, props)
     end
 
-    on(:array) do |type, props|
+    on(:array) do |_node, props|
       props.merge(type: Array)
     end
 
-    on(:tuple) do |type, props|
+    on(:tuple) do |_node, props|
       props.merge(type: Array)
     end
 
-    on(:tagged_hash) do |type, props|
+    on(:tagged_hash) do |_node, props|
       props.merge(type: Hash)
     end
   end
