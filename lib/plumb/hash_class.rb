@@ -28,12 +28,12 @@ module Plumb
     def schema(*args)
       case args
       in [::Hash => hash]
-      self.class.new(_schema.merge(wrap_keys_and_values(hash)))
+        self.class.new(_schema.merge(wrap_keys_and_values(hash)))
       in [Steppable => key_type, Steppable => value_type]
-      HashMap.new(key_type, value_type)
-    else
-      raise ::ArgumentError, "unexpected value to Types::Hash#schema #{args.inspect}"
-    end
+        HashMap.new(key_type, value_type)
+      else
+        raise ::ArgumentError, "unexpected value to Types::Hash#schema #{args.inspect}"
+      end
     end
 
     alias [] schema
@@ -69,10 +69,6 @@ module Plumb
 
     def to_h = _schema
 
-    private def _inspect
-      %(#{name}[#{_schema.map { |(k, v)| [k.inspect, v.inspect].join(':') }.join(' ')}])
-    end
-
     def call(result)
       return result.invalid(errors: 'must be a Hash') unless result.value.is_a?(::Hash)
       return result unless _schema.any?
@@ -98,6 +94,10 @@ module Plumb
 
     private
 
+    def _inspect
+      %(#{name}[#{_schema.map { |(k, v)| [k.inspect, v.inspect].join(':') }.join(' ')}])
+    end
+
     def wrap_keys_and_values(hash)
       case hash
       when ::Array
@@ -109,7 +109,7 @@ module Plumb
       when Callable
         hash
       else #  leaf values
-        StaticClass.new(hash)
+        Steppable.wrap(hash)
       end
     end
 

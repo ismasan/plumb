@@ -661,6 +661,11 @@ RSpec.describe Plumb::Types do
                       { title: 'Mr', name: 'Ismael', age: 45, friend: { name: 'Joe' } }, true)
       end
 
+      specify 'schema with primitive classes' do
+        hash = Types::Hash[name: ::String, age: ::Integer]
+        assert_result(hash.resolve(name: 'Ismael', age: 42), { name: 'Ismael', age: 42 }, true)
+      end
+
       specify '#|' do
         hash1 = Types::Hash.schema(foo: Types::String)
         hash2 = Types::Hash.schema(bar: Types::Integer)
