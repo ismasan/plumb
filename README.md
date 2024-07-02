@@ -184,7 +184,7 @@ Note that this is syntax sugar for:
 
 ```ruby
 # A String, or if it's Undefined pipe to a static string value.
-str = Types::String | (Types::Undefined >> 'nope'.freeze)
+str = Types::String | (Types::Undefined >> Types::Static['nope'.freeze])
 ```
 
 Meaning that you can compose your own semantics for a "default" value.
@@ -192,7 +192,7 @@ Meaning that you can compose your own semantics for a "default" value.
 Example when you want to apply a default when the given value is `nil`.
 
 ```ruby
-str = Types::String | (Types::Nil >> 'nope'.freeze)
+str = Types::String | (Types::Nil >> Types::Static['nope'.freeze])
 
 str.parse(nil) # 'nope'
 str.parse('yup') # 'yup'
@@ -370,6 +370,42 @@ result.valid? # false
 result.errors[:employees][0][:age] # ["must be a Numeric"]
 ```
 
+Note that you can use primitives as hash field definitions.
+
+```ruby
+User = Types::Hash[name: String, age: Integer]
+```
+
+Or to validate specific values:
+
+```ruby
+Joe = Types::Hash[name: 'Joe', age: Integer]
+```
+
+Or to validate against any `#===` interface:
+
+```ruby
+Adult = Types::Hash[name: String, age: (18..)]
+# Same as
+Adult = Types::Hash[name: Types::String, age: Types::Integer[18..]]
+```
+
+If you want to validate literal values, pass a `Types::Value`
+
+```ruby
+Settings = Types::hash[age_range: Types::Value[18..]]
+
+Settings.parse(age_range: (18..)) # Valid
+Settings.parse(age_range: (20..30)) # Invalid
+```
+
+A `Types::Static` value will always resolve successfully to that value, regardless of the original payload.
+
+```ruby
+User = Types::Hash[name: Types::Static['Joe'], age: Integer]
+User.parse(name: 'Rufus', age: 34) # Valid {name: 'Joe', age: 34}
+```
+
 
 
 #### Merging hash definitions
@@ -398,9 +434,11 @@ intersection = User & Employee # Hash[:name]
 
 Use `#tagged_by` to resolve what definition to use based on the value of a common key.
 
+Key used as index must be a `Types::Static`
+
 ```ruby
-NameUpdatedEvent = Types::Hash[type: 'name_updated', name: Types::String]
-AgeUpdatedEvent = Types::Hash[type: 'age_updated', age: Types::Integer]
+NameUpdatedEvent = Types::Hash[type: Types::Static['name_updated'], name: Types::String]
+AgeUpdatedEvent = Types::Hash[type: Types::Static['age_updated'], age: Types::Integer]
 
 Events = Types::Hash.tagged_by(
   :type,
@@ -424,6 +462,26 @@ currencies.parse(usd: 'USD', gbp: 'GBP') # Ok
 currencies.parse('usd' => 'USD') # Error. Keys must be Symbols
 ```
 
+Like other types, hash maps accept primitive types as keys and values:
+
+```ruby
+currencies = Types::Hash[Symbol, String]
+```
+
+And any `#===` interface as values, too:
+
+```ruby
+names_and_emails = Types::Hash[String, /\w+@\w+/]
+
+names_and_emails.parse('Joe' => 'joe@server.com', 'Rufus' => 'rufus')
+```
+
+Use `Types::Value` to validate specific values (using `#==`)
+
+```ruby
+names_and_ones = Types::Hash[String, Types::Integer.value(1)]
+```
+
 
 
 ### `Types::Array`
@@ -432,6 +490,17 @@ currencies.parse('usd' => 'USD') # Error. Keys must be Symbols
 names = Types::Array[Types::String.present]
 names_or_ages = Types::Array[Types::String.present | Types::Integer[21..]]
 ```
+
+Arrays support primitive classes, or any `#===` interface:
+
+```ruby
+strings = Types::Array[String]
+emails = Types::Array[/@/]
+# Similar to 
+emails = Types::Array[Types::String[/@/]]
+```
+
+Prefer the latter (`Types::Array[Types::String[/@/]]`), as that first validates that each element is a `String` before matching agains the regular expression.
 
 #### Concurrent arrays
 
@@ -470,6 +539,18 @@ Note that literal values can be used too.
 Ok = Types::Tuple[:ok, nil]
 Error = Types::Tuple[:error, Types::String.present]
 Status = Ok | Error
+```
+
+... Or any `#===` interface
+
+```ruby
+NameAndEmail = Types::Tuple[String, /@/]
+```
+
+As before, use `Types::Value` to check against literal values using `#==`
+
+```ruby
+NameAndRegex = Types::Tuple[String, Types::Value[/@/]]
 ```
 
 

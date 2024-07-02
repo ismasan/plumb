@@ -93,10 +93,10 @@ RSpec.describe Plumb::JSONSchemaVisitor do
       type = Types::String.default('foo')
       expect(described_class.visit(type)).to eq('type' => 'string', 'default' => 'foo')
 
-      type = Types::String | (Types::Undefined >> 'bar')
+      type = Types::String | (Types::Undefined >> Types::Static['bar'])
       expect(described_class.visit(type)).to eq('type' => 'string', 'default' => 'bar')
 
-      type = (Types::Undefined >> 'bar2') | Types::String
+      type = (Types::Undefined >> Types::Static['bar2']) | Types::String
       expect(described_class.visit(type)).to eq('type' => 'string', 'default' => 'bar2')
     end
 
@@ -210,10 +210,10 @@ RSpec.describe Plumb::JSONSchemaVisitor do
 
     specify 'Types::Hash.tagged_by' do
       t1 = Types::Hash[
-        kind: 't1', name: Types::String,
+        kind: Types::Static['t1'], name: Types::String,
         age: Types::Integer
       ]
-      t2 = Types::Hash[kind: 't2', name: Types::String]
+      t2 = Types::Hash[kind: Types::Static['t2'], name: Types::String]
       type = Types::Hash.tagged_by(:kind, t1, t2)
 
       expect(described_class.visit(type)).to eq(

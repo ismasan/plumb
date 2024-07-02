@@ -537,6 +537,12 @@ RSpec.describe Plumb::Types do
           false
         )
       end
+
+      specify 'with primitive classes' do
+        type = Types::Tuple[::String, ::Integer]
+        assert_result(type.resolve(['Ismael', 42]), ['Ismael', 42], true)
+        assert_result(type.resolve([23, 42]), [23, 42], false)
+      end
     end
 
     describe Types::Array do
@@ -582,10 +588,15 @@ RSpec.describe Plumb::Types do
         assert_result(type.resolve([{ foo: 'bar' }]), [{ foo: 'bar' }], true)
       end
 
-      specify '#[] (#of) with non-steppable argument' do
-        expect do
-          Types::Array['bar']
-        end.to raise_error(ArgumentError)
+      specify '#[] with primitive values' do
+        type = Types::Array[::String]
+        assert_result(type.resolve(%w[Ismael Joe]), %w[Ismael Joe], true)
+      end
+
+      specify '#[] (#of) with literal argument' do
+        type = Types::Array['bar']
+        assert_result(type.resolve(%w[bar]), %w[bar], true)
+        assert_result(type.resolve(%w[foo]), %w[foo], false)
       end
 
       specify '#present (non-empty)' do
@@ -652,8 +663,8 @@ RSpec.describe Plumb::Types do
       specify '#schema with static values' do
         hash = Types::Hash.schema(
           title: Types::String.default('Mr'),
-          name: 'Ismael',
-          age: 45,
+          name: Types::Static['Ismael'],
+          age: Types::Static[45],
           friend: Types::Hash.schema(name: Types::String)
         )
 
@@ -759,8 +770,8 @@ RSpec.describe Plumb::Types do
       end
 
       specify '#tagged_by' do
-        t1 = Types::Hash[kind: 't1', name: Types::String]
-        t2 = Types::Hash[kind: 't2', name: Types::String]
+        t1 = Types::Hash[kind: Types::Static['t1'], name: Types::String]
+        t2 = Types::Hash[kind: Types::Static['t2'], name: Types::String]
         type = Types::Hash.tagged_by(:kind, t1, t2)
 
         assert_result(type.resolve(kind: 't1', name: 'T1'), { kind: 't1', name: 'T1' }, true)
@@ -805,6 +816,12 @@ RSpec.describe Plumb::Types do
           expect(result.errors).to eq('value {} Must be a Integer')
         end
         assert_result(s1.present.resolve({}), {}, false)
+      end
+
+      specify 'hash map with primitive values and classes' do
+        s1 = Types::Hash[::String, ::Integer]
+        assert_result(s1.resolve('ok' => 1, 'foo' => 2), { 'ok' => 1, 'foo' => 2 }, true)
+        assert_result(s1.resolve(:ok => 1, 'foo' => 2), { :ok => 1, 'foo' => 2 }, false)
       end
 
       specify '#[] alias to #schema' do

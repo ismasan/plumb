@@ -9,7 +9,7 @@ module Plumb
     attr_reader :types
 
     def initialize(*types)
-      @types = types.map { |t| t.is_a?(Steppable) ? t : Types::Any.value(t) }
+      @types = types.map { |t| Steppable.wrap(t) }
     end
 
     def of(*types)
@@ -17,10 +17,6 @@ module Plumb
     end
 
     alias [] of
-
-    private def _inspect
-      "#{name}[#{@types.map(&:inspect).join(', ')}]"
-    end
 
     def call(result)
       return result.invalid(errors: 'must be an Array') unless result.value.is_a?(::Array)
@@ -37,6 +33,12 @@ module Plumb
       return result.valid(values) unless errors.any?
 
       result.invalid(errors:)
+    end
+
+    private
+
+    def _inspect
+      "#{name}[#{@types.map(&:inspect).join(', ')}]"
     end
   end
 end

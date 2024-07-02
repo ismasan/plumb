@@ -97,6 +97,8 @@ module Plumb
     end
 
     on(:static) do |node, props|
+      # Set const AND default
+      # to emulate static values
       props = case node.value
               when ::String, ::Symbol, ::Numeric
                 props.merge(CONST => node.value, DEFAULT => node.value)
@@ -118,6 +120,14 @@ module Plumb
     end
 
     on(:match) do |node, props|
+      # Set const if primitive
+      props = case node.matcher
+              when ::String, ::Symbol, ::Numeric
+                props.merge(CONST => node.matcher)
+              else
+                props
+              end
+
       visit(node.matcher, props)
     end
 
