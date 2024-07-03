@@ -649,6 +649,34 @@ LinkedList = Types::Hash[
 
 
 
+### Using in case statements
+
+Plumb type definitions implement `#===(object) Boolean`, so they can be used in `case` statements.
+
+```ruby
+Adult = Types::Hash[name: String, age: Types::Integer[18..]]
+Child = Types::Hash[name: String, age: Types::Integer[...18]]
+
+def sell_alcohol?(person)
+  case person
+  when Adult
+    :yes
+  when Child
+    :no
+  else
+    :ask_for_id
+  end
+end
+
+sell_alcohol?(name: 'Joe', age: 40) # :yes
+sell_alcohol?(name: 'Joan', age: 16) # :no
+sell_alcohol?(name: 'Dorian Gray') # :ask_for_id
+```
+
+### Use with pattern matching
+
+TODO
+
 ### Type-specific Rules
 
 TODO
