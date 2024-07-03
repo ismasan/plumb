@@ -8,8 +8,11 @@ module Plumb
 
     def initialize(metadata)
       @metadata = metadata
+      freeze
     end
 
     def call(result) = result
+
+    private def _inspect = "Metadata[#{@metadata.inspect}]"
   end
 end

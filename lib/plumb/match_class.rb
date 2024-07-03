@@ -13,17 +13,20 @@ module Plumb
 
       @matcher = matcher
       @error = error.nil? ? build_error(matcher) : (error % matcher)
-    end
-
-    def inspect
-      %(#{name}[#{@matcher.inspect}])
+      freeze
     end
 
     def call(result)
       @matcher === result.value ? result : result.invalid(errors: @error)
     end
 
-    private def build_error(matcher)
+    private
+
+    def _inspect
+      @matcher.inspect
+    end
+
+    def build_error(matcher)
       case matcher
       when Class # A class primitive, ex. String, Integer, etc.
         "Must be a #{matcher}"

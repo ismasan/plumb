@@ -17,5 +17,9 @@ module Plumb
     def call(result)
       @callable.call(result)
     end
+
+    private
+
+    def _inspect = "Step[#{@callable.inspect}]"
   end
 end

@@ -22,6 +22,8 @@ module Plumb
       @index = @types.each.with_object({}) do |t, memo|
         memo[t.at_key(@key).resolve.value] = t
       end
+
+      freeze
     end
 
     def call(result)
@@ -33,5 +35,9 @@ module Plumb
 
       child.call(result)
     end
+
+    private
+
+    def _inspect = "TaggedHash[#{@key.inspect}, #{@types.map(&:inspect).join(', ')}]"
   end
 end

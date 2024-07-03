@@ -31,5 +31,7 @@ module Plumb
     rescue StopIteration
       result
     end
+
+    private def _inspect = "HashMap[#{@key_type.inspect}, #{@value_type.inspect}]"
   end
 end

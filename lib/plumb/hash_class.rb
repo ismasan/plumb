@@ -97,7 +97,7 @@ module Plumb
     private
 
     def _inspect
-      %(#{name}[#{_schema.map { |(k, v)| [k.inspect, v.inspect].join(':') }.join(' ')}])
+      %(Hash[#{_schema.map { |(k, v)| [k.inspect, v.inspect].join(': ') }.join(', ')}])
     end
 
     def wrap_keys_and_values(hash)

@@ -34,10 +34,6 @@ module Plumb
       ConcurrentArrayClass.new(element_type:)
     end
 
-    private def _inspect
-      %(#{name}[#{element_type}])
-    end
-
     def call(result)
       return result.invalid(errors: 'is not an Array') unless result.value.is_a?(::Enumerable)
 
@@ -48,6 +44,10 @@ module Plumb
     end
 
     private
+
+    def _inspect
+      %(Array[#{element_type}])
+    end
 
     def map_array_elements(list)
       # Reuse the same result object for each element

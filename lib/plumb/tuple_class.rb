@@ -10,6 +10,7 @@ module Plumb
 
     def initialize(*types)
       @types = types.map { |t| Steppable.wrap(t) }
+      freeze
     end
 
     def of(*types)
@@ -38,7 +39,7 @@ module Plumb
     private
 
     def _inspect
-      "#{name}[#{@types.map(&:inspect).join(', ')}]"
+      "Tuple[#{@types.map(&:inspect).join(', ')}]"
     end
   end
 end

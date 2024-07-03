@@ -16,10 +16,10 @@ module Plumb
     def of(*args)
       case args
       in Array => symbols if symbols.all? { |s| s.is_a?(::Symbol) }
-      self.class.new(symbols)
-    else
-      raise ::ArgumentError, "unexpected value to Types::Interface#of #{args.inspect}"
-    end
+        self.class.new(symbols)
+      else
+        raise ::ArgumentError, "unexpected value to Types::Interface#of #{args.inspect}"
+      end
     end
 
     alias [] of
@@ -31,5 +31,7 @@ module Plumb
 
       result
     end
+
+    private def _inspect = "Interface[#{method_names.join(', ')}]"
   end
 end

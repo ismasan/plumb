@@ -19,12 +19,12 @@ module Plumb
       self.class.new(value)
     end
 
-    private def _inspect
-      %(#{name}[#{@value.inspect}])
-    end
-
     def call(result)
       result.valid(@value)
     end
+
+    private
+
+    def _inspect = @value.inspect
   end
 end
