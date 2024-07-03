@@ -770,8 +770,8 @@ RSpec.describe Plumb::Types do
       end
 
       specify '#tagged_by' do
-        t1 = Types::Hash[kind: Types::Static['t1'], name: Types::String]
-        t2 = Types::Hash[kind: Types::Static['t2'], name: Types::String]
+        t1 = Types::Hash[kind: 't1', name: Types::String]
+        t2 = Types::Hash[kind: 't2', name: Types::String]
         type = Types::Hash.tagged_by(:kind, t1, t2)
 
         assert_result(type.resolve(kind: 't1', name: 'T1'), { kind: 't1', name: 'T1' }, true)

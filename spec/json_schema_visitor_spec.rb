@@ -210,10 +210,11 @@ RSpec.describe Plumb::JSONSchemaVisitor do
 
     specify 'Types::Hash.tagged_by' do
       t1 = Types::Hash[
-        kind: Types::Static['t1'], name: Types::String,
+        kind: 't1',
+        name: Types::String,
         age: Types::Integer
       ]
-      t2 = Types::Hash[kind: Types::Static['t2'], name: Types::String]
+      t2 = Types::Hash[kind: 't2', name: Types::String]
       type = Types::Hash.tagged_by(:kind, t1, t2)
 
       expect(described_class.visit(type)).to eq(
@@ -231,7 +232,7 @@ RSpec.describe Plumb::JSONSchemaVisitor do
             },
             'then' => {
               'properties' => {
-                'kind' => { 'type' => 'string', 'default' => 't1', 'const' => 't1' },
+                'kind' => { 'type' => 'string', 'const' => 't1' },
                 'name' => { 'type' => 'string' },
                 'age' => { 'type' => 'integer' }
               },
@@ -246,7 +247,7 @@ RSpec.describe Plumb::JSONSchemaVisitor do
             },
             'then' => {
               'properties' => {
-                'kind' => { 'type' => 'string', 'default' => 't2', 'const' => 't2' },
+                'kind' => { 'type' => 'string', 'const' => 't2' },
                 'name' => { 'type' => 'string' }
               },
               'required' => %w[kind name]
