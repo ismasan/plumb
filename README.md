@@ -4,7 +4,7 @@ Composable data validation and coercion in Ruby. WiP. Takes over from https://gi
 
 This library takes ideas from the excellent https://dry-rb.org ecosystem, with some of the features offered by Dry-Types, Dry-Schema, Dry-Struct. However, I'm aiming at a subset of the functionality with a (hopefully) smaller API surface and fewer concepts, focusing on lessons learned after using Parametric in production for many years.
 
-If you're after raw performance and versatiliy I strongly recommend you use the Dry gems.
+If you're after raw performance and versatility I strongly recommend you use the Dry gems.
 
 For a description of the core architecture you can read [this article](https://ismaelcelis.com/posts/composable-pipelines-in-ruby/).
 
