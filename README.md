@@ -673,6 +673,16 @@ sell_alcohol?(name: 'Joan', age: 16) # :no
 sell_alcohol?(name: 'Dorian Gray') # :ask_for_id
 ```
 
+
+
+Because types support `#===`, they can actually be used as matchers for other types.
+
+```ruby
+MetaPerson = Types::Hash[Adult]
+```
+
+... But I'm not sure how useful that is.
+
 ### Use with pattern matching
 
 TODO
