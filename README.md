@@ -201,7 +201,7 @@ str.parse('yup') # 'yup'
 Same if you want to apply a default to several cases.
 
 ```ruby
-str = Types::String | ((Types::Nil | Types::Undefined) >> 'nope'.freeze)
+str = Types::String | ((Types::Nil | Types::Undefined) >> Types::Static['nope'.freeze])
 ```
 
 
@@ -393,7 +393,7 @@ Adult = Types::Hash[name: Types::String, age: Types::Integer[18..]]
 If you want to validate literal values, pass a `Types::Value`
 
 ```ruby
-Settings = Types::hash[age_range: Types::Value[18..]]
+Settings = Types::Hash[age_range: Types::Value[18..]]
 
 Settings.parse(age_range: (18..)) # Valid
 Settings.parse(age_range: (20..30)) # Invalid
