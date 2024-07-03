@@ -685,7 +685,16 @@ MetaPerson = Types::Hash[Adult]
 
 ### Use with pattern matching
 
-TODO
+```ruby
+data = [{ name: 'Joe', age: 40 }, { name: 'Joan', age: 16 }]
+
+case data
+  in [Adult => adult, Child => child] then puts "adult: #{adult}, child: #{child}"
+  in [Child => child, Adult => adult] then puts "child: #{child}, adult: #{adult}"
+end
+```
+
+
 
 ### Type-specific Rules
 

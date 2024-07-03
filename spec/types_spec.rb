@@ -491,6 +491,15 @@ RSpec.describe Plumb::Types do
 
         assert_result(Types::Forms::Boolean.resolve('nope'), 'nope', false)
       end
+
+      specify 'pattern matching' do
+        symbol = Types::Symbol
+        three_chars = Types::String.rule(size: 3)
+        [:ok, 'sup'] => [symbol => sym, three_chars => chars]
+
+        expect(sym).to eq(:ok)
+        expect(chars).to eq('sup')
+      end
     end
 
     describe Types::Tuple do
