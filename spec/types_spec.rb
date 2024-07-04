@@ -825,6 +825,14 @@ RSpec.describe Plumb::Types do
         expect(s1.metadata).to eq(type: Hash)
         assert_result(s1.resolve('a' => 1, 'b' => 2), { 'a' => 1, 'b' => 2 }, true)
       end
+
+      specify '#inclusive' do
+        exclusive = Types::Hash[age: Types::Lax::Integer]
+        inclusive = exclusive.inclusive
+        data = { name: 'Joe', age: '10' }
+        assert_result(exclusive.resolve(data), { age: 10 }, true)
+        assert_result(inclusive.resolve(data), { name: 'Joe', age: 10 }, true)
+      end
     end
   end
 
