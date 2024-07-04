@@ -201,8 +201,8 @@ RSpec.describe Plumb::Types do
       assert_result(string.not.resolve(10), 10, true)
     end
 
-    specify '#halt' do
-      type = Types::Integer.rule(lte: 10).invalid(errors: 'nope')
+    specify '#invalid' do
+      type = Types::Integer[..10].invalid(errors: 'nope')
       assert_result(type.resolve(9), 9, false)
       assert_result(type.resolve(19), 19, true)
       expect(type.resolve(9).errors).to eq('nope')
@@ -320,60 +320,27 @@ RSpec.describe Plumb::Types do
         end.to raise_error(Plumb::Rules::UnsupportedRuleError)
       end
 
-      specify ':eq' do
-        custom = Struct.new(:value) do
-          def ==(other)
-            value == other
-          end
-        end
-
-        assert_result(Types::Integer.rule(eq: 1).resolve(1), 1, true)
-        assert_result(Types::Integer.rule(eq: 1).resolve(2), 2, false)
-        assert_result(Types::Integer.rule(eq: custom.new(1)).resolve(1), 1, true)
-        expect(Types::Integer.rule(eq: 1).metadata[:eq]).to eq(1)
-      end
-
-      specify ':not_eq' do
-        assert_result(Types::Integer.rule(not_eq: 1).resolve(1), 1, false)
-        assert_result(Types::Integer.rule(not_eq: 1).resolve(2), 2, true)
+      specify ':size' do
+        assert_result(Types::Array.rule(size: 2).resolve([1]), [1], false)
+        assert_result(Types::Array.rule(size: 2).resolve([1, 2]), [1, 2], true)
+        assert_result(Types::String.rule(size: 2).resolve('ab'), 'ab', true)
       end
 
       specify 'registering rule as :name, value' do
-        assert_result(Types::Integer.rule(:not_eq, 1).resolve(2), 2, true)
-      end
-
-      specify ':gt, :lt' do
-        assert_result(Types::Integer.rule(gt: 10, lt: 20).resolve(11), 11, true)
-        assert_result(Types::Integer.rule(gt: 10, lt: 20).resolve(9), 9, false)
-        assert_result(Types::Integer.rule(gt: 20).resolve(21), 21, true)
-        assert_result(Types::Integer.rule(gt: 10, lt: 20).resolve(20), 20, false)
-        expect(Types::Integer.rule(gt: 10, lt: 20).resolve(9).errors).to eq('must be greater than 10')
+        assert_result(Types::Array.rule(:size, 1).resolve([1]), [1], true)
       end
 
       specify 'with multiple host types via OR, with incompatible rule implementations' do
-        type = Types::Integer | Types::String | Types::Decimal
+        type = Types::Array | Types::Any[Object]
         expect do
-          type.rule(gt: 10, lt: 20)
+          type.rule(size: 10)
         end.to raise_error(Plumb::Rules::UnsupportedRuleError)
       end
 
       specify 'with multiple host types via OR with compatible rule implementations' do
-        type = (Types::Integer | Types::Decimal).rule(gt: 10)
-        assert_result(type.resolve(11), 11, true)
-        assert_result(type.resolve(BigDecimal(11)), BigDecimal(11), true)
-        assert_result(type.resolve(10), 10, false)
-      end
-
-      specify ':gt, :lt with array' do
-        assert_result(Types::Array.rule(gt: 1, lt: 3).resolve([1, 2]), [1, 2], true)
-        assert_result(Types::Array.rule(gt: 1, lt: 3).resolve([1, 2, 3]), [1, 2, 3], false)
-      end
-
-      specify ':match' do
-        assert_result(Types::String.rule(match: /hello/).resolve('hello world'), 'hello world', true)
-        assert_result(Types::String.rule(match: /hello/).resolve('bye world'), 'bye world', false)
-        assert_result(Types::Integer.rule(match: (1..10)).resolve(8), 8, true)
-        assert_result(Types::Integer.rule(match: (1..10)).resolve(11), 11, false)
+        type = (Types::Array | Types::Hash).rule(size: 2)
+        assert_result(type.resolve([1, 2]), [1, 2], true)
+        assert_result(type.resolve({ a: 1, b: 2 }), { a: 1, b: 2 }, true)
       end
 
       specify ':included_in (#options)' do

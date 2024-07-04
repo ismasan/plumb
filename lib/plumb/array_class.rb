@@ -35,7 +35,7 @@ module Plumb
     end
 
     def call(result)
-      return result.invalid(errors: 'is not an Array') unless result.value.is_a?(::Enumerable)
+      return result.invalid(errors: 'is not an Array') unless ::Array === result.value
 
       values, errors = map_array_elements(result.value)
       return result.valid(values) unless errors.any?

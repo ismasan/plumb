@@ -3,55 +3,10 @@
 require 'bigdecimal'
 
 module Plumb
-  Rules.define :eq, 'must be equal to %<value>s' do |result, value|
-    value == result.value
-  end
-  Rules.define :not_eq, 'must not be equal to %<value>s' do |result, value|
-    value != result.value
-  end
-  # :gt for numbers and #size (arrays, strings, hashes)
-  [::String, ::Array, ::Hash].each do |klass|
-    Rules.define :gt, 'must contain more than %<value>s elements', expects: klass do |result, value|
-      value < result.value.size
-    end
-
-    # :lt for numbers and #size (arrays, strings, hashes)
-    Rules.define :lt, 'must contain fewer than %<value>s elements', expects: klass do |result, value|
-      value > result.value.size
-    end
-
-    Rules.define :gte, 'must be size greater or equal to %<value>s', expects: klass do |result, value|
-      value <= result.value.size
-    end
-
-    Rules.define :lte, 'must be size less or equal to %<value>s', expects: klass do |result, value|
-      value >= result.value
-    end
-  end
-  # :gt and :lt for numbers, BigDecimal
-  [::Numeric].each do |klass|
-    Rules.define :gt, 'must be greater than %<value>s', expects: klass do |result, value|
-      value < result.value
-    end
-    Rules.define :lt, 'must be greater than %<value>s', expects: klass do |result, value|
-      value > result.value
-    end
-    Rules.define :gte, 'must be greater or equal to %<value>s', expects: klass do |result, value|
-      value <= result.value
-    end
-    # :lte for numbers and #size (arrays, strings, hashes)
-    Rules.define :lte, 'must be less or equal to %<value>s', expects: klass do |result, value|
-      value >= result.value
-    end
-  end
-
-  Rules.define :match, 'must match %<value>s', metadata_key: :pattern do |result, value|
-    value === result.value
-  end
   Rules.define :included_in, 'elements must be included in %<value>s', expects: ::Array,
-    metadata_key: :options do |result, opts|
-      result.value.all? { |v| opts.include?(v) }
-    end
+                                                                       metadata_key: :options do |result, opts|
+    result.value.all? { |v| opts.include?(v) }
+  end
   Rules.define :included_in, 'must be included in %<value>s', metadata_key: :options do |result, opts|
     opts.include? result.value
   end
@@ -115,8 +70,8 @@ module Plumb
       Numeric = Types::Numeric | CoercibleNumberString.transform(::Numeric, &:to_f)
 
       Decimal = Types::Decimal | \
-        (Types::Numeric.transform(::String, &:to_s) | CoercibleNumberString) \
-          .transform(::BigDecimal) { |v| BigDecimal(v) }
+                (Types::Numeric.transform(::String, &:to_s) | CoercibleNumberString) \
+                .transform(::BigDecimal) { |v| BigDecimal(v) }
 
       Integer = Numeric.transform(::Integer, &:to_i)
     end
