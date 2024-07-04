@@ -39,6 +39,7 @@ module Plumb
     False = Any[::FalseClass]
     Boolean = (True | False).as_node(:boolean)
     Array = ArrayClass.new
+    Stream = StreamClass.new
     Tuple = TupleClass.new
     Hash = HashClass.new
     Interface = InterfaceClass.new

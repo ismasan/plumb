@@ -613,6 +613,30 @@ NameAndRegex = Types::Tuple[String, Types::Value[/@/]]
 
 
 
+### `Types::Stream`
+
+`Types::Stream` defines an enumerator that validates/coerces each element as it iterates.
+
+This example streams a CSV file and validates rows as they are consumed.
+
+```ruby
+require 'csv'
+
+Row = Types::Tuple[Types::String.present, Types:Lax::Integer]
+Stream = Types::Stream[Row]
+
+data = CSV.new(File.new('./big-file.csv')).each # An Enumerator
+# stream is an Enumerator that yields rows wrapped in[Result::Valid] or [Result::Invalid]
+stream = Stream.parse(data)
+stream.each.with_index(1) do |result, line|
+  if result.valid?
+    p result.value
+  else
+    p ["row at line #{line} is invalid: ", result.errors]
+  end
+end
+```
+
 ### Plumb::Schema
 
 TODO
