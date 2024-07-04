@@ -56,6 +56,8 @@ module Plumb
     def self.wrap(callable)
       if callable.is_a?(Steppable)
         callable
+      elsif callable.is_a?(::Hash)
+        HashClass.new(schema: callable)
       elsif callable.respond_to?(:call)
         Step.new(callable)
       else

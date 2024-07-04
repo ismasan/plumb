@@ -12,14 +12,7 @@ module Plumb
     attr_reader :element_type
 
     def initialize(element_type: Types::Any)
-      @element_type = case element_type
-                      when Steppable
-                        element_type
-                      when ::Hash
-                        HashClass.new(schema: element_type)
-                      else
-                        Steppable.wrap(element_type)
-                      end
+      @element_type = Steppable.wrap(element_type)
 
       freeze
     end
