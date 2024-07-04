@@ -637,6 +637,21 @@ stream.each.with_index(1) do |result, line|
 end
 ```
 
+
+
+#### `Types::Stream#filter`
+
+Use `#filter` to turn a `Types::Stream` into a stream that only yields valid elements.
+
+```ruby
+ValidElements = Types::Stream[Row].filter
+ValidElements.parse(data).each do |valid_row|
+  p valid_row
+end
+```
+
+
+
 ### Plumb::Schema
 
 TODO
