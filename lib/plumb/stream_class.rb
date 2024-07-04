@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require 'thread'
 require 'plumb/steppable'
 
 module Plumb
@@ -45,11 +46,21 @@ module Plumb
       result.valid(enum)
     end
 
-    # @return [Step] an Enumerator that filters out invalid elements
+    # @return [Step] a step that resolves to an Enumerator that filters out invalid elements
     def filter
       self >> proc do |result|
         set = result.value.lazy.filter_map { |e| e.value if e.valid? }
         result.valid(set)
+      end
+    end
+
+    # @return [Step] a step that resolves to two Enumerators for valid and invalid elements.
+    def partition
+      self >> proc do |result|
+        lazy = result.value.lazy
+        valids = lazy.select(&:valid?).map(&:value)
+        invalids = lazy.reject(&:valid?).map(&:value)
+        result.valid([valids, invalids])
       end
     end
 
