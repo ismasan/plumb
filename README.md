@@ -658,6 +658,20 @@ end
 
 
 
+#### `Types::Stream#partition`
+
+`#partition` produces a type definition that will resolve to two `Enumerator` objects, for valid and invalid elements.
+
+```ruby
+ValidInvalid = Types::Stream[Row].partition
+
+valid, invalid = ValidInvalid.parse(data)
+valid.each { |valid_row| ... }
+invalid.each { |invalid_row| ... }
+```
+
+
+
 ### Plumb::Schema
 
 TODO
