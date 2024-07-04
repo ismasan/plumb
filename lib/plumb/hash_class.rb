@@ -12,8 +12,9 @@ module Plumb
 
     attr_reader :_schema
 
-    def initialize(schema = {})
+    def initialize(schema: BLANK_HASH, inclusive: false)
       @_schema = wrap_keys_and_values(schema)
+      @inclusive = inclusive
       freeze
     end
 
@@ -28,7 +29,7 @@ module Plumb
     def schema(*args)
       case args
       in [::Hash => hash]
-        self.class.new(_schema.merge(wrap_keys_and_values(hash)))
+        self.class.new(schema: _schema.merge(wrap_keys_and_values(hash)), inclusive: @inclusive)
       in [Steppable => key_type, value_type]
         HashMap.new(key_type, Steppable.wrap(value_type))
       in [Class => key_type, value_type]
@@ -47,7 +48,7 @@ module Plumb
     def +(other)
       raise ArgumentError, "expected a HashClass, got #{other.class}" unless other.is_a?(HashClass)
 
-      self.class.new(merge_rightmost_keys(_schema, other._schema))
+      self.class.new(schema: merge_rightmost_keys(_schema, other._schema), inclusive: @inclusive)
     end
 
     def &(other)
@@ -58,11 +59,15 @@ module Plumb
         memo[k] = other.at_key(k)
       end
 
-      self.class.new(intersected)
+      self.class.new(schema: intersected, inclusive: @inclusive)
     end
 
     def tagged_by(key, *types)
       TaggedHash.new(self, key, types)
+    end
+
+    def inclusive
+      self.class.new(schema: _schema, inclusive: true)
     end
 
     def at_key(a_key)
@@ -78,7 +83,9 @@ module Plumb
       input = result.value
       errors = {}
       field_result = BLANK_RESULT.dup
-      output = _schema.each.with_object({}) do |(key, field), ret|
+      initial = {}
+      initial = initial.merge(input) if @inclusive
+      output = _schema.each.with_object(initial) do |(key, field), ret|
         key_s = key.to_sym
         if input.key?(key_s)
           r = field.call(field_result.reset(input[key_s]))

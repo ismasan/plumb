@@ -16,7 +16,7 @@ module Plumb
                       when Steppable
                         element_type
                       when ::Hash
-                        HashClass.new(element_type)
+                        HashClass.new(schema: element_type)
                       else
                         Steppable.wrap(element_type)
                       end
