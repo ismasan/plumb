@@ -14,6 +14,11 @@ RSpec.describe Plumb::Types::Stream do
     assert_result(stream.next, 40, true)
   end
 
+  specify '#metadata' do
+    stream = Types::Stream[Integer]
+    expect(stream.metadata).to eq(type: Enumerator)
+  end
+
   specify '#filter' do
     over_tens = Types::Stream[Types::Integer[10..]]
     stream = over_tens.filter.parse([10, 20, 3, 40])
