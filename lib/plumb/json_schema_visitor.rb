@@ -168,13 +168,16 @@ module Plumb
     end
 
     on(::Regexp) do |node, props|
-      props.merge(PATTERN => node.source)
+      props.merge(PATTERN => node.source, TYPE => props[TYPE] || 'string')
     end
 
     on(::Range) do |node, props|
-      opts = {}
-      opts[MINIMUM] = node.min if node.begin
-      opts[MAXIMUM] = node.max if node.end
+      element = node.begin || node.end
+      opts = visit(element.class)
+      if element.is_a?(::Numeric)
+        opts[MINIMUM] = node.min if node.begin
+        opts[MAXIMUM] = node.max if node.end
+      end
       props.merge(opts)
     end
 
