@@ -354,7 +354,7 @@ Company = Types::Hash[
 result = Company.resolve(
   name: 'ACME',
   employees: [
-  	{ name: 'Joe', age: 40, role: 'product' },
+    { name: 'Joe', age: 40, role: 'product' },
     { name: 'Joan', age: 38, role: 'engineer' }
   ]
 )
@@ -404,6 +404,32 @@ A `Types::Static` value will always resolve successfully to that value, regardle
 ```ruby
 User = Types::Hash[name: Types::Static['Joe'], age: Integer]
 User.parse(name: 'Rufus', age: 34) # Valid {name: 'Joe', age: 34}
+```
+
+
+
+#### Optional keys
+
+Keys suffixed with `?` are marked as optional and its values will only be validated and coerced if the key is present in the input hash.
+
+```ruby
+User = Types::Hash[
+  age?: Integer,
+  name: String
+]
+
+User.parse(age: 20, name: 'Joe') # => Valid { age: 20, name: 'Joe' }
+User.parse(age: '20', name: 'Joe') # => Invalid, :age is not an Integer
+User.parse(name: 'Joe') #=> Valid { name: 'Joe' }
+```
+
+Note that defaults are not applied to optional keys that are missing.
+
+```ruby
+Types::Hash[
+  age?: Types::Integer.default(10), # does not apply default if key is missing  
+  name: Types::String.default('Joe') # does apply default if key is missing.
+]
 ```
 
 
