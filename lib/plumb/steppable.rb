@@ -108,11 +108,7 @@ module Plumb
     end
 
     def check(errors = 'did not pass the check', &block)
-      a_check = lambda { |result|
-        block.call(result.value) ? result : result.invalid(errors:)
-      }
-
-      self >> a_check
+      self >> MatchClass.new(block, error: errors)
     end
 
     def meta(data = {})
