@@ -8,12 +8,12 @@ module Plumb
     UndefinedRuleError = Class.new(KeyError)
 
     class Registry
-      RuleDef = Data.define(:name, :error_tpl, :callable, :metadata_key, :expects) do
+      RuleDef = Data.define(:name, :error_tpl, :callable, :expects) do
         def supports?(type)
           types = [type].flatten # may be an array of types for OR logic
           case expects
           when Symbol
-            types.all? { |type| type.public_instance_methods.include?(expects) }
+            types.all? { |type| type && type.public_instance_methods.include?(expects) }
           when Class then types.all? { |type| type <= expects }
           when Object then true
           else raise "Unexpected expects: #{expects}"
@@ -29,7 +29,6 @@ module Plumb
 
         def node_name = :"rule_#{rule_def.name}"
         def name = rule_def.name
-        def metadata_key = rule_def.metadata_key
 
         def error_for(result)
           return nil if rule_def.callable.call(result, arg_value)
@@ -42,10 +41,10 @@ module Plumb
         @definitions = Hash.new { |h, k| h[k] = Set.new }
       end
 
-      def define(name, error_tpl, callable = nil, metadata_key: name, expects: Object, &block)
+      def define(name, error_tpl, callable = nil, expects: Object, &block)
         name = name.to_sym
         callable ||= block
-        @definitions[name] << RuleDef.new(name:, error_tpl:, callable:, metadata_key:, expects:)
+        @definitions[name] << RuleDef.new(name:, error_tpl:, callable:, expects:)
       end
 
       # Ex. size: 3, match: /foo/
@@ -54,10 +53,10 @@ module Plumb
           rule_defs = @definitions.fetch(name.to_sym) { raise UndefinedRuleError, "no rule defined with :#{name}" }
           rule_def = rule_defs.find { |rd| rd.supports?(for_type) }
           unless rule_def
-            raise UnsupportedRuleError, "No :#{name} rule for type #{for_type}" unless for_type.is_a?(Array)
+            raise UnsupportedRuleError, "No :#{name} rule for type #{for_type.inspect}" unless for_type.is_a?(Array)
 
             raise UnsupportedRuleError,
-              "Can't apply :#{name} rule for types #{for_type}. All types must support the same rule implementation"
+                  "Can't apply :#{name} rule for types #{for_type}. All types must support the same rule implementation"
 
           end
 

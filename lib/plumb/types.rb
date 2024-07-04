@@ -3,11 +3,10 @@
 require 'bigdecimal'
 
 module Plumb
-  Rules.define :included_in, 'elements must be included in %<value>s', expects: ::Array,
-                                                                       metadata_key: :options do |result, opts|
+  Rules.define :included_in, 'elements must be included in %<value>s', expects: ::Array do |result, opts|
     result.value.all? { |v| opts.include?(v) }
   end
-  Rules.define :included_in, 'must be included in %<value>s', metadata_key: :options do |result, opts|
+  Rules.define :included_in, 'must be included in %<value>s' do |result, opts|
     opts.include? result.value
   end
   Rules.define :excluded_from, 'elements must not be included in %<value>s', expects: ::Array do |result, value|
@@ -19,7 +18,7 @@ module Plumb
   Rules.define :respond_to, 'must respond to %<value>s' do |result, value|
     Array(value).all? { |m| result.value.respond_to?(m) }
   end
-  Rules.define :size, 'must be of size %<value>s', expects: :size, metadata_key: :size do |result, value|
+  Rules.define :size, 'must be of size %<value>s', expects: :size do |result, value|
     value === result.value.size
   end
 
