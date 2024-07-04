@@ -204,6 +204,11 @@ module Plumb
       { TYPE => 'array', ITEMS => items }
     end
 
+    on(:stream) do |node, _props|
+      items = visit(node.element_type)
+      { TYPE => 'array', ITEMS => items }
+    end
+
     on(:tuple) do |node, _props|
       items = node.types.map { |t| visit(t) }
       { TYPE => 'array', 'prefixItems' => items }

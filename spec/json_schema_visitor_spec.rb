@@ -161,6 +161,20 @@ RSpec.describe Plumb::JSONSchemaVisitor do
     )
   end
 
+  specify 'Types::Stream' do
+    type = Types::Stream[Types::String]
+    expect(described_class.visit(type)).to eq(
+      'type' => 'array',
+      'items' => { 'type' => 'string' }
+    )
+
+    filter = type.filter
+    expect(described_class.visit(filter)).to eq(
+      'type' => 'array',
+      'items' => { 'type' => 'string' }
+    )
+  end
+
   specify 'Types::Boolean' do
     type = Types::Boolean
     expect(described_class.visit(type)).to eq('type' => 'boolean')
