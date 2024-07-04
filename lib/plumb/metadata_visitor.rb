@@ -11,7 +11,7 @@ module Plumb
     end
 
     def on_missing_handler(node, props, method_name)
-      return props.merge(type: node) if node.class == Class
+      return props.merge(type: node) if node.instance_of?(Class)
 
       puts "Missing handler for #{node.inspect} with props #{node.inspect} and method_name :#{method_name}"
       props
@@ -34,11 +34,12 @@ module Plumb
     end
 
     on(::Regexp) do |node, props|
-      props.merge(pattern: node)
+      props.merge(pattern: node, type: props[:type] || String)
     end
 
     on(::Range) do |node, props|
-      props.merge(match: node)
+      type = props[:type] || (node.begin || node.end).class
+      props.merge(match: node, type:)
     end
 
     on(:match) do |node, props|
@@ -54,7 +55,7 @@ module Plumb
       right = visit(node.right)
       type = right[:type] || left[:type]
       props = props.merge(left).merge(right)
-      props = props.merge(type: type) if type
+      props = props.merge(type:) if type
       props
     end
 

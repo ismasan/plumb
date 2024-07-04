@@ -18,14 +18,34 @@ RSpec.describe Plumb::Types do
     end
   end
 
-  specify 'constraining with #[]' do
-    assert_result(Types::Any[String].resolve('hello'), 'hello', true)
-    assert_result(Types::Any['hello'].resolve('hello'), 'hello', true)
-    assert_result(Types::Any['hello'].resolve('nope'), 'nope', false)
-    assert_result(Types::Any[String][/@/].resolve('hello@server.com'), 'hello@server.com', true)
-    Types::Any[String][/@/].resolve('hello').tap do |result|
-      expect(result.valid?).to be(false)
-      expect(result.errors).to eq('Must match /@/')
+  describe 'constraining with #[]' do
+    it 'works with any #=== interface' do
+      assert_result(Types::Any[String].resolve('hello'), 'hello', true)
+      assert_result(Types::Any['hello'].resolve('hello'), 'hello', true)
+      assert_result(Types::Any['hello'].resolve('nope'), 'nope', false)
+      assert_result(Types::Any[String][/@/].resolve('hello@server.com'), 'hello@server.com', true)
+      Types::Any[String][/@/].resolve('hello').tap do |result|
+        expect(result.valid?).to be(false)
+        expect(result.errors).to eq('Must match /@/')
+      end
+    end
+
+    it 'resolves metadata[:type] for classes' do
+      expect(Types::Any[String].metadata[:type]).to eq(String)
+      expect(Types::Any[Float].metadata[:type]).to eq(Float)
+    end
+
+    it 'resolves metadata[:type] for Regexes' do
+      expect(Types::Any[/\d+/].metadata[:type]).to eq(String)
+    end
+
+    it 'resolves metadata[:type] for numeric Range' do
+      expect(Types::Any[1..10].metadata[:type]).to eq(Integer)
+      expect(Types::Any[..10.4].metadata[:type]).to eq(Float)
+    end
+
+    it 'resolves metadata[:type] for string Range' do
+      expect(Types::Any['a'..'f'].metadata[:type]).to eq(String)
     end
   end
 
