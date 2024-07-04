@@ -495,7 +495,7 @@ This can be useful if you only care about validating some fields, or to assemble
 Front = Types::Hash[price: Integer, name: String, category: String]
 
 # Turn an Integer into a Money instance
-IntToMoney = Types::Integer.transform(Money) { |cents| Money.new(cents, 'GBP') }
+IntToMoney = Types::Integer.build(Money)
 
 # Backend definition turns :price into a Money object, leaves other keys as-is
 Back = Types::Hash[price: IntToMoney].inclusive
