@@ -629,6 +629,12 @@ RSpec.describe Plumb::Types do
 
         assert_result(array.nullable.resolve(nil), nil, true)
       end
+
+      specify '#stream' do
+        stream = Types::Array[Integer].stream
+        results = stream.parse([1, 2, 'd', 4])
+        expect(results.map(&:valid?)).to eq([true, true, false, true])
+      end
     end
 
     describe Types::Hash do

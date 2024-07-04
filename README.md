@@ -581,6 +581,12 @@ Images.parse(['https://images.com/1.png', 'https://images.com/2.png'])
 
 TODO: pluggable concurrency engines (Async?)
 
+#### `#stream`
+
+Turn an Array definition into an enumerator that yields each element wrapped in `Result::Valid` or `Result::Invalid`.
+
+See `Types::Stream` below for more.
+
 ### `Types::Tuple`
 
 ```ruby

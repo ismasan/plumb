@@ -3,7 +3,7 @@
 require 'concurrent'
 require 'plumb/steppable'
 require 'plumb/result'
-require 'plumb/hash_class'
+require 'plumb/stream_class'
 
 module Plumb
   class ArrayClass
@@ -25,6 +25,10 @@ module Plumb
 
     def concurrent
       ConcurrentArrayClass.new(element_type:)
+    end
+
+    def stream
+      StreamClass.new(element_type:)
     end
 
     def call(result)
