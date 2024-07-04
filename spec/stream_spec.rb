@@ -14,6 +14,12 @@ RSpec.describe Plumb::Types::Stream do
     assert_result(stream.next, 40, true)
   end
 
+  specify '#filter' do
+    over_tens = Types::Stream[Types::Integer[10..]]
+    stream = over_tens.filter.parse([10, 20, 3, 40])
+    expect(stream.to_a).to eq [10, 20, 40]
+  end
+
   private
 
   def assert_result(result, value, is_success, debug: false)

@@ -45,6 +45,14 @@ module Plumb
       result.valid(enum)
     end
 
+    # @return [Step] an Enumerator that filters out invalid elements
+    def filter
+      self >> proc do |result|
+        set = result.value.lazy.filter_map { |e| e.value if e.valid? }
+        result.valid(set)
+      end
+    end
+
     private
 
     def _inspect = "Stream[#{@element_type.inspect}]"
