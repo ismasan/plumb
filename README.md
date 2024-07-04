@@ -434,9 +434,11 @@ intersection = User & Employee # Hash[:name]
 
 Use `#tagged_by` to resolve what definition to use based on the value of a common key.
 
+Key used as index must be a `Types::Static`
+
 ```ruby
-NameUpdatedEvent = Types::Hash[type: 'name_updated', name: Types::String]
-AgeUpdatedEvent = Types::Hash[type: 'age_updated', age: Types::Integer]
+NameUpdatedEvent = Types::Hash[type: Types::Static['name_updated'], name: Types::String]
+AgeUpdatedEvent = Types::Hash[type: Types::Static['age_updated'], age: Types::Integer]
 
 Events = Types::Hash.tagged_by(
   :type,
@@ -445,6 +447,38 @@ Events = Types::Hash.tagged_by(
 )
 
 Events.parse(type: 'name_updated', name: 'Joe') # Uses NameUpdatedEvent definition
+```
+
+
+
+#### `Types::Hash#inclusive`
+
+Use `#inclusive` to preserve input keys not defined in the hash schema.
+
+```ruby
+hash = Types::Hash[age: Types::Lax::Integer].inclusive
+
+# Only :age, is coerced and validated, all other keys are preserved as-is
+hash.parse(age: '30', name: 'Joe', last_name: 'Bloggs') # { age: 30, name: 'Joe', last_name: 'Bloggs' }
+```
+
+This can be useful if you only care about validating some fields, or to assemble different front and back hashes. For example a client-facing one that validates JSON or form data, and a backend one that runs further coercions or domain validations on some keys.
+
+```ruby
+# Front-end definition does structural validation
+Front = Types::Hash[price: Integer, name: String, category: String]
+
+# Turn an Integer into a Money instance
+IntToMoney = Types::Integer.transform(Money) { |cents| Money.new(cents, 'GBP') }
+
+# Backend definition turns :price into a Money object, leaves other keys as-is
+Back = Types::Hash[price: IntToMoney].inclusive
+
+# Compose the pipeline
+InputHandler = Front >> Back
+
+InputHandler.parse(price: 100_000, name: 'iPhone 15', category: 'smartphones')
+# => { price: #<Money fractional:100000 currency:GBP>, name: 'iPhone 15', category: 'smartphone' }
 ```
 
 
@@ -645,53 +679,6 @@ LinkedList = Types::Hash[
   value: Types::Any,
   next: Types::Any.defer { LinkedList } | Types::Nil
 ]
-```
-
-
-
-### Using in case statements
-
-Plumb type definitions implement `#===(object) Boolean`, so they can be used in `case` statements.
-
-```ruby
-Adult = Types::Hash[name: String, age: Types::Integer[18..]]
-Child = Types::Hash[name: String, age: Types::Integer[...18]]
-
-def sell_alcohol?(person)
-  case person
-  when Adult
-    :yes
-  when Child
-    :no
-  else
-    :ask_for_id
-  end
-end
-
-sell_alcohol?(name: 'Joe', age: 40) # :yes
-sell_alcohol?(name: 'Joan', age: 16) # :no
-sell_alcohol?(name: 'Dorian Gray') # :ask_for_id
-```
-
-
-
-Because types support `#===`, they can actually be used as matchers for other types.
-
-```ruby
-MetaPerson = Types::Hash[Adult]
-```
-
-... But I'm not sure how useful that is.
-
-### Use with pattern matching
-
-```ruby
-data = [{ name: 'Joe', age: 40 }, { name: 'Joan', age: 16 }]
-
-case data
-  in [Adult => adult, Child => child] then puts "adult: #{adult}, child: #{child}"
-  in [Child => child, Adult => adult] then puts "child: #{child}, adult: #{adult}"
-end
 ```
 
 
