@@ -193,10 +193,6 @@ module Plumb
       self >> Rules.new(specs, metadata[:type])
     end
 
-    def is_a(klass)
-      rule(is_a: klass)
-    end
-
     def ===(other)
       case other
       when Steppable
