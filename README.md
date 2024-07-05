@@ -581,6 +581,12 @@ Images.parse(['https://images.com/1.png', 'https://images.com/2.png'])
 
 TODO: pluggable concurrency engines (Async?)
 
+#### `#stream`
+
+Turn an Array definition into an enumerator that yields each element wrapped in `Result::Valid` or `Result::Invalid`.
+
+See `Types::Stream` below for more.
+
 ### `Types::Tuple`
 
 ```ruby
@@ -612,6 +618,56 @@ NameAndRegex = Types::Tuple[String, Types::Value[/@/]]
 ```
 
 
+
+### `Types::Stream`
+
+`Types::Stream` defines an enumerator that validates/coerces each element as it iterates.
+
+This example streams a CSV file and validates rows as they are consumed.
+
+```ruby
+require 'csv'
+
+Row = Types::Tuple[Types::String.present, Types:Lax::Integer]
+Stream = Types::Stream[Row]
+
+data = CSV.new(File.new('./big-file.csv')).each # An Enumerator
+# stream is an Enumerator that yields rows wrapped in[Result::Valid] or [Result::Invalid]
+stream = Stream.parse(data)
+stream.each.with_index(1) do |result, line|
+  if result.valid?
+    p result.value
+  else
+    p ["row at line #{line} is invalid: ", result.errors]
+  end
+end
+```
+
+#### `Types::Stream#filter`
+
+Use `#filter` to turn a `Types::Stream` into a stream that only yields valid elements.
+
+```ruby
+ValidElements = Types::Stream[Row].filter
+ValidElements.parse(data).each do |valid_row|
+  p valid_row
+end
+```
+
+#### `Types::Array#stream`
+
+A `Types::Array` definition can be turned into a stream.
+
+```ruby
+Arr = Types::Array[Integer]
+Str = Arr.stream
+
+Str.parse(data).each do |row|
+  row.valid?
+  row.errors
+  row.value
+end
+```
 
 ### Plumb::Schema
 

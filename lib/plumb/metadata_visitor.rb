@@ -106,6 +106,10 @@ module Plumb
       props.merge(type: Array)
     end
 
+    on(:stream) do |_node, props|
+      props.merge(type: Enumerator)
+    end
+
     on(:tuple) do |_node, props|
       props.merge(type: Array)
     end
