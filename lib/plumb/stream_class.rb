@@ -54,16 +54,6 @@ module Plumb
       end
     end
 
-    # @return [Step] a step that resolves to two Enumerators for valid and invalid elements.
-    def partition
-      self >> proc do |result|
-        lazy = result.value.lazy
-        valids = lazy.select(&:valid?).map(&:value)
-        invalids = lazy.reject(&:valid?).map(&:value)
-        result.valid([valids, invalids])
-      end
-    end
-
     private
 
     def _inspect = "Stream[#{@element_type.inspect}]"

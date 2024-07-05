@@ -25,13 +25,6 @@ RSpec.describe Plumb::Types::Stream do
     expect(stream.to_a).to eq [10, 20, 40]
   end
 
-  specify '#partition' do
-    over_tens = Types::Stream[Types::Integer[10..]]
-    valids, invalids = over_tens.partition.parse([10, 20, 3, 40, 9])
-    expect(valids.to_a).to eq [10, 20, 40]
-    expect(invalids.to_a).to eq [3, 9]
-  end
-
   private
 
   def assert_result(result, value, is_success, debug: false)
