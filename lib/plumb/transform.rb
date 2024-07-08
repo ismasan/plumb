@@ -10,7 +10,7 @@ module Plumb
 
     def initialize(target_type, callable)
       @target_type = target_type
-      @callable = callable
+      @callable = callable || Plumb::NOOP
       freeze
     end
 

@@ -77,6 +77,10 @@ RSpec.describe Plumb::Types do
       plus_ten = Types::Any.transform(::Integer) { |value| value + 10 }
       pipeline = to_i >> plus_ten
       expect(pipeline.resolve('5').value).to eq(15)
+
+      # it's a noop before block
+      to_i = Types::Any.transform(::Integer)
+      assert_result(to_i.resolve(10), 10, true)
     end
 
     specify Types::Static do

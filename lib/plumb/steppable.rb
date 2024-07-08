@@ -19,6 +19,7 @@ module Plumb
   BLANK_ARRAY = [].freeze
   BLANK_HASH = {}.freeze
   BLANK_RESULT = Result.wrap(Undefined)
+  NOOP = ->(result) { result }
 
   module Callable
     def metadata
