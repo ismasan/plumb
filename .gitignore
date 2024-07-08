@@ -6,6 +6,7 @@
 .yardoc
 .ruby-version
 .rspec_status
+examples/data
 Gemfile.lock
 InstalledFiles
 _yardoc

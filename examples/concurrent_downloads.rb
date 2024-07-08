@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
-require 'bundler/setup'
+require 'bundler'
+Bundler.setup(:examples)
 require 'plumb'
 require 'open-uri'
 require 'fileutils'
@@ -74,7 +75,7 @@ end
 # Otherwise images are listed directly from the cache (files on disk).
 ###################################
 
-cache = Types::Cache.new('./downloads')
+cache = Types::Cache.new('./examples/data/downloads')
 
 # A pipeline representing a single image download.
 # 1). Take a valid URL string.

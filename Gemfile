@@ -11,3 +11,7 @@ group :development do
   gem 'rspec', '~> 3.0'
   gem 'rubocop', require: false
 end
+
+group :examples do
+  gem 'money'
+end
