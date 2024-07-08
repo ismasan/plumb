@@ -18,10 +18,10 @@ module Types
   # Note that within this `Types` module, when we say String, Integer etc, we mean Types::String, Types::Integer etc.
   # Use ::String to refer to Ruby's String class.
   #
-  ############################
+  ###############################################################
   # Define core types in the domain
   # The task is to process, validate and store mortgage applications.
-  ############################
+  ###############################################################
 
   # Turn integers into Money objects (requires the money gem)
   Amount = Integer.build(Money)
@@ -103,8 +103,10 @@ module Types
 
   ###############################################################
   # Option 2: compose steps into a Plumb::Pipeline
+  # This is just a wrapper around step1 >> step2 >> step3 ...
+  # But the procedural style can make sequential steps easier to read and manage.
+  # Also to add/remove debugging and tracing steps.
   ###############################################################
-
   CreateMortgageApplication2 = Any.pipeline do |pl|
     # The input payload
     pl.step MortgagePayload
@@ -126,7 +128,7 @@ module Types
     pl.step NotifyCustomer
   end
 
-  # Nothe that I could have also started the pipeline directly off the MortgagePayload type.
+  # Note that I could have also started the pipeline directly off the MortgagePayload type.
   # ex. CreateMortageApplication2 = MortgagePayload.pipeline do |pl
   # For super-tiny command objects you can do it all inline:
   #
