@@ -145,6 +145,42 @@ module Types
   # Or you can use Method objects as steps
   #
   #   pl.step SomeObject.method(:create)
+
+  ###############################################################
+  # Option 3: use your own class
+  # Use Plumb internally for validation and composition of shared steps or method objects.
+  ###############################################################
+  class CreateMortgageApplication3
+    def initialize
+      @pipeline = Types::Any.pipeline do |pl|
+        pl.step MortgagePayload
+        pl.step method(:validate)
+        pl.step method(:save)
+        pl.step method(:notify)
+      end
+    end
+
+    def run(payload)
+      @pipeline.call(payload)
+    end
+
+    private
+
+    def validate(result)
+      # etc
+      result
+    end
+
+    def save(result)
+      # etc
+      result
+    end
+
+    def notify(result)
+      # etc
+      result
+    end
+  end
 end
 
 # Uncomment each case to run
