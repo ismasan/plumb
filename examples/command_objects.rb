@@ -161,7 +161,7 @@ module Types
     end
 
     def run(payload)
-      @pipeline.call(payload)
+      @pipeline.resolve(payload)
     end
 
     private
