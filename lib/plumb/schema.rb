@@ -7,13 +7,13 @@ module Plumb
   class Schema
     include Steppable
 
-    def self.wrap(sc = nil, &block)
-      raise ArgumentError, 'expected a block or a schema' if sc.nil? && !block_given?
+    def self.wrap(sch = nil, &block)
+      raise ArgumentError, 'expected a block or a schema' if sch.nil? && !block_given?
 
-      if sc
-        raise ArgumentError, 'expected a Steppable' unless sc.is_a?(Steppable)
+      if sch
+        raise ArgumentError, 'expected a Steppable' unless sch.is_a?(Steppable)
 
-        return sc
+        return sch
       end
 
       new(&block)
@@ -25,7 +25,6 @@ module Plumb
       @pipeline = Types::Any
       @before = Types::Any
       @after = Types::Any
-      @_schema = {}
       @_hash = hash
       @fields = SymbolAccessHash.new({})
 
@@ -71,7 +70,6 @@ module Plumb
 
     private def finish
       @pipeline = @before.freeze >> @_hash.freeze >> @after.freeze
-      @_schema.clear.freeze
       freeze
     end
 
@@ -101,10 +99,6 @@ module Plumb
     protected
 
     attr_reader :_hash
-
-    private
-
-    attr_reader :_schema
 
     class SymbolAccessHash < SimpleDelegator
       def [](key)
