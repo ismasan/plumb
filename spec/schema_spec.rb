@@ -93,6 +93,38 @@ RSpec.describe Plumb::Schema do
         },
         true
       )
+
+      invalid_friends = {
+        name: 'Joe',
+        age: 44,
+        friend: { name: 'Ismael' },
+        tags: [],
+        friends: [{ fo: 'nope' }]
+      }
+
+      result = schema.resolve(invalid_friends)
+      expect(result.valid?).to be(false)
+    end
+
+    it 'works with Array and optional block for element schema' do
+      schema = described_class.new do |sc|
+        sc.field :friends, Array do |f|
+          f.field :name, String
+        end
+        sc.field :tags, Array # Array of anything
+      end
+
+      assert_result(
+        schema.resolve(friends: [{ name: 'Joe' }], tags: ['foo', 10]),
+        { friends: [{ name: 'Joe' }], tags: ['foo', 10] },
+        true
+      )
+
+      assert_result(
+        schema.resolve(friends: [{ name: 10 }], tags: ['foo', 10]),
+        { friends: [{ name: 10 }], tags: ['foo', 10] },
+        false
+      )
     end
 
     it 'returns errors for invalid data' do
@@ -171,6 +203,9 @@ RSpec.describe Plumb::Schema do
     result = s1.resolve(name: 'Joe', friends: [{ name: 'Joe' }])
     expect(result.valid?).to be true
     expect(result.value).to eq(name: 'Joe', age: 10, friends: [{ name: 'Joe' }])
+
+    result = s1.resolve(name: 'Joe', friends: ['nope'])
+    expect(result.valid?).to be false
   end
 
   specify 'merge with #+' do

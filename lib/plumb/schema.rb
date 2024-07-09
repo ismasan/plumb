@@ -127,7 +127,11 @@ module Plumb
                  when Steppable
                    type
                  when Class
-                   Types::Any[type]
+                   if type == Array && block_given?
+                     ArrayClass.new(element_type: Schema.new(&block))
+                   else
+                     Types::Any[type]
+                   end
                  else
                    raise ArgumentError, "expected a Plumb type, but got #{type.inspect}"
                  end
