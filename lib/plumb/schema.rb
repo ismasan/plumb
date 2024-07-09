@@ -26,7 +26,9 @@ module Plumb
       @before = Types::Any
       @after = Types::Any
       @_hash = hash
-      @fields = SymbolAccessHash.new({})
+      @fields = @_hash._schema.each.with_object(SymbolAccessHash.new({})) do |(k, v), memo|
+        memo[k] = Field.new(k, v)
+      end
 
       setup(&block) if block_given?
 

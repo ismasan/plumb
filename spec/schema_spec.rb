@@ -222,6 +222,8 @@ RSpec.describe Plumb::Schema do
 
     s4 = s1.merge(s2)
     assert_result(s4.resolve(name: 'Joe', foo: 1), { name: 'Joe', age: 10 }, true)
+
+    expect(s3.fields[:name].key).to eq(:name)
   end
 
   specify '#merge' do
