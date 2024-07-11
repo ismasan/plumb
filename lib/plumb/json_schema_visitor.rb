@@ -207,6 +207,15 @@ module Plumb
       }
     end
 
+    on(:filtered_hash_map) do |node, _props|
+      {
+        TYPE => 'object',
+        'patternProperties' => {
+          '.*' => visit(node.value_type)
+        }
+      }
+    end
+
     on(:build) do |node, props|
       visit(node.type, props)
     end

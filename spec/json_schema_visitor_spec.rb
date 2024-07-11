@@ -25,12 +25,20 @@ RSpec.describe Plumb::JSONSchemaVisitor do
     )
   end
 
-  specify 'Hash with key and value types' do
-    type = Types::Hash.schema(
+  specify 'Hash with key and value types (Hash Map)' do
+    type = Types::Hash[
       Types::String,
       Types::Integer
-    )
+    ]
 
+    expect(described_class.visit(type)).to eq(
+      'type' => 'object',
+      'patternProperties' => { '.*' => { 'type' => 'integer' } }
+    )
+  end
+
+  specify 'filtered hash map' do
+    type = Types::Hash[String, Integer].filtered
     expect(described_class.visit(type)).to eq(
       'type' => 'object',
       'patternProperties' => { '.*' => { 'type' => 'integer' } }
