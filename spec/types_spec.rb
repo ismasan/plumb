@@ -851,6 +851,11 @@ RSpec.describe Plumb::Types do
         assert_result(s1.resolve('ok' => 1, 'foo' => 2), { 'ok' => 1, 'foo' => 2 }, true)
         assert_result(s1.resolve(:ok => 1, 'foo' => 2), { :ok => 1, 'foo' => 2 }, false)
       end
+
+      specify '#filtered' do
+        s1 = Types::Hash[Types::String, Types::Integer].filtered
+        expect(s1.parse('a' => 1, 20 => 'nope', 'b' => 2)).to eq('a' => 1, 'b' => 2)
+      end
     end
 
     specify '#[] alias to #schema' do

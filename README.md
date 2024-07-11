@@ -541,6 +541,17 @@ Use `Types::Value` to validate specific values (using `#==`)
 names_and_ones = Types::Hash[String, Types::Integer.value(1)]
 ```
 
+#### `#filtered`
+
+Calling the `#filtered` modifier on a Hash Map makes it return a sub set of the keys and values that are valid as per the key and value type definitions.
+
+```ruby
+# Filter the ENV for all keys starting with S3_*
+S3Config = Types::Hash[/^S3_\w+/, Types::Any].filtered
+
+S3Config.parse(ENV.to_h) # { 'S3_BUCKET' => 'foo', 'S3_REGION' => 'us-east-1' }
+```
+
 
 
 ### `Types::Array`
