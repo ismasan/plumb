@@ -169,7 +169,24 @@ StringToInt = Types::String.transform(Integer, &:to_i)
 StringToInteger.parse('10') # => 10
 ```
 
+### `#invoke`
 
+`#invoke` registers a method and optional arguments to be called on the value.
+
+```ruby
+StringToInt = Types::String.invoke(:to_i)
+StringToInt.parse('100') # 100
+
+FilteredHash = Types::Hash.invoke(:except, :foo, :bar)
+FilteredHash.parse(foo: 1, bar: 2, name: 'Joe') # { name: 'Joe' }
+
+# It works with blocks
+Evens = Types::Array[Integer].invoke(:filter, &:even?)
+Evens.parse([1,2,3,4,5]) # [2, 4]
+
+# Same as
+Evens = Types::Array[Integer].transform(Array) {|arr| arr.filter(&:even?) }
+```
 
 ### `#default`
 
