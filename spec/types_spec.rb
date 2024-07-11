@@ -72,15 +72,23 @@ RSpec.describe Plumb::Types do
       expect(type.metadata).to eq(foo: 'bar', type: [klass, ::String])
     end
 
-    specify '#transform' do
-      to_i = Types::Any.transform(::Integer, &:to_i)
-      plus_ten = Types::Any.transform(::Integer) { |value| value + 10 }
-      pipeline = to_i >> plus_ten
-      expect(pipeline.resolve('5').value).to eq(15)
+    describe '#transform' do
+      it 'transforms values' do
+        to_i = Types::Any.transform(::Integer, &:to_i)
+        plus_ten = Types::Any.transform(::Integer) { |value| value + 10 }
+        pipeline = to_i >> plus_ten
+        expect(pipeline.resolve('5').value).to eq(15)
+      end
 
-      # it's a noop before block
-      to_i = Types::Any.transform(::Integer)
-      assert_result(to_i.resolve(10), 10, true)
+      it 'is a noop without a block' do
+        to_i = Types::Any.transform(::Integer)
+        assert_result(to_i.resolve(10), 10, true)
+      end
+
+      it 'sets type in #metadata' do
+        to_i = Types::String.transform(::Integer, &:to_i)
+        expect(to_i.metadata[:type]).to eq(Integer)
+      end
     end
 
     specify Types::Static do
