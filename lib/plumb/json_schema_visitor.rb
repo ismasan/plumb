@@ -39,6 +39,10 @@ module Plumb
       props.merge(stringify_keys(node._metadata))
     end
 
+    on(:interface) do |_node, props|
+      props
+    end
+
     on(:hash) do |node, props|
       props.merge(
         TYPE => 'object',
@@ -179,6 +183,14 @@ module Plumb
         opts[MAXIMUM] = node.max if node.end
       end
       props.merge(opts)
+    end
+
+    on(::Hash) do |_node, props|
+      props.merge(TYPE => 'object')
+    end
+
+    on(::Array) do |_node, props|
+      props.merge(TYPE => 'array')
     end
 
     on(:metadata) do |node, props|
