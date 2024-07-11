@@ -830,25 +830,32 @@ RSpec.describe Plumb::Types do
       assert_result(hash.resolve({}), { title: 'Mr' }, true)
     end
 
-    specify '#schema(key_type, value_type) "Map"' do
-      s1 = Types::Hash.schema(Types::String, Types::Integer)
-      expect(s1.metadata).to eq(type: Hash)
-      assert_result(s1.resolve('a' => 1, 'b' => 2), { 'a' => 1, 'b' => 2 }, true)
-      s1.resolve(a: 1, 'b' => 2).tap do |result|
-        assert_result(result, { a: 1, 'b' => 2 }, false)
-        expect(result.errors).to eq('key :a Must be a String')
+    describe '#[key_type, value_type] (Hash Map)' do
+      it 'validates keys and values' do
+        s1 = Types::Hash[Types::String, Types::Integer]
+        expect(s1.metadata).to eq(type: Hash)
+        assert_result(s1.resolve('a' => 1, 'b' => 2), { 'a' => 1, 'b' => 2 }, true)
+        s1.resolve(a: 1, 'b' => 2).tap do |result|
+          assert_result(result, { a: 1, 'b' => 2 }, false)
+          expect(result.errors).to eq('key :a Must be a String')
+        end
+        s1.resolve('a' => 1, 'b' => {}).tap do |result|
+          assert_result(result, { 'a' => 1, 'b' => {} }, false)
+          expect(result.errors).to eq('value {} Must be a Integer')
+        end
+        assert_result(s1.present.resolve({}), {}, false)
       end
-      s1.resolve('a' => 1, 'b' => {}).tap do |result|
-        assert_result(result, { 'a' => 1, 'b' => {} }, false)
-        expect(result.errors).to eq('value {} Must be a Integer')
-      end
-      assert_result(s1.present.resolve({}), {}, false)
-    end
 
-    specify 'hash map with primitive values and classes' do
-      s1 = Types::Hash[::String, ::Integer]
-      assert_result(s1.resolve('ok' => 1, 'foo' => 2), { 'ok' => 1, 'foo' => 2 }, true)
-      assert_result(s1.resolve(:ok => 1, 'foo' => 2), { :ok => 1, 'foo' => 2 }, false)
+      it 'supports primitive values and classes' do
+        s1 = Types::Hash[::String, ::Integer]
+        assert_result(s1.resolve('ok' => 1, 'foo' => 2), { 'ok' => 1, 'foo' => 2 }, true)
+        assert_result(s1.resolve(:ok => 1, 'foo' => 2), { :ok => 1, 'foo' => 2 }, false)
+      end
+
+      specify '#filtered' do
+        s1 = Types::Hash[Types::String, Types::Integer].filtered
+        expect(s1.parse('a' => 1, 20 => 'nope', 'b' => 2)).to eq('a' => 1, 'b' => 2)
+      end
     end
 
     specify '#[] alias to #schema' do
