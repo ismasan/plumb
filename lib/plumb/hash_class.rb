@@ -76,6 +76,28 @@ module Plumb
 
     def to_h = _schema
 
+    def filtered
+      op = lambda do |result|
+        return result.invalid(errors: 'must be a Hash') unless result.value.is_a?(::Hash)
+        return result unless _schema.any?
+
+        input = result.value
+        field_result = BLANK_RESULT.dup
+        output = _schema.each.with_object({}) do |(key, field), ret|
+          key_s = key.to_sym
+          if input.key?(key_s)
+            r = field.call(field_result.reset(input[key_s]))
+            ret[key_s] = r.value if r.valid?
+          elsif !key.optional?
+            r = field.call(BLANK_RESULT)
+            ret[key_s] = r.value if r.valid?
+          end
+        end
+        result.valid(output)
+      end
+      Step.new(op, [_inspect, 'filtered'].join('.'))
+    end
+
     def call(result)
       return result.invalid(errors: 'must be a Hash') unless result.value.is_a?(::Hash)
       return result unless _schema.any?
