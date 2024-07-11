@@ -97,10 +97,8 @@ RSpec.describe Plumb::Types do
       expect(Types::Array.invoke(:filter, &:even?).parse((0..10).to_a)).to eq([0, 2, 4, 6, 8, 10])
     end
 
-    it 'raises if :type does not support method' do
-      expect do
-        Types::String.invoke(:nope)
-      end.to raise_error(NoMethodError, "String does not respond to `nope'")
+    it 'can call an array of methods' do
+      expect(Types::String.invoke(%i[downcase to_sym]).parse('FOO')).to eq(:foo)
     end
   end
 

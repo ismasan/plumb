@@ -171,7 +171,7 @@ StringToInteger.parse('10') # => 10
 
 ### `#invoke`
 
-`#invoke` registers a method and optional arguments to be called on the value.
+`#invoke` builds a Step that will invoke one or more methods on the value.
 
 ```ruby
 StringToInt = Types::String.invoke(:to_i)
@@ -187,6 +187,24 @@ Evens.parse([1,2,3,4,5]) # [2, 4]
 # Same as
 Evens = Types::Array[Integer].transform(Array) {|arr| arr.filter(&:even?) }
 ```
+
+Passing an array of Symbol method names will build a chain of invocations.
+
+```ruby
+UpcaseToSym = Types::String.invoke(%i[downcase to_sym])
+UpcaseToSym.parse('FOO_BAR') # :foo_bar
+```
+
+That that, as opposed to `#transform`, this modified does not register a type in `#metadata[:type]`, which can be valuable for introspection or documentation (ex. JSON Schema).
+
+Also, there's no definition-time checks that the method names are actually supported by the input values.
+
+```ruby
+type = Types::Array.invoke(:strip) # This is fine here
+type.parse([1, 2]) # raises NoMethodError because Array doesn't respond to #strip
+```
+
+Use with caution.
 
 ### `#default`
 

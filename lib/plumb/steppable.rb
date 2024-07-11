@@ -217,20 +217,23 @@ module Plumb
       inspect
     end
 
-    # @param method_name [Symbol] method to invoke on the value
-    # @param args [Array] arguments to pass to the method, if any
-    # @yield block
+    # Build a step that will invoke onr or more methods on the value.
+    # Ex 1: Types::String.invoke(:downcase)
+    # Ex 2: Types::Array.invoke(:[], 1)
+    # Ex 3 chain of methods: Types::String.invoke([:downcase, :to_sym])
     # @return [Step]
-    def invoke(method_name, *args, &block)
-      types = Array(metadata[:type]).uniq
-      unless types.size == 1 && types.first.is_a?(Class) && types.first.instance_methods.include?(method_name)
-        raise NoMethodError, "#{types.first.inspect} does not respond to `#{method_name}'"
+    def invoke(*args, &block)
+      case args
+      in [::Symbol => method_name, *rest]
+        self >> Step.new(
+          ->(result) { result.valid(result.value.public_send(method_name, *rest, &block)) },
+          [method_name.inspect, rest.inspect].join(' ')
+        )
+      in [Array => methods] if methods.all? { |m| m.is_a?(Symbol) }
+        methods.reduce(self) { |step, method| step.invoke(method) }
+      else
+        raise ArgumentError, "expected a symbol or array of symbols, got #{args.inspect}"
       end
-
-      self >> Step.new(
-        ->(result) { result.valid(result.value.public_send(method_name, *args, &block)) },
-        [method_name.inspect, args.inspect].join(' ')
-      )
     end
   end
 end
