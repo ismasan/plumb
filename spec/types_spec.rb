@@ -660,6 +660,11 @@ RSpec.describe Plumb::Types do
       results = stream.parse([1, 2, 'd', 4])
       expect(results.map(&:valid?)).to eq([true, true, false, true])
     end
+
+    specify '#filtered' do
+      array = Types::Array[String].filtered
+      expect(array.parse([1, 'a', 2, 'b', 'c', 3])).to eq(%w[a b c])
+    end
   end
 
   describe Types::Hash do
