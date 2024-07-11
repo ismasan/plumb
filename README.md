@@ -442,8 +442,6 @@ User = Types::Hash[name: Types::Static['Joe'], age: Integer]
 User.parse(name: 'Rufus', age: 34) # Valid {name: 'Joe', age: 34}
 ```
 
-
-
 #### Optional keys
 
 Keys suffixed with `?` are marked as optional and its values will only be validated and coerced if the key is present in the input hash.
@@ -541,6 +539,16 @@ InputHandler = Front >> Back
 
 InputHandler.parse(price: 100_000, name: 'iPhone 15', category: 'smartphones')
 # => { price: #<Money fractional:100000 currency:GBP>, name: 'iPhone 15', category: 'smartphone' }
+```
+
+#### `Types::Hash#filtered`
+
+The `#filtered` modifier returns a valid Hash with the subset of values that were valid, instead of failing the entire result if one or more values are invalid.
+
+```ruby
+User = Types::Hash[name: String, age: Integer]
+User.parse(name: 'Joe', age: 40) # => { name: 'Joe', age: 40 }
+User.parse(name: 'Joe', age: 'nope') # => { name: 'Joe' }
 ```
 
 
