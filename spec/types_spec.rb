@@ -726,6 +726,15 @@ RSpec.describe Plumb::Types do
       assert_result(s3.resolve(age: 42), { age: 42 }, true)
     end
 
+    specify '#filtered' do
+      hash = Types::Hash[name: String, age: Integer].filtered
+      expect(hash.parse(name: 'Ismael', age: 46, address: 'foo bar'))
+        .to eq(name: 'Ismael', age: 46)
+
+      expect(hash.parse(name: 'Ismael', age: 'nope'))
+        .to eq(name: 'Ismael')
+    end
+
     specify '#defer' do
       linked_list = Types::Hash[
         value: Types::Any,
