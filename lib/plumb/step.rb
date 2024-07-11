@@ -8,9 +8,10 @@ module Plumb
 
     attr_reader :_metadata
 
-    def initialize(callable = nil, &block)
+    def initialize(callable = nil, inspect = nil, &block)
       @_metadata = callable.respond_to?(:metadata) ? callable.metadata : BLANK_HASH
       @callable = callable || block
+      @inspect = inspect || @callable.inspect
       freeze
     end
 
@@ -20,6 +21,6 @@ module Plumb
 
     private
 
-    def _inspect = "Step[#{@callable.inspect}]"
+    def _inspect = "Step[#{@inspect}]"
   end
 end

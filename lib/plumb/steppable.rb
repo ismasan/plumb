@@ -216,6 +216,22 @@ module Plumb
     def to_s
       inspect
     end
+
+    # @param method_name [Symbol] method to invoke on the value
+    # @param args [Array] arguments to pass to the method, if any
+    # @yield block
+    # @return [Step]
+    def invoke(method_name, *args, &block)
+      types = Array(metadata[:type]).uniq
+      unless types.size == 1 && types.first.is_a?(Class) && types.first.instance_methods.include?(method_name)
+        raise NoMethodError, "#{types.first.inspect} does not respond to `#{method_name}'"
+      end
+
+      self >> Step.new(
+        ->(result) { result.valid(result.value.public_send(method_name, *args, &block)) },
+        [method_name.inspect, args.inspect].join(' ')
+      )
+    end
   end
 end
 

@@ -90,6 +90,20 @@ RSpec.describe Plumb::Types do
     end
   end
 
+  describe '#invoke' do
+    it 'invokes methods on values' do
+      expect(Types::String.invoke(:to_i).parse('100')).to eq(100)
+      expect(Types::Hash.invoke(:except, :foo).parse(foo: 1, bar: 2)).to eq(bar: 2)
+      expect(Types::Array.invoke(:filter, &:even?).parse((0..10).to_a)).to eq([0, 2, 4, 6, 8, 10])
+    end
+
+    it 'raises if :type does not support method' do
+      expect do
+        Types::String.invoke(:nope)
+      end.to raise_error(NoMethodError, "String does not respond to `nope'")
+    end
+  end
+
   specify Types::Static do
     assert_result(Types::Static['hello'].resolve('hello'), 'hello', true)
     assert_result(Types::Static['hello'].resolve('nope'), 'hello', true)
