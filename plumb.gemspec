@@ -1,18 +1,18 @@
 # frozen_string_literal: true
 
-require_relative "lib/plumb/version"
+require_relative 'lib/plumb/version'
 
 Gem::Specification.new do |spec|
-  spec.name = "plumb"
+  spec.name = 'plumb'
   spec.version = Plumb::VERSION
-  spec.authors = ["Ismael Celis"]
-  spec.email = ["ismaelct@gmail.com"]
+  spec.authors = ['Ismael Celis']
+  spec.email = ['ismaelct@gmail.com']
 
-  spec.summary = "Data validation and transformation library."
-  spec.description = "Data validation and transformation library."
-  spec.homepage = ""
-  spec.license = "MIT"
-  spec.required_ruby_version = ">= 3.0.0"
+  spec.summary = 'Data validation and transformation library.'
+  spec.description = 'Data validation and transformation library.'
+  spec.homepage = 'https://github.com/ismasan/plumb'
+  spec.license = 'MIT'
+  spec.required_ruby_version = '>= 3.0.0'
 
   # spec.metadata["homepage_uri"] = spec.homepage
   # spec.metadata["source_code_uri"] = "TODO: Put your gem's public repo URL here."
@@ -27,12 +27,12 @@ Gem::Specification.new do |spec|
         f.start_with?(*%w[bin/ test/ spec/ features/ .git appveyor Gemfile])
     end
   end
-  spec.bindir = "exe"
+  spec.bindir = 'exe'
   spec.executables = spec.files.grep(%r{\Aexe/}) { |f| File.basename(f) }
-  spec.require_paths = ["lib"]
+  spec.require_paths = ['lib']
 
-  spec.add_dependency 'concurrent-ruby'
   spec.add_dependency 'bigdecimal'
+  spec.add_dependency 'concurrent-ruby'
   # Uncomment to register a new dependency of your gem
   # spec.add_dependency "example-gem", "~> 1.0"
 
