@@ -169,39 +169,6 @@ StringToInt = Types::String.transform(Integer, &:to_i)
 StringToInteger.parse('10') # => 10
 ```
 
-The target type is required so that it's added to resulting metadata, JSON Schema, and any other type reflection.
-
-```ruby
-StringToInt.metadata[:type] # Integer
-```
-
-
-
-### `#invoke`
-
-`#invoke` registers a method and optional arguments to be called on the value.
-
-```ruby
-StringToInt = Types::String.invoke(:to_i)
-StringToInt.parse('100') # 100
-
-FilteredHash = Types::Hash.invoke(:except, :foo, :bar)
-FilteredHash.parse(foo: 1, bar: 2, name: 'Joe') # { name: 'Joe' }
-
-# It works with blocks
-Evens = Types::Array[Integer].invoke(:filter, &:even?)
-Evens.parse([1,2,3,4,5]) # [2, 4]
-
-# Same as
-Evens = Types::Array[Integer].transform(Array) {|arr| arr.filter(&:even?) }
-```
-
-Note that `#invoke` does not set `#metadata[:type]`, so you might end up with unexpected metadata if you're not careful.
-
-```ruby
-StringToInt.metadata[:type] # String, not Integer
-```
-
 
 
 ### `#default`
@@ -677,12 +644,12 @@ stream.each.with_index(1) do |result, line|
 end
 ```
 
-#### `Types::Stream#filter`
+#### `Types::Stream#filtered`
 
-Use `#filter` to turn a `Types::Stream` into a stream that only yields valid elements.
+Use `#filtered` to turn a `Types::Stream` into a stream that only yields valid elements.
 
 ```ruby
-ValidElements = Types::Stream[Row].filter
+ValidElements = Types::Stream[Row].filtered
 ValidElements.parse(data).each do |valid_row|
   p valid_row
 end

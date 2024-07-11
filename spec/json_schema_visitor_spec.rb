@@ -168,7 +168,7 @@ RSpec.describe Plumb::JSONSchemaVisitor do
       'items' => { 'type' => 'string' }
     )
 
-    filter = type.filter
+    filter = type.filtered
     expect(described_class.visit(filter)).to eq(
       'type' => 'array',
       'items' => { 'type' => 'string' }

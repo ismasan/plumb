@@ -47,8 +47,8 @@ module Plumb
     end
 
     # @return [Step] a step that resolves to an Enumerator that filters out invalid elements
-    def filter
-      self >> proc do |result|
+    def filtered
+      self >> Step.new(nil, 'filtered') do |result|
         set = result.value.lazy.filter_map { |e| e.value if e.valid? }
         result.valid(set)
       end

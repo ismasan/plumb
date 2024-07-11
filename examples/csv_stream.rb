@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
-require 'bundler'
-Bundler.setup(:examples)
+require 'bundler/setup'
 require 'plumb'
 require 'csv'
 
@@ -54,7 +53,7 @@ AdultProgrammerStream.parse('./examples/programmers.csv').each do |row|
 end
 
 # The filtering can also be achieved with Stream#filter
-#  AdultProgrammerStream = Types::StringToCSV >> AdultProgrammerArray.stream.filter
+#  AdultProgrammerStream = Types::StringToCSV >> AdultProgrammerArray.stream.filtered
 
 #################################################
 # Program 2: list Ruby programmers from a CSV file.
@@ -68,7 +67,7 @@ RubyProgrammer = Types::Tuple[
 
 # A pipeline to open a file, parse CSV and stream rows of AdultProgrammer.
 # This time we use Types::Stream directly.
-RubyProgrammerStream = Types::StringToCSV >> Types::Stream[RubyProgrammer].filter
+RubyProgrammerStream = Types::StringToCSV >> Types::Stream[RubyProgrammer].filtered
 
 # List Ruby programmers from file.
 puts
@@ -88,7 +87,7 @@ end
 #################################################
 
 # See the `.not` which negates the type.
-NonRubyProgrammerStream = Types::StringToCSV >> Types::Stream[RubyProgrammer.not].filter
+NonRubyProgrammerStream = Types::StringToCSV >> Types::Stream[RubyProgrammer.not].filtered
 
 puts
 puts '----------------------------------------'
