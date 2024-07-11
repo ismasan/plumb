@@ -862,6 +862,10 @@ RSpec.describe Plumb::Types do
         s1 = Types::Hash[::String, ::Integer]
         assert_result(s1.resolve('ok' => 1, 'foo' => 2), { 'ok' => 1, 'foo' => 2 }, true)
         assert_result(s1.resolve(:ok => 1, 'foo' => 2), { :ok => 1, 'foo' => 2 }, false)
+
+        s2 = Types::Hash[/^foo/, ::Integer]
+        assert_result(s2.resolve('foo_one' => 1, 'foo_two' => 2), { 'foo_one' => 1, 'foo_two' => 2 }, true)
+        assert_result(s2.resolve('foo_one' => 1, 'nope' => 2), { 'foo_one' => 1, 'nope' => 2 }, false)
       end
 
       specify '#filtered' do

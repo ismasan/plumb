@@ -30,9 +30,7 @@ module Plumb
       case args
       in [::Hash => hash]
         self.class.new(schema: _schema.merge(wrap_keys_and_values(hash)), inclusive: @inclusive)
-      in [Steppable => key_type, value_type]
-        HashMap.new(key_type, Steppable.wrap(value_type))
-      in [Class => key_type, value_type]
+      in [key_type, value_type]
         HashMap.new(Steppable.wrap(key_type), Steppable.wrap(value_type))
       else
         raise ::ArgumentError, "unexpected value to Types::Hash#schema #{args.inspect}"
