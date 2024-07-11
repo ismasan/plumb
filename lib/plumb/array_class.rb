@@ -31,6 +31,16 @@ module Plumb
       StreamClass.new(element_type:)
     end
 
+    def filtered
+      MatchClass.new(::Array) >> Step.new(nil, "Array[#{element_type}].filtered") do |result|
+        arr = result.value.each.with_object([]) do |e, memo|
+          r = element_type.resolve(e)
+          memo << r.value if r.valid?
+        end
+        result.valid(arr)
+      end
+    end
+
     def call(result)
       return result.invalid(errors: 'is not an Array') unless ::Array === result.value
 
