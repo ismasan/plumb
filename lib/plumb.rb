@@ -19,7 +19,7 @@ module Plumb
       raise DifferingTypesError, "Can't apply policy to type with differing types (#{types.inspect})" if types.size > 1
 
       pol = @policies.dig(types.first, name) || @policies.dig(Object, name)
-      raise UnknownPolicyError, "Unknown policy #{name} for #{types.first}" unless pol
+      raise UnknownPolicyError, "Unknown policy #{name} for #{types.first.inspect}" unless pol
 
       pol
     end

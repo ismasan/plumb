@@ -10,6 +10,7 @@ module Plumb
 
     def to_s = inspect
     def node_name = :undefined
+    def empty? = true
   end
 
   TypeError = Class.new(::TypeError)
@@ -173,10 +174,6 @@ module Plumb
 
     def nullable
       Types::Nil | self
-    end
-
-    def present
-      Types::Present >> self
     end
 
     # @return [Step]

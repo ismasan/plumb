@@ -33,6 +33,16 @@ module Plumb
     end
   end
 
+  policy :present, helper: true do |type, *_args|
+    type.check('must be present') do |v|
+      if v.respond_to?(:empty?)
+        !v.empty?
+      else
+        !v.nil?
+      end
+    end
+  end
+
   policy :respond_to do |type, method_names|
     type.check("must respond to #{method_names.inspect}") do |value|
       Array(method_names).all? { |m| value.respond_to?(m) }
@@ -60,16 +70,6 @@ module Plumb
     Tuple = TupleClass.new
     Hash = HashClass.new
     Interface = InterfaceClass.new
-    # TODO: type-speficic concept of blank, via Rules
-    Blank = (
-      Undefined \
-      | Nil \
-      | String.value(BLANK_STRING) \
-      | Hash.value(BLANK_HASH) \
-      | Array.value(BLANK_ARRAY)
-    )
-
-    Present = Blank.invalid(errors: 'must be present')
     Split = String.transform(::String) { |v| v.split(/\s*,\s*/) }
 
     module Lax
