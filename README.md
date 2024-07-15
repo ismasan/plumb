@@ -79,12 +79,10 @@ Types::Integer.parse('10') # raises Plumb::TypeError
 * `Types::False`
 * `Types::Tuple`
 * `Types::Split`
-* `Types::Blank`
 * `Types::Any`
 * `Types::Static`
 * `Types::Undefined`
 * `Types::Nil`
-* `Types::Present`
 * `Types::Integer`
 * `Types::Numeric`
 * `Types::String`
