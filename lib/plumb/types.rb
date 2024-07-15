@@ -3,6 +3,7 @@
 require 'bigdecimal'
 
 module Plumb
+  # Define core policies
   policy :options, helper: true, for_type: ::Array do |type, opts|
     type.check("must be included in #{opts.inspect}") do |v|
       v.all? { |val| opts.include?(val) }

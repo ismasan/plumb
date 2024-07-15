@@ -214,7 +214,7 @@ module Plumb
       inspect
     end
 
-    # Build a step that will invoke onr or more methods on the value.
+    # Build a step that will invoke one or more methods on the value.
     # Ex 1: Types::String.invoke(:downcase)
     # Ex 2: Types::Array.invoke(:[], 1)
     # Ex 3 chain of methods: Types::String.invoke([:downcase, :to_sym])
