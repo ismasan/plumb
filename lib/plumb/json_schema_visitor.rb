@@ -113,14 +113,17 @@ module Plumb
       visit(node.value, props)
     end
 
-    on(:rules) do |node, props|
-      node.rules.reduce(props) do |acc, rule|
-        acc.merge(visit(rule))
-      end
+    on(:policy) do |node, props|
+      props = visit(node.step, props)
+      visit_name(:"#{node.policy_name}_policy", node, props)
     end
 
-    on(:rule_included_in) do |node, props|
-      props.merge(ENUM => node.arg_value)
+    on(:options_policy) do |node, props|
+      props.merge(ENUM => node.arg)
+    end
+
+    on(Proc) do |_node, props|
+      props
     end
 
     on(:match) do |node, props|

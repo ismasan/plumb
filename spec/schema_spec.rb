@@ -170,7 +170,7 @@ RSpec.describe Plumb::Schema do
     s1 = described_class.new do |sc|
       sc.field(:friends, Types::Array) do |f|
         f.field(:name, Types::String)
-      end.rule(size: (1..))
+      end.policy(size: (1..))
     end
 
     result = s1.resolve(friends: [{ name: 'Joe' }])
@@ -333,7 +333,7 @@ RSpec.describe Plumb::Schema do
     assert_result(field.resolve('aa'), 'aa', true)
     assert_result(field.resolve('cc'), 'cc', true)
     assert_result(field.resolve('dd'), 'dd', false)
-    expect(field.metadata[:included_in]).to eq(%w[aa bb cc])
+    expect(field.metadata[:options]).to eq(%w[aa bb cc])
   end
 
   specify 'Field#nullable' do

@@ -81,6 +81,10 @@ module Plumb
       props.merge(static: node.value, type:)
     end
 
+    on(:policy) do |node, props|
+      visit(node.step, props).merge(node.policy_name => node.arg)
+    end
+
     on(:rules) do |node, props|
       node.rules.reduce(props) do |acc, rule|
         acc.merge(rule.name => rule.arg_value)

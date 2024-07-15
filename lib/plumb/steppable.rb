@@ -179,35 +179,20 @@ module Plumb
       Types::Present >> self
     end
 
-    def options(opts = [])
-      rule(included_in: opts)
-    end
-
-    def rule(*args)
-      specs = case args
-              in [::Symbol => rule_name, value]
-                { rule_name => value }
-              in [::Hash => rules]
-                rules
-              else
-                raise ArgumentError, "expected 1 or 2 arguments, but got #{args.size}"
-              end
-
-      self >> Rules.new(specs, metadata[:type])
-    end
-
     # @return [Step]
     def policy(*args, &bl)
       case args
-      in [::Symbol => name, *args] # #policy(:name, *args)
+      in [::Symbol => name, *args] # #policy(:name, arg)
         types = Array(metadata[:type]).uniq
 
         block = Plumb.policies.get(types, name)
-        if block_given?
-          block.call(self, args, bl)
-        else
-          block.call(self, *args)
-        end
+        pol = if block_given?
+                block.call(self, args, bl)
+              else
+                block.call(self, *args)
+              end
+
+        Policy.new(name, args.first, pol)
       in [::Hash => opts] # #policy(p1: value, p2: value)
         opts.reduce(self) { |step, (name, value)| step.policy(name, value) }
       else
@@ -259,5 +244,6 @@ end
 
 require 'plumb/deferred'
 require 'plumb/transform'
+require 'plumb/policy'
 require 'plumb/build'
 require 'plumb/metadata'

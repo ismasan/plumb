@@ -23,7 +23,12 @@ module Plumb
                     else
                       :"#{(node.is_a?(::Class) ? node : node.class)}_class"
                     end
-      method_name = "visit_#{method_name}"
+
+      visit_name(method_name, node, props)
+    end
+
+    def visit_name(method_name, node, props = BLANK_HASH)
+      method_name = :"visit_#{method_name}"
       if respond_to?(method_name)
         send(method_name, node, props)
       else

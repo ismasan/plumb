@@ -3,23 +3,40 @@
 require 'bigdecimal'
 
 module Plumb
-  Rules.define :included_in, 'elements must be included in %<value>s', expects: ::Array do |result, opts|
-    result.value.all? { |v| opts.include?(v) }
+  policy :options, helper: true, for_type: ::Array do |type, opts|
+    type.check("must be included in #{opts.inspect}") do |v|
+      v.all? { |val| opts.include?(val) }
+    end
   end
-  Rules.define :included_in, 'must be included in %<value>s' do |result, opts|
-    opts.include? result.value
+
+  policy :options do |type, opts|
+    type.check("must be included in #{opts.inspect}") do |v|
+      opts.include?(v)
+    end
   end
-  Rules.define :excluded_from, 'elements must not be included in %<value>s', expects: ::Array do |result, value|
-    result.value.all? { |v| !value.include?(v) }
+
+  policy :excluded_from, for_type: ::Array do |type, opts|
+    type.check("must not be included in #{opts.inspect}") do |v|
+      v.none? { |val| opts.include?(val) }
+    end
   end
-  Rules.define :excluded_from, 'must not be included in %<value>s' do |result, value|
-    !value.include?(result.value)
+
+  policy :excluded_from do |type, opts|
+    type.check("must not be included in #{opts.inspect}") do |v|
+      !opts.include?(v)
+    end
   end
-  Rules.define :respond_to, 'must respond to %<value>s' do |result, value|
-    Array(value).all? { |m| result.value.respond_to?(m) }
+
+  [Array, String, Hash, Set].each do |klass|
+    policy :size, for_type: klass do |type, size|
+      type.check("must be of size #{size}") { |v| size === v.size }
+    end
   end
-  Rules.define :size, 'must be of size %<value>s', expects: :size do |result, value|
-    value === result.value.size
+
+  policy :respond_to do |type, method_names|
+    type.check("must respond to #{method_names.inspect}") do |value|
+      Array(method_names).all? { |m| value.respond_to?(m) }
+    end
   end
 
   module Types
