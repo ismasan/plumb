@@ -892,12 +892,6 @@ RSpec.describe Plumb::Types do
 
   private
 
-  def assert_result(result, value, is_success, debug: false)
-    debugger if debug
-    expect(result.value).to eq value
-    expect(result.valid?).to be(is_success)
-  end
-
   def bench
     start = Time.now
     result = yield
