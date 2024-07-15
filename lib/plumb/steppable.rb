@@ -172,10 +172,6 @@ module Plumb
       Node.new(node_name, self, metadata)
     end
 
-    def nullable
-      Types::Nil | self
-    end
-
     # @return [Step]
     def policy(*args, &bl)
       case args

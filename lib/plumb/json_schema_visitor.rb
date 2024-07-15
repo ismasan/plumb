@@ -115,7 +115,12 @@ module Plumb
 
     on(:policy) do |node, props|
       props = visit(node.step, props)
-      visit_name(:"#{node.policy_name}_policy", node, props)
+      method_name = :"visit_#{node.policy_name}_policy"
+      if respond_to?(method_name)
+        send(method_name, node, props)
+      else
+        props
+      end
     end
 
     on(:options_policy) do |node, props|

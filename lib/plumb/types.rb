@@ -43,6 +43,10 @@ module Plumb
     end
   end
 
+  policy :nullable, helper: true do |type, *_args|
+    Types::Nil | type
+  end
+
   policy :respond_to do |type, method_names|
     type.check("must respond to #{method_names.inspect}") do |value|
       Array(method_names).all? { |m| value.respond_to?(m) }
