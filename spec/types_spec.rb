@@ -105,6 +105,7 @@ RSpec.describe Plumb::Types do
   specify Types::Static do
     assert_result(Types::Static['hello'].resolve('hello'), 'hello', true)
     assert_result(Types::Static['hello'].resolve('nope'), 'hello', true)
+    expect(Types::Static['hello'].metadata[:type]).to eq(String)
   end
 
   specify '#check' do

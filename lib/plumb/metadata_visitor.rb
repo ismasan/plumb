@@ -77,7 +77,8 @@ module Plumb
     end
 
     on(:static) do |node, props|
-      props.merge(static: node.value)
+      type = node.value.is_a?(Class) ? node.value : node.value.class
+      props.merge(static: node.value, type:)
     end
 
     on(:rules) do |node, props|
