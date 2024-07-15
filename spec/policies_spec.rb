@@ -46,6 +46,12 @@ RSpec.describe Plumb do
   end
 
   it 'supports policies that take block' do
+    Plumb.policy :suffix, for_type: String do |type, _args, block|
+      type.transform(String, &block)
+    end
+
+    type = Types::String.policy(:suffix) { |v| v + '!' }
+    assert_result(type.resolve('yes'), 'yes!', true)
   end
 
   it 'fails if different unioned types' do
