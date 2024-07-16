@@ -928,9 +928,25 @@ DoubledNumeric = Types::Numeric.multiply_by(2)
 DoubledMoney = Types::Any[Money].multiply_by(2)
 ```
 
+#### Self-contained policy modules
 
+You can register a module, class or module with a three-method interface as a policy. This is so that policies can have their own namespace if they need local constants or private methods. For example, this is how the `:split` policy for strings is defined.
 
-You can return `result.invalid(errors: "this is invalid")` to halt processing.
+```ruby
+module SplitPolicy
+  DEFAULT_SEPARATOR = /\s*,\s*/
+
+  def self.call(type, separator = DEFAULT_SEPARATOR)
+    type.transform(Array) { |v| v.split(separator) }
+  end
+
+  def self.for_type = ::String
+  def self.helper = false
+end
+
+Plumb.policy :split, SplitPolicy
+```
+
 
 
 ### JSON Schema
