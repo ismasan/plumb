@@ -111,9 +111,18 @@ module Plumb
   #
   # Custom separator:
   #   type = Types::String.split(';')
-  policy :split, for_type: String do |type, separator = /\s*,\s*/|
-    type.transform(Array) { |v| v.split(separator) }
+  module SplitPolicy
+    DEFAULT_SEPARATOR = /\s*,\s*/
+
+    def self.call(type, separator = DEFAULT_SEPARATOR)
+      type.transform(Array) { |v| v.split(separator) }
+    end
+
+    def self.for_type = ::String
+    def self.helper = false
   end
+
+  policy :split, SplitPolicy
 
   module Types
     extend TypeRegistry
