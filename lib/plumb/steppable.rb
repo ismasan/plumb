@@ -157,20 +157,17 @@ module Plumb
     end
 
     # @return [Step]
-    def policy(*args, &bl)
+    def policy(*args, &blk)
       case args
       in [::Symbol => name, *rest] # #policy(:name, arg)
         types = Array(metadata[:type]).uniq
 
-        arg = rest.any? ? rest.first : Undefined
+        bargs = [self]
+        bargs << rest.first if rest.any?
         block = Plumb.policies.get(types, name)
-        pol = if block_given?
-                block.call(self, arg, bl)
-              else
-                block.call(self, arg)
-              end
+        pol = block.call(*bargs, &blk)
 
-        Policy.new(name, arg, pol)
+        Policy.new(name, rest.first, pol)
       in [::Hash => opts] # #policy(p1: value, p2: value)
         opts.reduce(self) { |step, (name, value)| step.policy(name, value) }
       else

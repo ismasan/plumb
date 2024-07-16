@@ -9,8 +9,20 @@ module Plumb
     @policies
   end
 
-  def self.policy(name, helper: false, for_type: Object, &block)
+  # def self.policy(name, helper: false, for_type: Object, &block)
+  def self.policy(name, opts = {}, &block)
     name = name.to_sym
+    if opts.is_a?(Hash) && block_given?
+      for_type = opts[:for_type] || Object
+      helper = opts[:helper] || false
+    elsif opts.respond_to?(:call) && opts.respond_to?(:for_type) && opts.respond_to?(:helper)
+      for_type = opts.for_type
+      helper = opts.helper
+      block = opts.method(:call)
+    else
+      raise ArgumentError, 'Expected a block or a hash with :for_type and :helper keys'
+    end
+
     policies.register(for_type, name, block)
 
     return self unless helper
@@ -20,7 +32,11 @@ module Plumb
     end
 
     Steppable.define_method(name) do |arg = Undefined, &bl|
-      policy(name, arg, &bl)
+      if arg == Undefined
+        policy(name, &bl)
+      else
+        policy(name, arg, &bl)
+      end
     end
 
     self

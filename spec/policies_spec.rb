@@ -58,7 +58,7 @@ RSpec.describe Plumb do
   end
 
   it 'supports policies that take block' do
-    Plumb.policy :suffix, for_type: String do |type, _args, block|
+    Plumb.policy :suffix, for_type: String do |type, &block|
       type.transform(String, &block)
     end
 
@@ -85,5 +85,22 @@ RSpec.describe Plumb do
     assert_result(type.resolve('yes'), 'yes', true)
     assert_result(type.resolve(nil), nil, true)
     assert_result(type.resolve(110), 110, true)
+  end
+
+  context 'with a self-contained policy' do
+    it 'works' do
+      multiply_policy = Class.new do
+        def self.for_type = :*
+        def self.helper = true
+
+        def self.call(type, factor = 1)
+          type.invoke(:*, factor)
+        end
+      end
+
+      Plumb.policy :multiply_by, multiply_policy
+      assert_result(Types::Integer.multiply_by(2).resolve(2), 4, true)
+      assert_result(Types::Integer.multiply_by.resolve(2), 2, true)
+    end
   end
 end

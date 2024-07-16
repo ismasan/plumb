@@ -94,7 +94,7 @@ module Plumb
   # Works with a block too:
   #   date = Type::Any[Date].default { Date.today }
   #
-  policy :default, helper: true do |type, value, block|
+  policy :default, helper: true do |type, value = Undefined, &block|
     val_type = if value == Undefined
                  Step.new(->(result) { result.valid(block.call) }, 'default proc')
                else
@@ -111,8 +111,7 @@ module Plumb
   #
   # Custom separator:
   #   type = Types::String.split(';')
-  policy :split, for_type: String do |type, separator|
-    separator = separator == Plumb::Undefined ? /\s*,\s*/ : separator
+  policy :split, for_type: String do |type, separator = /\s*,\s*/|
     type.transform(Array) { |v| v.split(separator) }
   end
 
