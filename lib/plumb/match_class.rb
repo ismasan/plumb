@@ -8,11 +8,12 @@ module Plumb
 
     attr_reader :matcher
 
-    def initialize(matcher = Undefined, error: nil)
+    def initialize(matcher = Undefined, error: nil, label: nil)
       raise TypeError 'matcher must respond to #===' unless matcher.respond_to?(:===)
 
       @matcher = matcher
       @error = error.nil? ? build_error(matcher) : (error % matcher)
+      @label = matcher.is_a?(Class) ? matcher.inspect : "Match(#{label || @matcher.inspect})"
       freeze
     end
 
@@ -22,9 +23,7 @@ module Plumb
 
     private
 
-    def _inspect
-      @matcher.inspect
-    end
+    def _inspect = @label
 
     def build_error(matcher)
       case matcher

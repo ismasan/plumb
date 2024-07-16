@@ -112,7 +112,7 @@ module Plumb
     end
 
     def check(errors = 'did not pass the check', &block)
-      self >> MatchClass.new(block, error: errors)
+      self >> MatchClass.new(block, error: errors, label: errors)
     end
 
     def meta(data = {})

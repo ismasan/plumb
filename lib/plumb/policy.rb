@@ -16,5 +16,7 @@ module Plumb
     end
 
     def call(result) = @step.call(result)
+
+    private def _inspect = @step.inspect
   end
 end
