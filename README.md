@@ -873,6 +873,14 @@ StringWithDefault.parse('hello') # 'hello'
 StringWithDefault.parse(nil) # 'nothing here'
 ```
 
+The `#policy` helper supports applying multiply policies.
+
+```ruby
+Types::String.policy(default_if_nil: 'nothing here', size: (10..20))
+```
+
+
+
 #### Policies as helper methods
 
 Use the `helper: true` option to register the policy as a method you can call on types directly.

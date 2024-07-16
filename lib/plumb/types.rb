@@ -4,34 +4,57 @@ require 'bigdecimal'
 
 module Plumb
   # Define core policies
+  # Allowed options for an array type.
+  # It validates that each element is in the options array.
+  # Usage:
+  #   type = Types::Array.options(['a', 'b'])
   policy :options, helper: true, for_type: ::Array do |type, opts|
     type.check("must be included in #{opts.inspect}") do |v|
       v.all? { |val| opts.include?(val) }
     end
   end
 
+  # Generic options policy for all other types.
+  # Usage:
+  #   type = Types::String.options(['a', 'b'])
   policy :options do |type, opts|
     type.check("must be included in #{opts.inspect}") do |v|
       opts.include?(v)
     end
   end
 
+  # Validate that array elements are NOT in the options array.
+  # Usage:
+  #   type = Types::Array.policy(excluded_from: ['a', 'b'])
   policy :excluded_from, for_type: ::Array do |type, opts|
     type.check("must not be included in #{opts.inspect}") do |v|
       v.none? { |val| opts.include?(val) }
     end
   end
 
+  # Usage:
+  #   type = Types::String.policy(excluded_from: ['a', 'b'])
   policy :excluded_from do |type, opts|
     type.check("must not be included in #{opts.inspect}") do |v|
       !opts.include?(v)
     end
   end
 
+  # Validate #size against a number or any object that responds to #===.
+  # This works with any type that repsonds to #size.
+  # Usage:
+  #   type = Types::String.policy(size: 10)
+  #   type = Types::Integer.policy(size: 1..10)
+  #   type = Types::Array.policy(size: 1..)
+  #   type = Types::Any[Set].policy(size: 1..)
   policy :size, for_type: :size do |type, size|
     type.check("must be of size #{size}") { |v| size === v.size }
   end
 
+  # Validate that an object is not #empty? nor #nil?
+  # Usage:
+  #   Types::String.present
+  #   Types::Array.present
   policy :present, helper: true do |type, *_args|
     type.check('must be present') do |v|
       if v.respond_to?(:empty?)
@@ -42,16 +65,35 @@ module Plumb
     end
   end
 
+  # Allow nil values for a type.
+  # Usage:
+  #   nullable_int = Types::Integer.nullable
+  #   nullable_int.parse(nil) # => nil
+  #   nullable_int.parse(10)  # => 10
+  #   nullable_int.parse('nope') # => error: not an Integer
   policy :nullable, helper: true do |type, *_args|
     Types::Nil | type
   end
 
+  # Validate that a value responds to a method
+  # Usage:
+  #  type = Types::Any.policy(respond_to: :upcase)
+  #  type = Types::Any.policy(respond_to: [:upcase, :strip])
   policy :respond_to do |type, method_names|
     type.check("must respond to #{method_names.inspect}") do |value|
       Array(method_names).all? { |m| value.respond_to?(m) }
     end
   end
 
+  # Return a default value if the input value is Undefined (ie key not present in a Hash).
+  # Usage:
+  #   type = Types::String.default('default')
+  #   type.parse(Undefined) # => 'default'
+  #   type.parse('yes')     # => 'yes'
+  #
+  # Works with a block too:
+  #   date = Type::Any[Date].default { Date.today }
+  #
   policy :default, helper: true do |type, value, block|
     val_type = if value == Undefined
                  Step.new(->(result) { result.valid(block.call) }, 'default proc')
@@ -62,6 +104,13 @@ module Plumb
     type | (Types::Undefined >> val_type)
   end
 
+  # Split a string into an array. Default separator is /\s*,\s*/
+  # Usage:
+  #   type = Types::String.split
+  #   type.parse('a,b,c') # => ['a', 'b', 'c']
+  #
+  # Custom separator:
+  #   type = Types::String.split(';')
   policy :split, for_type: String do |type, separator|
     separator = separator == Plumb::Undefined ? /\s*,\s*/ : separator
     type.transform(Array) { |v| v.split(separator) }
