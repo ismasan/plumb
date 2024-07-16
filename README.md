@@ -829,10 +829,6 @@ LinkedList = Types::Hash[
 
 
 
-### Type-specific Rules
-
-TODO
-
 ### Custom types
 
 Compose procs or lambdas directly
@@ -856,6 +852,75 @@ end
 
 MyType = Types::String >> Greeting.new('Hola')
 ```
+
+### Policies
+
+`Plumb.policy` can be used to encapsulate common type compositions, or compositions that can be configurable by parameters.
+
+This example defines a `:default_if_nil` policy that returns a default if the value is `nil`.
+
+```ruby
+Plumb.policy :default_if_nil do |type, default_value|
+  type | (Types::Nil >> Types::Static[default_value])
+end
+```
+
+It can be used for any of your own types.
+
+```ruby
+StringWithDefault = Types::String.policy(default_if_nil: 'nothing here')
+StringWithDefault.parse('hello') # 'hello'
+StringWithDefault.parse(nil) # 'nothing here'
+```
+
+#### Policies as helper methods
+
+Use the `helper: true` option to register the policy as a method you can call on types directly.
+
+```ruby
+Plumb.policy :default_if_nil, helper: true do |type, default_value|
+  type | (Types::Nil >> Types::Static[default_value])
+end
+
+# Now use #default_if_nil directly
+StringWithDefault = Types::String.default_if_nil('nothing here')
+```
+
+Many built-in helpers such as `#default` and `#options` are implemented as policies. This means that you can overwrite their default behaviour by defining a policy with the same name (use with caution!).
+
+#### Type-specific policies
+
+You can use the `for_type:` option to define policies that only apply to steps that output certain types. This example only applies for types that return `Integer` values.
+
+```ruby
+Plumb.policy :multiply_by, for_type: Integer, helper: true do |type, factor|
+  type.invoke(:*, factor)
+end
+
+Doubled = Types::Integer.multiply_by(2)
+Doubled.parse(2) # 4
+
+# Tryin to apply this policy to a non Integer will raise an exception
+DoubledString = Types::String.multiply_by(2) # raises error
+```
+
+#### Interface-specific policies
+
+`for_type`also supports a Symbol for a method name, so that the policy can be applied to any types that support that method.
+
+This example allows the `multiply_by` policy to work with any type that can be multiplied (by supporting the `:*` method).
+
+```ruby
+Plumb.policy :multiply_by, for_type: :*, helper: true do |type, factor|
+  type.invoke(:*, factor)
+end
+
+# Now it works with anything that can be multiplied.
+DoubledNumeric = Types::Numeric.multiply_by(2)
+DoubledMoney = Types::Any[Money].multiply_by(2)
+```
+
+
 
 You can return `result.invalid(errors: "this is invalid")` to halt processing.
 
