@@ -28,10 +28,8 @@ module Plumb
     end
   end
 
-  [Array, String, Hash, Set].each do |klass|
-    policy :size, for_type: klass do |type, size|
-      type.check("must be of size #{size}") { |v| size === v.size }
-    end
+  policy :size, for_type: :size do |type, size|
+    type.check("must be of size #{size}") { |v| size === v.size }
   end
 
   policy :present, helper: true do |type, *_args|

@@ -16,6 +16,10 @@ RSpec.describe Plumb do
     Plumb.policy :test_present, for_type: Array do |type, *_args|
       type.check('must be present') { |v| !v.empty? }
     end
+
+    Plumb.policy :the_size, for_type: :size do |type, size|
+      type.check("must be of size #{size}") { |v| size === v.size }
+    end
   end
 
   it 'registers a helper method' do
@@ -38,6 +42,14 @@ RSpec.describe Plumb do
     expect { Types::Integer.policy(:test_present) }.to raise_error(Plumb::Policies::UnknownPolicyError)
   end
 
+  it 'can register policies for given interfaces' do
+    type = (Types::String | Types::Array).policy(the_size: 2)
+    assert_result(type.resolve('ye'), 'ye', true)
+    assert_result(type.resolve('yes'), 'yes', false)
+    assert_result(type.resolve([1, 2]), [1, 2], true)
+    assert_result(type.resolve([1, 2, 3]), [1, 2, 3], false)
+  end
+
   it 'supports applying multiple policies' do
     type = Types::String.policy(default_if_nil: 'default', test_present: true)
     assert_result(type.resolve('yes'), 'yes', true)
@@ -54,10 +66,10 @@ RSpec.describe Plumb do
     assert_result(type.resolve('yes'), 'yes!', true)
   end
 
-  it 'fails if different unioned types' do
+  it "fails if it can't find compatible policy for all types" do
     expect do
       (Types::String | Types::Integer).policy(:test_present)
-    end.to raise_error(Plumb::Policies::DifferingTypesError)
+    end.to raise_error(Plumb::Policies::UnknownPolicyError)
   end
 
   it 'raises if trying to re-define helper method' do
@@ -66,5 +78,12 @@ RSpec.describe Plumb do
         type
       end
     end.to raise_error(Plumb::Policies::MethodAlreadyDefinedError)
+  end
+
+  it 'supports shared policies for all Objects' do
+    type = (Types::String | Types::Integer).nullable
+    assert_result(type.resolve('yes'), 'yes', true)
+    assert_result(type.resolve(nil), nil, true)
+    assert_result(type.resolve(110), 110, true)
   end
 end
