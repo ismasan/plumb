@@ -375,6 +375,12 @@ RSpec.describe Plumb::Types do
       assert_result(Types::String.policy(respond_to: %i[strip nope]).resolve('b'), 'b', false)
       assert_result(Types::String.policy(respond_to: :nope).resolve('b'), 'b', false)
     end
+
+    specify ':split' do
+      assert_result(Types::String.policy(:split).resolve('a,  b , c,d'), %w[a b c d], true)
+      assert_result(Types::String.policy(split: '.').resolve('a,  b.ss , c,d'), ['a,  b', 'ss , c,d'], true)
+      expect(Types::String.policy(:split).metadata[:type]).to eq(Array)
+    end
   end
 
   describe 'built-in types' do

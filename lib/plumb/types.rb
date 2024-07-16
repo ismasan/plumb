@@ -54,13 +54,17 @@ module Plumb
 
   policy :default, helper: true do |type, value, block|
     val_type = if value == Undefined
-                 # DefaultProc.call(block)
                  Step.new(->(result) { result.valid(block.call) }, 'default proc')
                else
                  Types::Static[value]
                end
 
     type | (Types::Undefined >> val_type)
+  end
+
+  policy :split, for_type: String do |type, separator|
+    separator = separator == Plumb::Undefined ? /\s*,\s*/ : separator
+    type.transform(Array) { |v| v.split(separator) }
   end
 
   module Types
@@ -84,7 +88,6 @@ module Plumb
     Tuple = TupleClass.new
     Hash = HashClass.new
     Interface = InterfaceClass.new
-    Split = String.transform(::String) { |v| v.split(/\s*,\s*/) }
 
     module Lax
       NUMBER_EXPR = /^\d{1,3}(?:,\d{3})*(?:\.\d+)?$/
