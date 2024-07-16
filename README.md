@@ -310,6 +310,57 @@ Note that this case is identical to `#transform` with a block.
 StringToMoney = Types::String.transform(Money) { |value| Monetize.parse(value) }
 ```
 
+### Other policies
+
+There's some other built-in "policies" that can be used via the `#policy` method. Helpers such as `#default` and `#present` are shortcuts for this and can also be used via `#policy(default: 'Hello')` or `#policy(:present)` See [custom policies](#custom-policies) for how to define your own policies.
+
+#### `:respond_to`
+
+Similar to `Types::Interface`, this is a quick way to assert that a value supports one or more methods.
+
+```ruby
+List = Types::Any.policy(respond_to: :each)
+# or
+List = Types::Any.policy(respond_to: [:each, :[], :size)
+```
+
+#### `:excluded_from`
+
+The opposite of `#options`, this policy validates that the value _is not_ included in a list.
+
+```ruby
+Name = Types::String.policy(excluded_from: ['Joe', 'Joan'])
+```
+
+#### `:size`
+
+Works for any value that responds to `#size` and validates that the value's size matches the argument.
+
+```ruby
+LimitedArray = Types::Array[String].policy(size: 10)
+LimitedString = Types::String.policy(size: 10)
+LimitedSet = Types::Any[Set].policy(size: 10)
+```
+
+The size is matched via `#===`, so ranges also work.
+
+```ruby
+Password = Types::String.policy(size: 10..20)
+```
+
+#### `:split` (strings only)
+
+Splits string values by a separator (default: `,`).
+
+```ruby
+CSVLine = Types::String.split
+CSVLine.parse('a,b,c') # => ['a', 'b', 'c']
+
+# Or, with custom separator
+CSVLine = Types::String.split(/\s*;\s*/)
+CSVLine.parse('a;b;c') # => ['a', 'b', 'c']
+```
+
 
 
 ### `#check`
@@ -853,7 +904,7 @@ end
 MyType = Types::String >> Greeting.new('Hola')
 ```
 
-### Policies
+### Custom policies
 
 `Plumb.policy` can be used to encapsulate common type compositions, or compositions that can be configurable by parameters.
 
