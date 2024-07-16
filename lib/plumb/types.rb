@@ -54,6 +54,17 @@ module Plumb
     end
   end
 
+  policy :default, helper: true do |type, value, block|
+    val_type = if value == Undefined
+                 # DefaultProc.call(block)
+                 Step.new(->(result) { result.valid(block.call) }, 'default proc')
+               else
+                 Types::Static[value]
+               end
+
+    type | (Types::Undefined >> val_type)
+  end
+
   module Types
     extend TypeRegistry
 

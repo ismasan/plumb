@@ -19,8 +19,8 @@ module Plumb
       raise Policies::MethodAlreadyDefinedError, "Method #{name} is already defined on Steppable"
     end
 
-    Steppable.define_method(name) do |*args|
-      policy(name, *args)
+    Steppable.define_method(name) do |arg = Undefined, &bl|
+      policy(name, arg, &bl)
     end
 
     self

@@ -137,22 +137,6 @@ module Plumb
 
     def [](val) = match(val)
 
-    DefaultProc = proc do |callable|
-      proc do |result|
-        result.valid(callable.call)
-      end
-    end
-
-    def default(val = Undefined, &block)
-      val_type = if val == Undefined
-                   DefaultProc.call(block)
-                 else
-                   Types::Static[val]
-                 end
-
-      self | (Types::Undefined >> val_type)
-    end
-
     class Node
       include Steppable
 
@@ -175,17 +159,18 @@ module Plumb
     # @return [Step]
     def policy(*args, &bl)
       case args
-      in [::Symbol => name, *args] # #policy(:name, arg)
+      in [::Symbol => name, *rest] # #policy(:name, arg)
         types = Array(metadata[:type]).uniq
 
+        arg = rest.any? ? rest.first : Undefined
         block = Plumb.policies.get(types, name)
         pol = if block_given?
-                block.call(self, args, bl)
+                block.call(self, arg, bl)
               else
-                block.call(self, *args)
+                block.call(self, arg)
               end
 
-        Policy.new(name, args.first, pol)
+        Policy.new(name, arg, pol)
       in [::Hash => opts] # #policy(p1: value, p2: value)
         opts.reduce(self) { |step, (name, value)| step.policy(name, value) }
       else
