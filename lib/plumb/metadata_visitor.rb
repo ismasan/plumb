@@ -122,5 +122,9 @@ module Plumb
     on(:tagged_hash) do |_node, props|
       props.merge(type: Hash)
     end
+
+    on(Proc) do |_node, props|
+      props
+    end
   end
 end
