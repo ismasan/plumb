@@ -61,6 +61,11 @@ RSpec.describe Plumb::JSONSchemaVisitor do
     expect(described_class.visit(type)).to eq('type' => 'string', 'minLength' => 20, 'maxLength' => 20)
   end
 
+  specify 'Types::String with :split policy' do
+    type = Types::String.policy(:split)
+    expect(described_class.visit(type)).to eq('type' => 'array', 'items' => { 'type' => 'string' })
+  end
+
   specify 'Types::Integer' do
     type = Types::Integer
     expect(described_class.visit(type)).to eq('type' => 'integer')

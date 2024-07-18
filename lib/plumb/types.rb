@@ -115,7 +115,7 @@ module Plumb
     DEFAULT_SEPARATOR = /\s*,\s*/
 
     def self.call(type, separator = DEFAULT_SEPARATOR)
-      type.transform(Array) { |v| v.split(separator) }
+      type.invoke(:split, separator) >> Types::Array[String]
     end
 
     def self.for_type = ::String
