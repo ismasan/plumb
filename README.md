@@ -39,6 +39,52 @@ result.valid? # false
 result.errors # ""
 ```
 
+### Specialize your types with `#[]`
+
+Use `#[]` to make your types match a class.
+
+```ruby
+module Types
+  include Plumb::Types
+  
+  String = Types::Any[::String]
+  Integer = Types::Any[::Integer]
+end
+
+Types::String.parse("hello") # => "hello"
+Types::String.parse(10) # raises "Must be a String" (Plumb::TypeError)
+```
+
+Plumb ships with basic types already defined, such as `Types::String` and `Types::Integer`. See the full list below.
+
+The `#[]` method is not just for classes. It works with anything that responds to `#===`
+
+```ruby
+# Match against a regex
+Email = Types::String[/@/] # ie Types::Any[String][/@/]
+
+Email.parse('hello') # fails
+Email.parse('hello@server.com') # 'hello@server.com'
+
+# Or a Range
+AdultAge = Types::Integer[18..]
+AdultAge.parse(20) # 20
+AdultAge.parse(17) # raises "Must be within 18.."" (Plumb::TypeError)
+
+# Or literal values
+Twenty = Types::Integer[20]
+Twenty.parse(20) # 20
+Twenty.parse(21) # type error
+```
+
+It can be combined with other methods. For example to cast strings as integers, but only if they _look_ like integers.
+
+```ruby
+StringToInt = Types::String[/^\d+$/].transform(::Integer, &:to_i)
+
+StringToInt.parse('100') # => 100
+StringToInt.parse('100lol') # fails
+```
 
 ### `#resolve(value) => Result`
 
@@ -55,8 +101,6 @@ result.value # '10'
 result.errors # 'must be an Integer'
 ```
 
-
-
 ### `#parse(value) => value`
 
 `#parse` takes an input value and returns the parsed/coerced value if successful. or it raises an exception if failed.
@@ -67,6 +111,80 @@ Types::Integer.parse('10') # raises Plumb::TypeError
 ```
 
 
+
+### Composite types
+
+Some built-in types such as `Types::Array` and `Types::Hash` allow defininig array or hash data structures composed of other types.
+
+```ruby
+# A user hash
+User = Types::Hash[name: Types::String, email: Email, age: AdultAge]
+
+# An array of User hashes
+Users = Types::Array[User]
+
+joe = User.parse({ name: 'Joe', email: 'joe@email.com', age: 20}) # returns valid hash
+Users.parse([joe]) # returns valid array of user hashes
+```
+
+More about [Types::Array](#typeshash) and [Types::Array](#typesarray). There's also tuples and hash maps, and it's possible to create your own composite types.
+
+## Type composition
+
+At the core, Plumb types are little [Railway-oriented pipelines](https://ismaelcelis.com/posts/composable-pipelines-in-ruby/) that can be composed together with _and_, _or_ and _not_ semantics. Everything else builds on top of these two ideas.
+
+### Composing types with `#>>` ("And")
+
+```ruby
+Email = Types::String[/@/]
+# You can compose procs and lambdas, or other types.
+Greeting = Email >> ->(result) { result.valid("Your email is #{result.value}") }
+
+Greeting.parse('joe@bloggs.com') # "Your email is joe@bloggs.com"
+```
+
+### Disjunction with `#|` ("Or")
+
+```ruby
+StringOrInt = Types::String | Types::Integer
+StringOrInt.parse('hello') # "hello"
+StringOrInt.parse(10) # 10
+StringOrInt.parse({}) # raises Plumb::TypeError
+```
+
+Custom default value logic for non-emails
+
+```ruby
+EmailOrDefault = Greeting | Types::Static['no email']
+EmailOrDefault.parse('joe@bloggs.com') # "Your email is joe@bloggs.com"
+EmailOrDefault.parse('nope') # "no email"
+```
+
+## Composing with `#>>` and `#|`
+
+This more elaborate example defines a combination of types which, when composed together with `>>` and `|`, can coerce strings or integers into Money instances with currency.
+
+```ruby
+require 'money'
+
+module Types
+  include Plumb::Types
+  
+  Money = Any[::Money]
+  IntToMoney = Integer.transform(::Money) { |v| ::Money.new(v, 'USD') }
+  StringToInt = String.match(/^\d+$/).transform(::Integer, &:to_i)
+  USD = Money.check { |amount| amount.currency.code == 'UDS' }
+  ToUSD = Money.transform(::Money) { |amount| amount.exchange_to('USD') }
+  
+  FlexibleUSD = (Money | ((Integer | StringToInt) >> IntToMoney)) >> (USD | ToUSD)
+end
+
+FlexibleUSD.parse('1000') # Money(USD 10.00)
+FlexibleUSD.parse(1000) # Money(USD 10.00)
+FlexibleUSD.parse(Money.new(1000, 'GBP')) # Money(USD 15.00)
+```
+
+You can see more use cases in [the examples directory](/ismasan/plumb/tree/main/examples)
 
 ## Built-in types
 
@@ -97,6 +215,10 @@ Types::Integer.parse('10') # raises Plumb::TypeError
 
 
 
+### Policies
+
+Policies are methods that encapsulate common compositions. Plumb ships with some, listed below, and you can also define your own.
+
 ### `#present`
 
 Checks that the value is not blank (`""` if string, `[]` if array, `{}` if Hash, or `nil`)
@@ -117,13 +239,11 @@ nullable_str.parse('hello') # 'hello'
 nullable_str.parse(10) # TypeError
 ```
 
-Note that this is syntax sugar for 
+Note that this just encapsulates the following composition:
 
 ```ruby
 nullable_str = Types::String | Types::Nil
 ```
-
-
 
 ### `#not`
 
@@ -152,8 +272,6 @@ type = Types::Array.options(['a', 'b'])
 type.resolve(['a', 'a', 'b']) # Valid
 type.resolve(['a', 'x', 'b']) # Failure
 ```
-
-
 
 ### `#transform`
 
@@ -238,45 +356,6 @@ Same if you want to apply a default to several cases.
 str = Types::String | ((Types::Nil | Types::Undefined) >> Types::Static['nope'.freeze])
 ```
 
-
-
-### `#match` and `#[]`
-
-Checks the value against a regular expression (or anything that responds to `#===`).
-
-```ruby
-email = Types::String.match(/@/)
-# Same as
-email = Types::String[/@/]
-email.parse('hello') # fails
-email.parse('hello@server.com') # 'hello@server.com'
-```
-
-It can be combined with other methods. For example to cast strings as integers, but only if they _look_ like integers.
-
-```ruby
-StringToInt = Types::String[/^\d+$/].transform(::Integer, &:to_i)
-
-StringToInt.parse('100') # => 100
-StringToInt.parse('100lol') # fails
-```
-
-It can be used with other `#===` interfaces.
-
-```ruby
-AgeBracket = Types::Integer[21..45]
-
-AgeBracket.parse(22) # 22
-AgeBracket.parse(20) # fails
-
-# With literal values
-Twenty = Types::Integer[20]
-Twenty.parse(20) # 20
-Twenty.parse(21) # type error
-```
-
-
-
 ### `#build`
 
 Build a custom object or class.
@@ -309,6 +388,63 @@ Note that this case is identical to `#transform` with a block.
 ```ruby
 StringToMoney = Types::String.transform(Money) { |value| Monetize.parse(value) }
 ```
+
+### `#check`
+
+Pass the value through an arbitrary validation
+
+```ruby
+type = Types::String.check('must start with "Role:"') { |value| value.start_with?('Role:') }
+type.parse('Role: Manager') # 'Role: Manager'
+type.parse('Manager') # fails
+```
+
+
+
+### `#value` 
+
+Constrain a type to a specific value. Compares with `#==`
+
+```ruby
+hello = Types::String.value('hello')
+hello.parse('hello') # 'hello'
+hello.parse('bye') # fails
+hello.parse(10) # fails 'not a string'
+```
+
+All scalar types support this:
+
+```ruby
+ten = Types::Integer.value(10)
+```
+
+### `#meta` and `#metadata`
+
+Add metadata to a type
+
+```ruby
+type = Types::String.meta(description: 'A long text')
+type.metadata[:description] # 'A long text'
+```
+
+`#metadata` combines keys from type compositions.
+
+```ruby
+type = Types::String.meta(description: 'A long text') >> Types::String.match(/@/).meta(note: 'An email address')
+type.metadata[:description] # 'A long text'
+type.metadata[:note] # 'An email address'
+```
+
+`#metadata` also computes the target type.
+
+```ruby
+Types::String.metadata[:type] # String
+Types::String.transform(Integer, &:to_i).metadata[:type] # Integer
+# Multiple target types for unions
+(Types::String | Types::Integer).metadata[:type] # [String, Integer]
+```
+
+TODO: document custom visitors.
 
 ### Other policies
 
@@ -363,66 +499,7 @@ CSVLine.parse('a;b;c') # => ['a', 'b', 'c']
 
 
 
-### `#check`
-
-Pass the value through an arbitrary validation
-
-```ruby
-type = Types::String.check('must start with "Role:"') { |value| value.start_with?('Role:') }
-type.parse('Role: Manager') # 'Role: Manager'
-type.parse('Manager') # fails
-```
-
-
-
-### `#value` 
-
-Constrain a type to a specific value. Compares with `#==`
-
-```ruby
-hello = Types::String.value('hello')
-hello.parse('hello') # 'hello'
-hello.parse('bye') # fails
-hello.parse(10) # fails 'not a string'
-```
-
-All scalar types support this:
-
-```ruby
-ten = Types::Integer.value(10)
-```
-
-
-
-### `#meta` and `#metadata`
-
-Add metadata to a type
-
-```ruby
-type = Types::String.meta(description: 'A long text')
-type.metadata[:description] # 'A long text'
-```
-
-`#metadata` combines keys from type compositions.
-
-```ruby
-type = Types::String.meta(description: 'A long text') >> Types::String.match(/@/).meta(note: 'An email address')
-type.metadata[:description] # 'A long text'
-type.metadata[:note] # 'An email address'
-```
-
-`#metadata` also computes the target type.
-
-```ruby
-Types::String.metadata[:type] # String
-Types::String.transform(Integer, &:to_i).metadata[:type] # Integer
-# Multiple target types for unions
-(Types::String | Types::Integer).metadata[:type] # [String, Integer]
-```
-
-TODO: document custom visitors.
-
-## `Types::Hash`
+### `Types::Hash`
 
 ```ruby
 Employee = Types::Hash[
@@ -515,8 +592,6 @@ Types::Hash[
 ]
 ```
 
-
-
 #### Merging hash definitions
 
 Use `Types::Hash#+` to merge two definitions. Keys in the second hash override the first one's.
@@ -527,8 +602,6 @@ Employee = Types::Hash[name: Types::String, company: Types::String]
 StaffMember = User + Employee # Hash[:name, :age, :company]
 ```
 
-
-
 #### Hash intersections
 
 Use `Types::Hash#&` to produce a new Hash definition with keys present in both.
@@ -536,8 +609,6 @@ Use `Types::Hash#&` to produce a new Hash definition with keys present in both.
 ```ruby
 intersection = User & Employee # Hash[:name]
 ```
-
-
 
 #### `Types::Hash#tagged_by`
 
@@ -557,8 +628,6 @@ Events = Types::Hash.tagged_by(
 
 Events.parse(type: 'name_updated', name: 'Joe') # Uses NameUpdatedEvent definition
 ```
-
-
 
 #### `Types::Hash#inclusive`
 
@@ -599,8 +668,6 @@ User = Types::Hash[name: String, age: Integer]
 User.parse(name: 'Joe', age: 40) # => { name: 'Joe', age: 40 }
 User.parse(name: 'Joe', age: 'nope') # => { name: 'Joe' }
 ```
-
-
 
 ### Hash maps
 
@@ -795,57 +862,6 @@ TODO
 ### Plumb::Struct
 
 TODO
-
-## Composing types with `#>>` ("And")
-
-```ruby
-Email = Types::String.match(/@/)
-Greeting = Email >> ->(result) { result.valid("Your email is #{result.value}") }
-
-Greeting.parse('joe@bloggs.com') # "Your email is joe@bloggs.com"
-```
-
-
-## Disjunction with `#|` ("Or")
-
-```ruby
-StringOrInt = Types::String | Types::Integer
-StringOrInt.parse('hello') # "hello"
-StringOrInt.parse(10) # 10
-StringOrInt.parse({}) # raises Plumb::TypeError
-```
-
-Custom default value logic for non-emails
-
-```ruby
-EmailOrDefault = Greeting | Types::Static['no email']
-EmailOrDefault.parse('joe@bloggs.com') # "Your email is joe@bloggs.com"
-EmailOrDefault.parse('nope') # "no email"
-```
-
-## Composing with `#>>` and `#|`
-
-```ruby
-require 'money'
-
-module Types
-  include Plumb::Types
-  
-  Money = Any[::Money]
-  IntToMoney = Integer.transform(::Money) { |v| ::Money.new(v, 'USD') }
-  StringToInt = String.match(/^\d+$/).transform(::Integer, &:to_i)
-  USD = Money.check { |amount| amount.currency.code == 'UDS' }
-  ToUSD = Money.transform(::Money) { |amount| amount.exchange_to('USD') }
-  
-  FlexibleUSD = (Money | ((Integer | StringToInt) >> IntToMoney)) >> (USD | ToUSD)
-end
-
-FlexibleUSD.parse('1000') # Money(USD 10.00)
-FlexibleUSD.parse(1000) # Money(USD 10.00)
-FlexibleUSD.parse(Money.new(1000, 'GBP')) # Money(USD 15.00)
-```
-
-
 
 ### Recursive types
 
