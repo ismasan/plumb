@@ -18,6 +18,10 @@ module Plumb
     PATTERN = 'pattern'
     MINIMUM = 'minimum'
     MAXIMUM = 'maximum'
+    MIN_ITEMS = 'minItems'
+    MAX_ITEMS = 'maxItems'
+    MIN_LENGTH = 'minLength'
+    MAX_LENGTH = 'maxLength'
 
     def self.call(node)
       {
@@ -125,6 +129,32 @@ module Plumb
 
     on(:options_policy) do |node, props|
       props.merge(ENUM => node.arg)
+    end
+
+    on(:size_policy) do |node, props|
+      opts = {}
+      case props[TYPE]
+      when 'array'
+        case node.arg
+        when Range
+          opts[MIN_ITEMS] = node.arg.min if node.arg.begin
+          opts[MAX_ITEMS] = node.arg.max if node.arg.end
+        when Numeric
+          opts[MIN_ITEMS] = node.arg
+          opts[MAX_ITEMS] = node.arg
+        end
+      when 'string'
+        case node.arg
+        when Range
+          opts[MIN_LENGTH] = node.arg.min if node.arg.begin
+          opts[MAX_LENGTH] = node.arg.max if node.arg.end
+        when Numeric
+          opts[MIN_LENGTH] = node.arg
+          opts[MAX_LENGTH] = node.arg
+        end
+      end
+
+      props.merge(opts)
     end
 
     on(Proc) do |_node, props|

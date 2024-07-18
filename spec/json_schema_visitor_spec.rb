@@ -50,6 +50,17 @@ RSpec.describe Plumb::JSONSchemaVisitor do
     expect(described_class.visit(type)).to eq('type' => 'string')
   end
 
+  specify 'Types::String with :size policy' do
+    type = Types::String.policy(size: (10..20))
+    expect(described_class.visit(type)).to eq('type' => 'string', 'minLength' => 10, 'maxLength' => 20)
+
+    type = Types::String.policy(size: (10..))
+    expect(described_class.visit(type)).to eq('type' => 'string', 'minLength' => 10)
+
+    type = Types::String.policy(size: 20)
+    expect(described_class.visit(type)).to eq('type' => 'string', 'minLength' => 20, 'maxLength' => 20)
+  end
+
   specify 'Types::Integer' do
     type = Types::Integer
     expect(described_class.visit(type)).to eq('type' => 'integer')
@@ -167,6 +178,37 @@ RSpec.describe Plumb::JSONSchemaVisitor do
       'type' => 'array',
       'items' => { 'type' => 'string' }
     )
+  end
+
+  describe 'Types::Array with :size policy' do
+    it 'works with inclusive Ranges' do
+      type = Types::Array[Types::Integer].policy(size: (10..20))
+      expect(described_class.visit(type)).to eq(
+        'type' => 'array',
+        'items' => { 'type' => 'integer' },
+        'minItems' => 10,
+        'maxItems' => 20
+      )
+    end
+
+    it 'works with exclusive Ranges' do
+      type = Types::Array[Types::Integer].policy(size: (10...20))
+      expect(described_class.visit(type)).to eq(
+        'type' => 'array',
+        'items' => { 'type' => 'integer' },
+        'minItems' => 10,
+        'maxItems' => 19
+      )
+    end
+
+    it 'works with open Ranges' do
+      type = Types::Array[Types::Integer].policy(size: (10...))
+      expect(described_class.visit(type)).to eq(
+        'type' => 'array',
+        'items' => { 'type' => 'integer' },
+        'minItems' => 10
+      )
+    end
   end
 
   specify 'Types::Stream' do
