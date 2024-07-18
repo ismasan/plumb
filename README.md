@@ -168,7 +168,7 @@ EmailOrDefault.parse('nope') # "no email"
 
 ## Composing with `#>>` and `#|`
 
-This more elaborate example defines a combination of types which, when composed together with `>>` and `|`, can coerce strings or integers into Money instances with currency.
+This more elaborate example defines a combination of types which, when composed together with `>>` and `|`, can coerce strings or integers into Money instances with currency. It also shows some of the built-in [policies](#policies) or helpers.
 
 ```ruby
 require 'money'
@@ -176,12 +176,22 @@ require 'money'
 module Types
   include Plumb::Types
   
+  # Match any Money instance
   Money = Any[::Money]
+  
+  # Transform Integers into Money instances
   IntToMoney = Integer.transform(::Money) { |v| ::Money.new(v, 'USD') }
+  
+  # Transform integer-looking Strings into Integers
   StringToInt = String.match(/^\d+$/).transform(::Integer, &:to_i)
+  
+  # Validate that a Money instance is USD
   USD = Money.check { |amount| amount.currency.code == 'UDS' }
+  
+  # Exchange a non-USD Money instance into USD
   ToUSD = Money.transform(::Money) { |amount| amount.exchange_to('USD') }
   
+  # Compose a pipeline that accepts Strings, Integers or Money and returns USD money.
   FlexibleUSD = (Money | ((Integer | StringToInt) >> IntToMoney)) >> (USD | ToUSD)
 end
 
@@ -223,7 +233,7 @@ You can see more use cases in [the examples directory](/ismasan/plumb/tree/main/
 
 ### Policies
 
-Policies are methods that encapsulate common compositions. Plumb ships with some, listed below, and you can also define your own.
+Policies are helpers that encapsulate common compositions. Plumb ships with some handy ones, listed below, and you can also define your own.
 
 ### `#present`
 
