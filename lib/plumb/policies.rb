@@ -5,7 +5,6 @@ require 'plumb/policies'
 module Plumb
   class Policies
     UnknownPolicyError = Class.new(StandardError)
-    DifferingTypesError = Class.new(StandardError)
     MethodAlreadyDefinedError = Class.new(StandardError)
 
     def initialize
