@@ -998,8 +998,6 @@ end
 Plumb.policy :split, SplitPolicy
 ```
 
-
-
 ### JSON Schema
 
 ```ruby
@@ -1020,6 +1018,22 @@ json_schema = Plumb::JSONSchemaVisitor.call(User)
   'required' =>['name', 'age']
 }
 ```
+
+The built-in JSON Schema generator handles most standard types and compositions. You can add or override handles on a per-type basis with:
+
+```ruby
+Plumb::JSONSchemaVisitor.on(:not) do |node, props|
+  props.merge('not' => visit(node.step))
+end
+
+# Example
+type = Types::Decimal.not
+schema = Plumb::JSONSchemaVisitor.visit(type) # { 'not' => { 'type' => 'number' } }
+```
+
+#### JSON Schema handlers for custom policies
+
+TODO. See `Plumb::JSONSchemaVisitor`.
 
 
 
