@@ -200,7 +200,7 @@ FlexibleUSD.parse(1000) # Money(USD 10.00)
 FlexibleUSD.parse(Money.new(1000, 'GBP')) # Money(USD 15.00)
 ```
 
-You can see more use cases in [the examples directory](/ismasan/plumb/tree/main/examples)
+You can see more use cases in [the examples directory](https://github.com/ismasan/plumb/tree/main/examples)
 
 ## Built-in types
 
