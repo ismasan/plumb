@@ -156,6 +156,11 @@ module Plumb
       Node.new(node_name, self, metadata)
     end
 
+    # Register a policy for this step.
+    # Mode 1.a: #policy(:name, arg) a single policy with an argument
+    # Mode 1.b: #policy(:name) a single policy without an argument
+    # Mode 2: #policy(p1: value, p2: value) multiple policies with arguments
+    # The latter mode will be expanded to multiple #policy calls.
     # @return [Step]
     def policy(*args, &blk)
       case args

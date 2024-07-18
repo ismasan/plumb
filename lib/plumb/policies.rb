@@ -3,6 +3,9 @@
 require 'plumb/policies'
 
 module Plumb
+  # A policy registry for Plumb
+  # It holds and gets registered policies.
+  # Policies are callable objects that act as factories for type compositions.
   class Policies
     UnknownPolicyError = Class.new(StandardError)
     MethodAlreadyDefinedError = Class.new(StandardError)
@@ -11,11 +14,33 @@ module Plumb
       @policies = {}
     end
 
+    # Register a policy for all or specific outpyt types.
+    # Example for a policy that works for all types:
+    #   #register(Object, :my_policy, ->(node, arg) { ... })
+    # Example for a policy that works for a specific type:
+    #   #register(String, :my_policy, ->(node, arg) { ... })
+    # Example for a policy that works for a specific interface:
+    #   #register(:size, :my_policy, ->(node, arg) { ... })
+    #
+    # The policy callable takes the step it is applied to, a policy argument (if any) and a policy block (if any).
+    # Example for a policy #default(default_value = Undefined) { 'some-default-value' }
+    #   policy = proc do |type, default_value = Undefined, &block|
+    #     type | (Plumb::Types::Undefined >> Plumb::Types::Static[default_value])
+    #   end
+    #
+    # @param for_type [Class, Symbol] the type the policy is for.
+    # @param name [Symbol] the name of the policy.
+    # @param policy [Proc] the policy to register.
     def register(for_type, name, policy)
       @policies[name] ||= {}
       @policies[name][for_type] = policy
     end
 
+    # Get a policy for a given type.
+    # @param types [Array<Class>] the types
+    # @param name [Symbol] the policy name
+    # @return [#call] the policy callable
+    # @raise [UnknownPolicyError] if the policy is not registered for the given types
     def get(types, name)
       if (pol = resolve_shared_policy(types, name))
         pol
@@ -27,6 +52,8 @@ module Plumb
         raise UnknownPolicyError, "Unknown or incompatible policy #{name} for #{types.inspect}"
       end
     end
+
+    private
 
     def resolve_shared_policy(types, name)
       pols = types.map do |type|

@@ -9,7 +9,19 @@ module Plumb
     @policies
   end
 
-  # def self.policy(name, helper: false, for_type: Object, &block)
+  # Register a policy with the given name and block.
+  # Optionally define a method on the Steppable method to call the policy.
+  # Example:
+  #   Plumb.policy(:multiply_by, for_type: Integer, helper: true) do |step, factor, &block|
+  #     step.transform(Integer) { |number| number * factor }
+  #   end
+  #
+  #  type = Types::Integer.multiply_by(2)
+  #  type.parse(10) # => 20
+  #
+  # @param name [Symbol] the name of the policy
+  # @param opts [Hash] options for the policy
+  # @yield [Step, Object, &block] the step (type), policy argument, and policy block, if any.
   def self.policy(name, opts = {}, &block)
     name = name.to_sym
     if opts.is_a?(Hash) && block_given?
