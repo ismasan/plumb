@@ -216,6 +216,14 @@ RSpec.describe Plumb::JSONSchemaVisitor do
     end
   end
 
+  specify ':excluded_from policy' do
+    type = Types::String.policy(excluded_from: %w[foo bar])
+    expect(described_class.visit(type)).to eq(
+      'type' => 'string',
+      'not' => { 'enum' => %w[foo bar] }
+    )
+  end
+
   specify 'Types::Stream' do
     type = Types::Stream[Types::String]
     expect(described_class.visit(type)).to eq(

@@ -12,6 +12,7 @@ module Plumb
     DEFAULT = 'default'
     ANY_OF = 'anyOf'
     ALL_OF = 'allOf'
+    NOT = 'not'
     ENUM = 'enum'
     CONST = 'const'
     ITEMS = 'items'
@@ -82,7 +83,7 @@ module Plumb
     end
 
     on(:not) do |node, props|
-      props.merge('not' => visit(node.step))
+      props.merge(NOT => visit(node.step))
     end
 
     on(:value) do |node, props|
@@ -155,6 +156,10 @@ module Plumb
       end
 
       props.merge(opts)
+    end
+
+    on(:excluded_from_policy) do |node, props|
+      props.merge(NOT => { ENUM => node.arg })
     end
 
     on(Proc) do |_node, props|
