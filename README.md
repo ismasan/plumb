@@ -12,11 +12,15 @@ For a description of the core architecture you can read [this article](https://i
 
 ## Installation
 
-TODO
+Install in your environment with `gem install plumb`, or in your `Gemfile` with
+
+```ruby
+gem 'plumb'
+```
 
 ## Usage
 
-### Include base types
+### Include base types.
 
 Include base types in your own namespace:
 
@@ -38,6 +42,8 @@ result = Types::Email.resolve("foo")
 result.valid? # false
 result.errors # ""
 ```
+
+Note that this is not mandatory. You can also work with the `Plumb::Types` module directly, ex. `Plumb::Types::String`
 
 ### Specialize your types with `#[]`
 
