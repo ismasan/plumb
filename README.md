@@ -79,12 +79,10 @@ Types::Integer.parse('10') # raises Plumb::TypeError
 * `Types::False`
 * `Types::Tuple`
 * `Types::Split`
-* `Types::Blank`
 * `Types::Any`
 * `Types::Static`
 * `Types::Undefined`
 * `Types::Nil`
-* `Types::Present`
 * `Types::Integer`
 * `Types::Numeric`
 * `Types::String`
@@ -310,6 +308,57 @@ Note that this case is identical to `#transform` with a block.
 
 ```ruby
 StringToMoney = Types::String.transform(Money) { |value| Monetize.parse(value) }
+```
+
+### Other policies
+
+There's some other built-in "policies" that can be used via the `#policy` method. Helpers such as `#default` and `#present` are shortcuts for this and can also be used via `#policy(default: 'Hello')` or `#policy(:present)` See [custom policies](#custom-policies) for how to define your own policies.
+
+#### `:respond_to`
+
+Similar to `Types::Interface`, this is a quick way to assert that a value supports one or more methods.
+
+```ruby
+List = Types::Any.policy(respond_to: :each)
+# or
+List = Types::Any.policy(respond_to: [:each, :[], :size)
+```
+
+#### `:excluded_from`
+
+The opposite of `#options`, this policy validates that the value _is not_ included in a list.
+
+```ruby
+Name = Types::String.policy(excluded_from: ['Joe', 'Joan'])
+```
+
+#### `:size`
+
+Works for any value that responds to `#size` and validates that the value's size matches the argument.
+
+```ruby
+LimitedArray = Types::Array[String].policy(size: 10)
+LimitedString = Types::String.policy(size: 10)
+LimitedSet = Types::Any[Set].policy(size: 10)
+```
+
+The size is matched via `#===`, so ranges also work.
+
+```ruby
+Password = Types::String.policy(size: 10..20)
+```
+
+#### `:split` (strings only)
+
+Splits string values by a separator (default: `,`).
+
+```ruby
+CSVLine = Types::String.split
+CSVLine.parse('a,b,c') # => ['a', 'b', 'c']
+
+# Or, with custom separator
+CSVLine = Types::String.split(/\s*;\s*/)
+CSVLine.parse('a;b;c') # => ['a', 'b', 'c']
 ```
 
 
@@ -831,10 +880,6 @@ LinkedList = Types::Hash[
 
 
 
-### Type-specific Rules
-
-TODO
-
 ### Custom types
 
 Compose procs or lambdas directly
@@ -859,8 +904,99 @@ end
 MyType = Types::String >> Greeting.new('Hola')
 ```
 
-You can return `result.invalid(errors: "this is invalid")` to halt processing.
+### Custom policies
 
+`Plumb.policy` can be used to encapsulate common type compositions, or compositions that can be configurable by parameters.
+
+This example defines a `:default_if_nil` policy that returns a default if the value is `nil`.
+
+```ruby
+Plumb.policy :default_if_nil do |type, default_value|
+  type | (Types::Nil >> Types::Static[default_value])
+end
+```
+
+It can be used for any of your own types.
+
+```ruby
+StringWithDefault = Types::String.policy(default_if_nil: 'nothing here')
+StringWithDefault.parse('hello') # 'hello'
+StringWithDefault.parse(nil) # 'nothing here'
+```
+
+The `#policy` helper supports applying multiply policies.
+
+```ruby
+Types::String.policy(default_if_nil: 'nothing here', size: (10..20))
+```
+
+
+
+#### Policies as helper methods
+
+Use the `helper: true` option to register the policy as a method you can call on types directly.
+
+```ruby
+Plumb.policy :default_if_nil, helper: true do |type, default_value|
+  type | (Types::Nil >> Types::Static[default_value])
+end
+
+# Now use #default_if_nil directly
+StringWithDefault = Types::String.default_if_nil('nothing here')
+```
+
+Many built-in helpers such as `#default` and `#options` are implemented as policies. This means that you can overwrite their default behaviour by defining a policy with the same name (use with caution!).
+
+#### Type-specific policies
+
+You can use the `for_type:` option to define policies that only apply to steps that output certain types. This example only applies for types that return `Integer` values.
+
+```ruby
+Plumb.policy :multiply_by, for_type: Integer, helper: true do |type, factor|
+  type.invoke(:*, factor)
+end
+
+Doubled = Types::Integer.multiply_by(2)
+Doubled.parse(2) # 4
+
+# Tryin to apply this policy to a non Integer will raise an exception
+DoubledString = Types::String.multiply_by(2) # raises error
+```
+
+#### Interface-specific policies
+
+`for_type`also supports a Symbol for a method name, so that the policy can be applied to any types that support that method.
+
+This example allows the `multiply_by` policy to work with any type that can be multiplied (by supporting the `:*` method).
+
+```ruby
+Plumb.policy :multiply_by, for_type: :*, helper: true do |type, factor|
+  type.invoke(:*, factor)
+end
+
+# Now it works with anything that can be multiplied.
+DoubledNumeric = Types::Numeric.multiply_by(2)
+DoubledMoney = Types::Any[Money].multiply_by(2)
+```
+
+#### Self-contained policy modules
+
+You can register a module, class or module with a three-method interface as a policy. This is so that policies can have their own namespace if they need local constants or private methods. For example, this is how the `:split` policy for strings is defined.
+
+```ruby
+module SplitPolicy
+  DEFAULT_SEPARATOR = /\s*,\s*/
+
+  def self.call(type, separator = DEFAULT_SEPARATOR)
+    type.transform(Array) { |v| v.split(separator) }
+  end
+
+  def self.for_type = ::String
+  def self.helper = false
+end
+
+Plumb.policy :split, SplitPolicy
+```
 
 ### JSON Schema
 
@@ -882,6 +1018,22 @@ json_schema = Plumb::JSONSchemaVisitor.call(User)
   'required' =>['name', 'age']
 }
 ```
+
+The built-in JSON Schema generator handles most standard types and compositions. You can add or override handles on a per-type basis with:
+
+```ruby
+Plumb::JSONSchemaVisitor.on(:not) do |node, props|
+  props.merge('not' => visit(node.step))
+end
+
+# Example
+type = Types::Decimal.not
+schema = Plumb::JSONSchemaVisitor.visit(type) # { 'not' => { 'type' => 'number' } }
+```
+
+#### JSON Schema handlers for custom policies
+
+TODO. See `Plumb::JSONSchemaVisitor`.
 
 
 

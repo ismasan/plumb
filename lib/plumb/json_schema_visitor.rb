@@ -12,12 +12,17 @@ module Plumb
     DEFAULT = 'default'
     ANY_OF = 'anyOf'
     ALL_OF = 'allOf'
+    NOT = 'not'
     ENUM = 'enum'
     CONST = 'const'
     ITEMS = 'items'
     PATTERN = 'pattern'
     MINIMUM = 'minimum'
     MAXIMUM = 'maximum'
+    MIN_ITEMS = 'minItems'
+    MAX_ITEMS = 'maxItems'
+    MIN_LENGTH = 'minLength'
+    MAX_LENGTH = 'maxLength'
 
     def self.call(node)
       {
@@ -78,7 +83,7 @@ module Plumb
     end
 
     on(:not) do |node, props|
-      props.merge('not' => visit(node.step))
+      props.merge(NOT => visit(node.step))
     end
 
     on(:value) do |node, props|
@@ -113,14 +118,52 @@ module Plumb
       visit(node.value, props)
     end
 
-    on(:rules) do |node, props|
-      node.rules.reduce(props) do |acc, rule|
-        acc.merge(visit(rule))
+    on(:policy) do |node, props|
+      props = visit(node.step, props)
+      method_name = :"visit_#{node.policy_name}_policy"
+      if respond_to?(method_name)
+        send(method_name, node, props)
+      else
+        props
       end
     end
 
-    on(:rule_included_in) do |node, props|
-      props.merge(ENUM => node.arg_value)
+    on(:options_policy) do |node, props|
+      props.merge(ENUM => node.arg)
+    end
+
+    on(:size_policy) do |node, props|
+      opts = {}
+      case props[TYPE]
+      when 'array'
+        case node.arg
+        when Range
+          opts[MIN_ITEMS] = node.arg.min if node.arg.begin
+          opts[MAX_ITEMS] = node.arg.max if node.arg.end
+        when Numeric
+          opts[MIN_ITEMS] = node.arg
+          opts[MAX_ITEMS] = node.arg
+        end
+      when 'string'
+        case node.arg
+        when Range
+          opts[MIN_LENGTH] = node.arg.min if node.arg.begin
+          opts[MAX_LENGTH] = node.arg.max if node.arg.end
+        when Numeric
+          opts[MIN_LENGTH] = node.arg
+          opts[MAX_LENGTH] = node.arg
+        end
+      end
+
+      props.merge(opts)
+    end
+
+    on(:excluded_from_policy) do |node, props|
+      props.merge(NOT => { ENUM => node.arg })
+    end
+
+    on(Proc) do |_node, props|
+      props
     end
 
     on(:match) do |node, props|

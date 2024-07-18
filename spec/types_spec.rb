@@ -335,66 +335,51 @@ RSpec.describe Plumb::Types do
     expect(with_symbol.metadata[:type]).to eq(custom)
   end
 
-  describe '#rule' do
-    specify 'rules not supported by current underlying type' do
-      custom_class = Class.new
-      custom = Types::Any.meta(type: custom_class)
-      expect do
-        custom.rule(size: 10)
-      end.to raise_error(Plumb::Rules::UnsupportedRuleError)
-    end
-
+  describe '#policy' do
     specify ':size' do
-      assert_result(Types::Array.rule(size: 2).resolve([1]), [1], false)
-      assert_result(Types::Array.rule(size: 2).resolve([1, 2]), [1, 2], true)
-      assert_result(Types::String.rule(size: 2).resolve('ab'), 'ab', true)
+      assert_result(Types::Array.policy(size: 2).resolve([1]), [1], false)
+      assert_result(Types::Array.policy(size: 2).resolve([1, 2]), [1, 2], true)
+      assert_result(Types::String.policy(size: 2).resolve('ab'), 'ab', true)
     end
 
     specify 'registering rule as :name, value' do
-      assert_result(Types::Array.rule(:size, 1).resolve([1]), [1], true)
+      assert_result(Types::Array.policy(:size, 1).resolve([1]), [1], true)
     end
 
-    specify 'with multiple host types via OR, with incompatible rule implementations' do
-      type = Types::Array | Types::Any[Object]
-      expect do
-        type.rule(size: 10)
-      end.to raise_error(Plumb::Rules::UnsupportedRuleError)
+    specify ':options' do
+      assert_result(Types::String.policy(options: %w[a b c]).resolve('b'), 'b', true)
+      assert_result(Types::String.policy(options: %w[a b c]).resolve('d'), 'd', false)
     end
 
-    specify 'with multiple host types via OR with compatible rule implementations' do
-      type = (Types::Array | Types::Hash).rule(size: 2)
-      assert_result(type.resolve([1, 2]), [1, 2], true)
-      assert_result(type.resolve({ a: 1, b: 2 }), { a: 1, b: 2 }, true)
-    end
-
-    specify ':included_in (#options)' do
-      assert_result(Types::String.rule(included_in: %w[a b c]).resolve('b'), 'b', true)
-      assert_result(Types::String.rule(included_in: %w[a b c]).resolve('d'), 'd', false)
-    end
-
-    specify ':included_in (#options) with Array' do
+    specify ':options with Array' do
       type = Types::Array.options([1, 2, 3])
       assert_result(type.resolve([1, 2]), [1, 2], true)
       assert_result(type.resolve([1, 3, 3]), [1, 3, 3], true)
       assert_result(type.resolve([1, 4, 3]), [1, 4, 3], false)
-      expect(type.metadata[:included_in]).to eq([1, 2, 3])
+      expect(type.metadata[:options]).to eq([1, 2, 3])
     end
 
     specify ':excluded_from' do
-      assert_result(Types::String.rule(excluded_from: %w[a b c]).resolve('b'), 'b', false)
-      assert_result(Types::String.rule(excluded_from: %w[a b c]).resolve('d'), 'd', true)
+      assert_result(Types::String.policy(excluded_from: %w[a b c]).resolve('b'), 'b', false)
+      assert_result(Types::String.policy(excluded_from: %w[a b c]).resolve('d'), 'd', true)
     end
 
     specify ':excluded_from with Array' do
-      assert_result(Types::Array.rule(excluded_from: %w[a b c]).resolve(%w[x z b]), %w[x z b], false)
-      assert_result(Types::Array.rule(excluded_from: %w[a b c]).resolve(%w[x z y]), %w[x z y], true)
+      assert_result(Types::Array.policy(excluded_from: %w[a b c]).resolve(%w[x z b]), %w[x z b], false)
+      assert_result(Types::Array.policy(excluded_from: %w[a b c]).resolve(%w[x z y]), %w[x z y], true)
     end
 
     specify ':respond_to' do
-      assert_result(Types::String.rule(respond_to: :strip).resolve('b'), 'b', true)
-      assert_result(Types::String.rule(respond_to: %i[strip chomp]).resolve('b'), 'b', true)
-      assert_result(Types::String.rule(respond_to: %i[strip nope]).resolve('b'), 'b', false)
-      assert_result(Types::String.rule(respond_to: :nope).resolve('b'), 'b', false)
+      assert_result(Types::String.policy(respond_to: :strip).resolve('b'), 'b', true)
+      assert_result(Types::String.policy(respond_to: %i[strip chomp]).resolve('b'), 'b', true)
+      assert_result(Types::String.policy(respond_to: %i[strip nope]).resolve('b'), 'b', false)
+      assert_result(Types::String.policy(respond_to: :nope).resolve('b'), 'b', false)
+    end
+
+    specify ':split' do
+      assert_result(Types::String.policy(:split).resolve('a,  b , c,d'), %w[a b c d], true)
+      assert_result(Types::String.policy(split: '.').resolve('a,  b.ss , c,d'), ['a,  b', 'ss , c,d'], true)
+      expect(Types::String.policy(:split).metadata[:type]).to eq(Array)
     end
   end
 
@@ -505,7 +490,7 @@ RSpec.describe Plumb::Types do
 
     specify 'pattern matching' do
       symbol = Types::Symbol
-      three_chars = Types::String.rule(size: 3)
+      three_chars = Types::String.policy(size: 3)
       [:ok, 'sup'] => [symbol => sym, three_chars => chars]
 
       expect(sym).to eq(:ok)

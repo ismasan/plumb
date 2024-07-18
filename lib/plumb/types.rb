@@ -3,24 +3,126 @@
 require 'bigdecimal'
 
 module Plumb
-  Rules.define :included_in, 'elements must be included in %<value>s', expects: ::Array do |result, opts|
-    result.value.all? { |v| opts.include?(v) }
+  # Define core policies
+  # Allowed options for an array type.
+  # It validates that each element is in the options array.
+  # Usage:
+  #   type = Types::Array.options(['a', 'b'])
+  policy :options, helper: true, for_type: ::Array do |type, opts|
+    type.check("must be included in #{opts.inspect}") do |v|
+      v.all? { |val| opts.include?(val) }
+    end
   end
-  Rules.define :included_in, 'must be included in %<value>s' do |result, opts|
-    opts.include? result.value
+
+  # Generic options policy for all other types.
+  # Usage:
+  #   type = Types::String.options(['a', 'b'])
+  policy :options do |type, opts|
+    type.check("must be included in #{opts.inspect}") do |v|
+      opts.include?(v)
+    end
   end
-  Rules.define :excluded_from, 'elements must not be included in %<value>s', expects: ::Array do |result, value|
-    result.value.all? { |v| !value.include?(v) }
+
+  # Validate that array elements are NOT in the options array.
+  # Usage:
+  #   type = Types::Array.policy(excluded_from: ['a', 'b'])
+  policy :excluded_from, for_type: ::Array do |type, opts|
+    type.check("must not be included in #{opts.inspect}") do |v|
+      v.none? { |val| opts.include?(val) }
+    end
   end
-  Rules.define :excluded_from, 'must not be included in %<value>s' do |result, value|
-    !value.include?(result.value)
+
+  # Usage:
+  #   type = Types::String.policy(excluded_from: ['a', 'b'])
+  policy :excluded_from do |type, opts|
+    type.check("must not be included in #{opts.inspect}") do |v|
+      !opts.include?(v)
+    end
   end
-  Rules.define :respond_to, 'must respond to %<value>s' do |result, value|
-    Array(value).all? { |m| result.value.respond_to?(m) }
+
+  # Validate #size against a number or any object that responds to #===.
+  # This works with any type that repsonds to #size.
+  # Usage:
+  #   type = Types::String.policy(size: 10)
+  #   type = Types::Integer.policy(size: 1..10)
+  #   type = Types::Array.policy(size: 1..)
+  #   type = Types::Any[Set].policy(size: 1..)
+  policy :size, for_type: :size do |type, size|
+    type.check("must be of size #{size}") { |v| size === v.size }
   end
-  Rules.define :size, 'must be of size %<value>s', expects: :size do |result, value|
-    value === result.value.size
+
+  # Validate that an object is not #empty? nor #nil?
+  # Usage:
+  #   Types::String.present
+  #   Types::Array.present
+  policy :present, helper: true do |type, *_args|
+    type.check('must be present') do |v|
+      if v.respond_to?(:empty?)
+        !v.empty?
+      else
+        !v.nil?
+      end
+    end
   end
+
+  # Allow nil values for a type.
+  # Usage:
+  #   nullable_int = Types::Integer.nullable
+  #   nullable_int.parse(nil) # => nil
+  #   nullable_int.parse(10)  # => 10
+  #   nullable_int.parse('nope') # => error: not an Integer
+  policy :nullable, helper: true do |type, *_args|
+    Types::Nil | type
+  end
+
+  # Validate that a value responds to a method
+  # Usage:
+  #  type = Types::Any.policy(respond_to: :upcase)
+  #  type = Types::Any.policy(respond_to: [:upcase, :strip])
+  policy :respond_to do |type, method_names|
+    type.check("must respond to #{method_names.inspect}") do |value|
+      Array(method_names).all? { |m| value.respond_to?(m) }
+    end
+  end
+
+  # Return a default value if the input value is Undefined (ie key not present in a Hash).
+  # Usage:
+  #   type = Types::String.default('default')
+  #   type.parse(Undefined) # => 'default'
+  #   type.parse('yes')     # => 'yes'
+  #
+  # Works with a block too:
+  #   date = Type::Any[Date].default { Date.today }
+  #
+  policy :default, helper: true do |type, value = Undefined, &block|
+    val_type = if value == Undefined
+                 Step.new(->(result) { result.valid(block.call) }, 'default proc')
+               else
+                 Types::Static[value]
+               end
+
+    type | (Types::Undefined >> val_type)
+  end
+
+  # Split a string into an array. Default separator is /\s*,\s*/
+  # Usage:
+  #   type = Types::String.split
+  #   type.parse('a,b,c') # => ['a', 'b', 'c']
+  #
+  # Custom separator:
+  #   type = Types::String.split(';')
+  module SplitPolicy
+    DEFAULT_SEPARATOR = /\s*,\s*/
+
+    def self.call(type, separator = DEFAULT_SEPARATOR)
+      type.invoke(:split, separator) >> Types::Array[String]
+    end
+
+    def self.for_type = ::String
+    def self.helper = false
+  end
+
+  policy :split, SplitPolicy
 
   module Types
     extend TypeRegistry
@@ -43,17 +145,6 @@ module Plumb
     Tuple = TupleClass.new
     Hash = HashClass.new
     Interface = InterfaceClass.new
-    # TODO: type-speficic concept of blank, via Rules
-    Blank = (
-      Undefined \
-      | Nil \
-      | String.value(BLANK_STRING) \
-      | Hash.value(BLANK_HASH) \
-      | Array.value(BLANK_ARRAY)
-    )
-
-    Present = Blank.invalid(errors: 'must be present')
-    Split = String.transform(::String) { |v| v.split(/\s*,\s*/) }
 
     module Lax
       NUMBER_EXPR = /^\d{1,3}(?:,\d{3})*(?:\.\d+)?$/

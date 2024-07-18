@@ -10,6 +10,7 @@ module Plumb
 
     def to_s = inspect
     def node_name = :undefined
+    def empty? = true
   end
 
   TypeError = Class.new(::TypeError)
@@ -111,7 +112,7 @@ module Plumb
     end
 
     def check(errors = 'did not pass the check', &block)
-      self >> MatchClass.new(block, error: errors)
+      self >> MatchClass.new(block, error: errors, label: errors)
     end
 
     def meta(data = {})
@@ -136,22 +137,6 @@ module Plumb
 
     def [](val) = match(val)
 
-    DefaultProc = proc do |callable|
-      proc do |result|
-        result.valid(callable.call)
-      end
-    end
-
-    def default(val = Undefined, &block)
-      val_type = if val == Undefined
-                   DefaultProc.call(block)
-                 else
-                   Types::Static[val]
-                 end
-
-      self | (Types::Undefined >> val_type)
-    end
-
     class Node
       include Steppable
 
@@ -171,29 +156,28 @@ module Plumb
       Node.new(node_name, self, metadata)
     end
 
-    def nullable
-      Types::Nil | self
-    end
+    # Register a policy for this step.
+    # Mode 1.a: #policy(:name, arg) a single policy with an argument
+    # Mode 1.b: #policy(:name) a single policy without an argument
+    # Mode 2: #policy(p1: value, p2: value) multiple policies with arguments
+    # The latter mode will be expanded to multiple #policy calls.
+    # @return [Step]
+    def policy(*args, &blk)
+      case args
+      in [::Symbol => name, *rest] # #policy(:name, arg)
+        types = Array(metadata[:type]).uniq
 
-    def present
-      Types::Present >> self
-    end
+        bargs = [self]
+        bargs << rest.first if rest.any?
+        block = Plumb.policies.get(types, name)
+        pol = block.call(*bargs, &blk)
 
-    def options(opts = [])
-      rule(included_in: opts)
-    end
-
-    def rule(*args)
-      specs = case args
-              in [::Symbol => rule_name, value]
-                { rule_name => value }
-              in [::Hash => rules]
-                rules
-              else
-                raise ArgumentError, "expected 1 or 2 arguments, but got #{args.size}"
-              end
-
-      self >> Rules.new(specs, metadata[:type])
+        Policy.new(name, rest.first, pol)
+      in [::Hash => opts] # #policy(p1: value, p2: value)
+        opts.reduce(self) { |step, (name, value)| step.policy(name, value) }
+      else
+        raise ArgumentError, "expected a symbol or hash, got #{args.inspect}"
+      end
     end
 
     def ===(other)
@@ -217,7 +201,7 @@ module Plumb
       inspect
     end
 
-    # Build a step that will invoke onr or more methods on the value.
+    # Build a step that will invoke one or more methods on the value.
     # Ex 1: Types::String.invoke(:downcase)
     # Ex 2: Types::Array.invoke(:[], 1)
     # Ex 3 chain of methods: Types::String.invoke([:downcase, :to_sym])
@@ -240,5 +224,6 @@ end
 
 require 'plumb/deferred'
 require 'plumb/transform'
+require 'plumb/policy'
 require 'plumb/build'
 require 'plumb/metadata'

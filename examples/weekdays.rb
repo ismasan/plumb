@@ -41,7 +41,7 @@ module Types
   # Ex. [1, 2, 3, 4, 5, 6, 7], [1, 2, 4], ['monday', 'tuesday', 'wednesday', 7]
   # Turn day names into numbers, and sort the array.
   Week = Array[DayNameOrNumber]
-         .rule(size: 1..7)
+         .policy(size: 1..7)
          .check('repeated days') { |days| days.uniq.size == days.size }
          .transform(::Array, &:sort)
 end

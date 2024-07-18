@@ -172,8 +172,8 @@ module Plumb
         self
       end
 
-      def rule(...)
-        @_type = @_type.rule(...)
+      def policy(...)
+        @_type = @_type.policy(...)
         self
       end
 
