@@ -137,7 +137,7 @@ More about [Types::Array](#typeshash) and [Types::Array](#typesarray). There's a
 
 ## Type composition
 
-At the core, Plumb types are little [Railway-oriented pipelines](https://ismaelcelis.com/posts/composable-pipelines-in-ruby/) that can be composed together with _and_, _or_ and _not_ semantics. Everything else builds on top of these two ideas.
+At the core, Plumb types are little [Railway-oriented pipelines](https://ismaelcelis.com/posts/composable-pipelines-in-ruby/) that can be composed together with _AND_, _OR_ and _NOT_ semantics. Everything else builds on top of these two ideas.
 
 ### Composing types with `#>>` ("And")
 
