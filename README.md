@@ -149,7 +149,13 @@ Greeting = Email >> ->(result) { result.valid("Your email is #{result.value}") }
 Greeting.parse('joe@bloggs.com') # "Your email is joe@bloggs.com"
 ```
 
+Similar to Ruby's built-in [function composition](https://thoughtbot.com/blog/proc-composition-in-ruby), `#>>` pipes the output of a "type" to the input of the next type. However, if a type returns an "invalid" result, the chain is halted there and subsequent steps are never run. 
+
+In other words, `A >> B` means "if A succeeds, pass its result to B. Otherwise return A's failed result."
+
 ### Disjunction with `#|` ("Or")
+
+`A | B` means "if A returns a valid result, return that. Otherwise try B with the original input."
 
 ```ruby
 StringOrInt = Types::String | Types::Integer
@@ -167,6 +173,10 @@ EmailOrDefault.parse('nope') # "no email"
 ```
 
 ## Composing with `#>>` and `#|`
+
+Combine `#>>` and `#|` to compose branching workflows, or types that accept and output several possible data types.
+
+`((A >> B) | C | D) >> E)`
 
 This more elaborate example defines a combination of types which, when composed together with `>>` and `|`, can coerce strings or integers into Money instances with currency. It also shows some of the built-in [policies](#policies) or helpers.
 
