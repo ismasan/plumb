@@ -222,7 +222,6 @@ You can see more use cases in [the examples directory](https://github.com/ismasa
 * `Types::Interface`
 * `Types::False`
 * `Types::Tuple`
-* `Types::Split`
 * `Types::Any`
 * `Types::Static`
 * `Types::Undefined`
@@ -239,7 +238,7 @@ You can see more use cases in [the examples directory](https://github.com/ismasa
 * `Types::Forms::True`
 * `Types::Forms::False`
 
-
+TODO: date and datetime, UUIDs, Email, others.
 
 ### Policies
 
@@ -1092,7 +1091,17 @@ schema = Plumb::JSONSchemaVisitor.visit(type) # { 'not' => { 'type' => 'number' 
 
 TODO. See `Plumb::JSONSchemaVisitor`.
 
+## TODO:
 
+[ ] benchmarks and performace. Compare with `Parametric`, `ActiveModel::Attributes`, `ActionController::StrongParameters`
+
+[ ] flesh out `Plumb::Schema`
+
+[ ] `Plumb::Struct`
+
+[ ] flesh out and document `Plumb::Pipeline`
+
+[ ] document custom visitors
 
 ## Development
 
