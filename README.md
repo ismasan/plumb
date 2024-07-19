@@ -983,7 +983,7 @@ MyType = Types::String >> Greeting.new('Hola')
 
 This is useful when you want to parameterize your custom steps, for example by initialising them with arguments like the example above.
 
-#### Mixin `Plumb::Composable` to make a class a full Step
+#### Mix in `Plumb::Composable` to make a class a full Step
 
 The class above will be wrapped by `Plumb::Step` when piped into other steps, but it doesn't support Plumb methods on its own.
 
