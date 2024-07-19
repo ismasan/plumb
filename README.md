@@ -1093,15 +1093,11 @@ TODO. See `Plumb::JSONSchemaVisitor`.
 
 ## TODO:
 
-[ ] benchmarks and performace. Compare with `Parametric`, `ActiveModel::Attributes`, `ActionController::StrongParameters`
-
-[ ] flesh out `Plumb::Schema`
-
-[ ] `Plumb::Struct`
-
-[ ] flesh out and document `Plumb::Pipeline`
-
-[ ] document custom visitors
+- [ ] benchmarks and performace. Compare with `Parametric`, `ActiveModel::Attributes`, `ActionController::StrongParameters`
+- [ ] flesh out `Plumb::Schema`
+- [ ] `Plumb::Struct`
+- [ ] flesh out and document `Plumb::Pipeline`
+- [ ] document custom visitors
 
 ## Development
 
