@@ -924,6 +924,16 @@ LinkedList = Types::Hash[
 
 ### Custom types
 
+Every Plumb type exposes the following one-method interface:
+
+```
+#call(Result::Valid) => Result::Valid | Result::Invalid
+```
+
+As long as an object implements this interface, it can be composed into Plumb workflows.
+
+The `Result::Valid` class has helper methods `#valid(value) => Result::Valid` and `#invalid(errors:) => Result::Invalid` to facilitate returning valid or invalid values from your own steps.
+
 Compose procs or lambdas directly
 
 ```ruby
@@ -938,6 +948,9 @@ class Greeting
     @gr = gr
   end
 
+  # The Plumb Step interface
+  # @param result [Plumb::Result::Valid]
+  # @return [Plumb::Result::Valid, Plumb::Result::Invalid]
   def call(result)
     result.valid("#{gr} #{result.value}")
   end
@@ -945,6 +958,8 @@ end
 
 MyType = Types::String >> Greeting.new('Hola')
 ```
+
+
 
 ### Custom policies
 
@@ -971,8 +986,6 @@ The `#policy` helper supports applying multiply policies.
 ```ruby
 Types::String.policy(default_if_nil: 'nothing here', size: (10..20))
 ```
-
-
 
 #### Policies as helper methods
 
@@ -1041,6 +1054,8 @@ Plumb.policy :split, SplitPolicy
 ```
 
 ### JSON Schema
+
+Plumb ships with a JSON schema visitor that compiles a type composition into a JSON Schema Hash.
 
 ```ruby
 User = Types::Hash[
