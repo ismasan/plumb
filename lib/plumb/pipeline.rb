@@ -1,13 +1,13 @@
 # frozen_string_literal: true
 
-require 'plumb/steppable'
+require 'plumb/composable'
 
 module Plumb
   class Pipeline
-    include Steppable
+    include Composable
 
     class AroundStep
-      include Steppable
+      include Composable
 
       def initialize(step, block)
         @step = step

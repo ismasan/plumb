@@ -43,7 +43,7 @@ module Plumb
     end
   end
 
-  module Steppable
+  module Composable
     include Callable
 
     def self.included(base)
@@ -56,7 +56,7 @@ module Plumb
     end
 
     def self.wrap(callable)
-      if callable.is_a?(Steppable)
+      if callable.is_a?(Composable)
         callable
       elsif callable.is_a?(::Hash)
         HashClass.new(schema: callable)
@@ -100,11 +100,11 @@ module Plumb
     end
 
     def >>(other)
-      And.new(self, Steppable.wrap(other))
+      And.new(self, Composable.wrap(other))
     end
 
     def |(other)
-      Or.new(self, Steppable.wrap(other))
+      Or.new(self, Composable.wrap(other))
     end
 
     def transform(target_type, callable = nil, &block)
@@ -138,7 +138,7 @@ module Plumb
     def [](val) = match(val)
 
     class Node
-      include Steppable
+      include Composable
 
       attr_reader :node_name, :type, :attributes
 
@@ -182,7 +182,7 @@ module Plumb
 
     def ===(other)
       case other
-      when Steppable
+      when Composable
         other == self
       else
         resolve(other).valid?

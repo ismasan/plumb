@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require 'plumb/steppable'
+require 'plumb/composable'
 require 'plumb/key'
 require 'plumb/static_class'
 require 'plumb/hash_map'
@@ -8,7 +8,7 @@ require 'plumb/tagged_hash'
 
 module Plumb
   class HashClass
-    include Steppable
+    include Composable
 
     attr_reader :_schema
 
@@ -31,7 +31,7 @@ module Plumb
       in [::Hash => hash]
         self.class.new(schema: _schema.merge(wrap_keys_and_values(hash)), inclusive: @inclusive)
       in [key_type, value_type]
-        HashMap.new(Steppable.wrap(key_type), Steppable.wrap(value_type))
+        HashMap.new(Composable.wrap(key_type), Composable.wrap(value_type))
       else
         raise ::ArgumentError, "unexpected value to Types::Hash#schema #{args.inspect}"
       end
@@ -138,7 +138,7 @@ module Plumb
       when Callable
         hash
       else #  leaf values
-        Steppable.wrap(hash)
+        Composable.wrap(hash)
       end
     end
 

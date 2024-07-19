@@ -1,18 +1,18 @@
 # frozen_string_literal: true
 
 require 'concurrent'
-require 'plumb/steppable'
+require 'plumb/composable'
 require 'plumb/result'
 require 'plumb/stream_class'
 
 module Plumb
   class ArrayClass
-    include Steppable
+    include Composable
 
     attr_reader :element_type
 
     def initialize(element_type: Types::Any)
-      @element_type = Steppable.wrap(element_type)
+      @element_type = Composable.wrap(element_type)
 
       freeze
     end

@@ -2,7 +2,7 @@
 
 module Plumb
   class Metadata
-    include Steppable
+    include Composable
 
     attr_reader :metadata
 

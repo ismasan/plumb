@@ -1,10 +1,10 @@
 # frozen_string_literal: true
 
-require 'plumb/steppable'
+require 'plumb/composable'
 
 module Plumb
   class HashMap
-    include Steppable
+    include Composable
 
     attr_reader :key_type, :value_type
 
@@ -41,7 +41,7 @@ module Plumb
     private def _inspect = "HashMap[#{@key_type.inspect}, #{@value_type.inspect}]"
 
     class FilteredHashMap
-      include Steppable
+      include Composable
 
       attr_reader :key_type, :value_type
 

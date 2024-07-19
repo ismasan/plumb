@@ -983,17 +983,17 @@ MyType = Types::String >> Greeting.new('Hola')
 
 This is useful when you want to parameterize your custom steps, for example by initialising them with arguments like the example above.
 
-#### Mixin `Plumb::Steppable` to make a class a full Step
+#### Mixin `Plumb::Composable` to make a class a full Step
 
 The class above will be wrapped by `Plumb::Step` when piped into other steps, but it doesn't support Plumb methods on its own.
 
-Including `Plumb::Steppable` makes it support all Plumb methods directly.
+Including `Plumb::Composable` makes it support all Plumb methods directly.
 
 ```ruby
 class Greeting
   # This module mixes in Plumb methods such as #>>, #|, #default, #[], 
   # #transform, #policy, etc etc
-  include Plumb::Steppable
+  include Plumb::Composable
   
   def initialize(gr = 'Hello')
     @gr = gr

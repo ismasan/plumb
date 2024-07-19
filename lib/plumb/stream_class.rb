@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require 'thread'
-require 'plumb/steppable'
+require 'plumb/composable'
 
 module Plumb
   # A stream that validates each element.
@@ -15,18 +15,18 @@ module Plumb
   #     result.value # => ['name', 10]
   #   end
   class StreamClass
-    include Steppable
+    include Composable
 
     attr_reader :element_type
 
-    # @option element_type [Steppable] the type of the elements in the stream
+    # @option element_type [Composable] the type of the elements in the stream
     def initialize(element_type: Types::Any)
-      @element_type = Steppable.wrap(element_type)
+      @element_type = Composable.wrap(element_type)
       freeze
     end
 
     # return a new Stream definition.
-    # @param element_type [Steppable] the type of the elements in the stream
+    # @param element_type [Composable] the type of the elements in the stream
     def [](element_type)
       self.class.new(element_type:)
     end

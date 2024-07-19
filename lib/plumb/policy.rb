@@ -1,13 +1,13 @@
 # frozen_string_literal: true
 
-require 'plumb/steppable'
+require 'plumb/composable'
 
 module Plumb
   # Wrap a policy composition ("step") in a Policy object.
   # So that visitors such as JSONSchema and Metadata visitors
   # can define dedicated handlers for policies, if they need to.
   class Policy
-    include Steppable
+    include Composable
 
     attr_reader :policy_name, :arg, :step
 

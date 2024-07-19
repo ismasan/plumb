@@ -7,7 +7,7 @@ module Plumb
       case obj
       when Module
         obj.extend TypeRegistry
-      when Steppable
+      when Composable
         anc = [name, const_name].join('::')
         obj.freeze.name.set(anc)
       end
@@ -26,7 +26,7 @@ module Plumb
           end
           child_mod.send(:include, const)
           host.const_set(const_name, child_mod)
-        when Steppable
+        when Composable
           type = const.dup
           type.freeze.name.set(anc)
           host.const_set(const_name, type)

@@ -1,15 +1,15 @@
 # frozen_string_literal: true
 
-require 'plumb/steppable'
+require 'plumb/composable'
 
 module Plumb
   class TupleClass
-    include Steppable
+    include Composable
 
     attr_reader :types
 
     def initialize(*types)
-      @types = types.map { |t| Steppable.wrap(t) }
+      @types = types.map { |t| Composable.wrap(t) }
       freeze
     end
 

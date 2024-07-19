@@ -1,10 +1,10 @@
 # frozen_string_literal: true
 
-require 'plumb/steppable'
+require 'plumb/composable'
 
 module Plumb
   class Step
-    include Steppable
+    include Composable
 
     attr_reader :_metadata
 

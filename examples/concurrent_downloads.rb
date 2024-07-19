@@ -38,7 +38,7 @@ module Types
     # Wrap the #reader and #wruter methods into Plumb steps
     # A step only needs #call(Result) => Result to work in a pipeline,
     # but wrapping it in Plumb::Step provides the #>> and #| methods for composability,
-    # as well as all the other helper methods provided by the Steppable module.
+    # as well as all the other helper methods provided by the Composable module.
     def read = Plumb::Step.new(method(:reader))
     def write = Plumb::Step.new(method(:writer))
 

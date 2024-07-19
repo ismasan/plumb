@@ -1,10 +1,10 @@
 # frozen_string_literal: true
 
-require 'plumb/steppable'
+require 'plumb/composable'
 
 module Plumb
   class Transform
-    include Steppable
+    include Composable
 
     attr_reader :target_type
 

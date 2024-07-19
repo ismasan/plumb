@@ -5,13 +5,13 @@ require 'plumb/json_schema_visitor'
 
 module Plumb
   class Schema
-    include Steppable
+    include Composable
 
     def self.wrap(sch = nil, &block)
       raise ArgumentError, 'expected a block or a schema' if sch.nil? && !block_given?
 
       if sch
-        raise ArgumentError, 'expected a Steppable' unless sch.is_a?(Steppable)
+        raise ArgumentError, 'expected a Composable' unless sch.is_a?(Composable)
 
         return sch
       end
@@ -120,7 +120,7 @@ module Plumb
                    block_given? ? ArrayClass.new(element_type: Schema.new(&block)) : type
                  when nil
                    block_given? ? Schema.new(&block) : Types::Any
-                 when Steppable
+                 when Composable
                    type
                  when Class
                    if type == Array && block_given?

@@ -10,7 +10,7 @@ module Plumb
   end
 
   # Register a policy with the given name and block.
-  # Optionally define a method on the Steppable method to call the policy.
+  # Optionally define a method on the Composable method to call the policy.
   # Example:
   #   Plumb.policy(:multiply_by, for_type: Integer, helper: true) do |step, factor, &block|
   #     step.transform(Integer) { |number| number * factor }
@@ -39,11 +39,11 @@ module Plumb
 
     return self unless helper
 
-    if Steppable.instance_methods.include?(name)
-      raise Policies::MethodAlreadyDefinedError, "Method #{name} is already defined on Steppable"
+    if Composable.instance_methods.include?(name)
+      raise Policies::MethodAlreadyDefinedError, "Method #{name} is already defined on Composable"
     end
 
-    Steppable.define_method(name) do |arg = Undefined, &bl|
+    Composable.define_method(name) do |arg = Undefined, &bl|
       if arg == Undefined
         policy(name, &bl)
       else
@@ -57,7 +57,7 @@ end
 
 require 'plumb/result'
 require 'plumb/type_registry'
-require 'plumb/steppable'
+require 'plumb/composable'
 require 'plumb/any_class'
 require 'plumb/step'
 require 'plumb/and'

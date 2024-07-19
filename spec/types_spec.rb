@@ -275,8 +275,8 @@ RSpec.describe Plumb::Types do
       assert_result(pipeline.resolve('nope'), 'nope', false)
     end
 
-    it 'is a Steppable and can be further composed' do
-      expect(pipeline).to be_a(Plumb::Steppable)
+    it 'is a Composable and can be further composed' do
+      expect(pipeline).to be_a(Plumb::Composable)
       pipeline2 = pipeline.pipeline do |pl|
         pl.step { |r| r.valid(r.value + ' the end') }
       end

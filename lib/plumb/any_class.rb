@@ -1,13 +1,13 @@
 # frozen_string_literal: true
 
-require 'plumb/steppable'
+require 'plumb/composable'
 
 module Plumb
   class AnyClass
-    include Steppable
+    include Composable
 
-    def |(other) = Steppable.wrap(other)
-    def >>(other) = Steppable.wrap(other)
+    def |(other) = Composable.wrap(other)
+    def >>(other) = Composable.wrap(other)
 
     # Any.default(value) must trigger default when value is Undefined
     def default(...)

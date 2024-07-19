@@ -1,10 +1,10 @@
 # frozen_string_literal: true
 
-require 'plumb/steppable'
+require 'plumb/composable'
 
 module Plumb
   class MatchClass
-    include Steppable
+    include Composable
 
     attr_reader :matcher
 

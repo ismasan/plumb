@@ -4,7 +4,7 @@ require 'thread'
 
 module Plumb
   class Deferred
-    include Steppable
+    include Composable
 
     def initialize(definition)
       @lock = Mutex.new
