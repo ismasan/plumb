@@ -933,13 +933,36 @@ As long as an object implements this interface, it can be composed into Plumb wo
 
 The `Result::Valid` class has helper methods `#valid(value) => Result::Valid` and `#invalid(errors:) => Result::Invalid` to facilitate returning valid or invalid values from your own steps.
 
-Compose procs or lambdas directly
+#### Compose procs or lambdas directly
+
+Piping any `#call` object onto Plumb types will wrap your object in a `Plumb::Step` with all methods necessary for further composition.
 
 ```ruby
 Greeting = Types::String >> ->(result) { result.valid("Hello #{result.value}") }
 ```
 
-or a custom class that responds to `#call(Result::Valid) => Result::Valid | Result::Invalid`
+#### Wrap a `#call` object in `Plumb::Step` explicitely
+
+You can also wrap a proc in `Plumb::Step` explicitly.
+
+```ruby
+Greeting = Plumb::Step.new do |result|
+  result.valid("Hello #{result.value}")
+end
+```
+
+Note that this example is not prefixed by `Types::String`, so it doesn't first validate that the input is indeed a string.
+
+However, this means that `Greeting` is a `Plumb::Step` which comes with all the Plumb methods and policies.
+
+```ruby
+# Greeting responds to #>>, #|, #default, #transform, etc etc
+LoudGreeting = Greeting.default('no greeting').invoke(:upcase)
+```
+
+#### A custom `#call` class
+
+Or write a custom class that responds to `#call(Result::Valid) => Result::Valid | Result::Invalid`
 
 ```ruby
 class Greeting
@@ -956,6 +979,40 @@ class Greeting
 end
 
 MyType = Types::String >> Greeting.new('Hola')
+```
+
+This is useful when you want to parameterize your custom steps, for example by initialising them with arguments like the example above.
+
+#### Mixin `Plumb::Steppable` to make a class a full Step
+
+The class above will be wrapped by `Plumb::Step` when piped into other steps, but it doesn't support Plumb methods on its own.
+
+Including `Plumb::Steppable` makes it support all Plumb methods directly.
+
+```ruby
+class Greeting
+  # This module mixes in Plumb methods such as #>>, #|, #default, #[], 
+  # #transform, #policy, etc etc
+  include Plumb::Steppable
+  
+  def initialize(gr = 'Hello')
+    @gr = gr
+  end
+  
+  # The Step interface
+  def call(result)
+    result.valid("#{gr} #{result.value}")
+  end
+  
+  # This is optional, but it allows you to control your object's #inspect
+  private def _inspect = "Greeting[#{@gr}]"
+end
+```
+
+Now you can use your class as a composition starting point directly.
+
+```ruby
+LoudGreeting = Greeting.new('Hola').default('no greeting').invoke(:upcase)
 ```
 
 
