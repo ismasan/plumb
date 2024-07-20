@@ -53,8 +53,8 @@ Use `#[]` to make your types match a class.
 module Types
   include Plumb::Types
   
-  String = Types::Any[::String]
-  Integer = Types::Any[::Integer]
+  String = Any[::String]
+  Integer = Any[::Integer]
 end
 
 Types::String.parse("hello") # => "hello"
