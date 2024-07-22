@@ -188,31 +188,31 @@ RSpec.describe Plumb::Types do
     expect(failed.errors).to eq(['Must be a String', 'Must be a Integer'])
   end
 
-  specify '#meta' do
-    to_s = Types::Any.transform(::String, &:to_s).meta(type: :string)
-    to_i = Types::Any.transform(::Integer, &:to_i).meta(type: :integer).meta(foo: 'bar')
+  specify '#metadata as a setter' do
+    to_s = Types::Any.transform(::String, &:to_s).metadata(type: :string)
+    to_i = Types::Any.transform(::Integer, &:to_i).metadata(type: :integer).metadata(foo: 'bar')
     pipe = to_s >> to_i
     expect(to_s.metadata[:type]).to eq(:string)
     expect(pipe.metadata[:type]).to eq(:integer)
     expect(pipe.metadata[:foo]).to eq('bar')
   end
 
-  describe '#metadata' do
+  describe '#metadata as a getter' do
     specify 'AND (>>) chains' do
-      type = Types::String >> Types::Integer.meta(foo: 'bar')
+      type = Types::String >> Types::Integer.metadata(foo: 'bar')
       expect(type.metadata).to eq({ type: ::Integer, foo: 'bar' })
     end
 
     specify 'OR (|) chains' do
-      type = Types::String | Types::Integer.meta(foo: 'bar')
+      type = Types::String | Types::Integer.metadata(foo: 'bar')
       expect(type.metadata).to eq({ type: [::String, ::Integer], foo: 'bar' })
     end
 
     specify 'AND (>>) with OR (|)' do
-      type = Types::String >> (Types::Integer | Types::Boolean).meta(foo: 'bar')
+      type = Types::String >> (Types::Integer | Types::Boolean).metadata(foo: 'bar')
       expect(type.metadata).to eq({ type: [::Integer, 'boolean'], foo: 'bar' })
 
-      type = Types::String | (Types::Integer >> Types::Boolean).meta(foo: 'bar')
+      type = Types::String | (Types::Integer >> Types::Boolean).metadata(foo: 'bar')
       expect(type.metadata).to eq({ type: [::String, 'boolean'], foo: 'bar' })
     end
   end
@@ -264,7 +264,7 @@ RSpec.describe Plumb::Types do
     end
 
     specify '#metadata' do
-      pipe = pipeline.meta(foo: 'bar')
+      pipe = pipeline.metadata(foo: 'bar')
       expect(pipe.metadata).to include({ type: Integer, foo: 'bar' })
     end
 
@@ -619,7 +619,7 @@ RSpec.describe Plumb::Types do
     end
 
     specify '#metadata' do
-      type = Types::Array[Types::Boolean].meta(foo: 1)
+      type = Types::Array[Types::Boolean].metadata(foo: 1)
       expect(type.metadata).to eq(type: Array, foo: 1)
     end
 

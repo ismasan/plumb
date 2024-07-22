@@ -8,7 +8,7 @@ RSpec.describe Plumb::JSONSchemaVisitor do
 
   specify 'simplest possible case with one-level keys and types' do
     type = Types::Hash[
-      name: Types::String.meta(description: 'the name'),
+      name: Types::String.metadata(description: 'the name'),
       age?: Types::Integer
     ]
 

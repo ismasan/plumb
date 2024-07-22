@@ -23,10 +23,6 @@ module Plumb
   NOOP = ->(result) { result }
 
   module Callable
-    def metadata
-      MetadataVisitor.call(self)
-    end
-
     def resolve(value = Undefined)
       call(Result.wrap(value))
     end
@@ -115,8 +111,12 @@ module Plumb
       self >> MatchClass.new(block, error: errors, label: errors)
     end
 
-    def meta(data = {})
-      self >> Metadata.new(data)
+    def metadata(data = Undefined)
+      if data == Undefined
+        MetadataVisitor.call(self)
+      else
+        self >> Metadata.new(data)
+      end
     end
 
     def not(other = self)
