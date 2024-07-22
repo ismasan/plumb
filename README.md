@@ -689,7 +689,7 @@ InputHandler.parse(price: 100_000, name: 'iPhone 15', category: 'smartphones')
 The `#filtered` modifier returns a valid Hash with the subset of values that were valid, instead of failing the entire result if one or more values are invalid.
 
 ```ruby
-User = Types::Hash[name: String, age: Integer]
+User = Types::Hash[name: String, age: Integer].filtered
 User.parse(name: 'Joe', age: 40) # => { name: 'Joe', age: 40 }
 User.parse(name: 'Joe', age: 'nope') # => { name: 'Joe' }
 ```
