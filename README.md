@@ -641,11 +641,9 @@ intersection = User & Employee # Hash[:name]
 
 Use `#tagged_by` to resolve what definition to use based on the value of a common key.
 
-Key used as index must be a `Types::Static`
-
 ```ruby
-NameUpdatedEvent = Types::Hash[type: Types::Static['name_updated'], name: Types::String]
-AgeUpdatedEvent = Types::Hash[type: Types::Static['age_updated'], age: Types::Integer]
+NameUpdatedEvent = Types::Hash[type: 'name_updated', name: Types::String]
+AgeUpdatedEvent = Types::Hash[type: 'age_updated', age: Types::Integer]
 
 Events = Types::Hash.tagged_by(
   :type,
