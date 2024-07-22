@@ -1058,6 +1058,18 @@ StringWithDefault = Types::String.default_if_nil('nothing here')
 
 Many built-in helpers such as `#default` and `#options` are implemented as policies. This means that you can overwrite their default behaviour by defining a policy with the same name (use with caution!).
 
+This other example adds a boolean to type metadata.
+
+```ruby
+Plumb.policy :admin, helper: true do |type|
+  type.metadata(admin: true)
+end
+
+# Usage: annotate fields in a schema
+AccountName = Types::String.admin
+AccountName.metadata # => { type: String, admin: true }
+```
+
 #### Type-specific policies
 
 You can use the `for_type:` option to define policies that only apply to steps that output certain types. This example only applies for types that return `Integer` values.
