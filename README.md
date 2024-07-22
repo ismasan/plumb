@@ -336,7 +336,7 @@ UpcaseToSym = Types::String.invoke(%i[downcase to_sym])
 UpcaseToSym.parse('FOO_BAR') # :foo_bar
 ```
 
-That that, as opposed to `#transform`, this modified does not register a type in `#metadata[:type]`, which can be valuable for introspection or documentation (ex. JSON Schema).
+Note, as opposed to `#transform`, this helper does not register a type in `#metadata[:type]`, which can be valuable for introspection or documentation (ex. JSON Schema).
 
 Also, there's no definition-time checks that the method names are actually supported by the input values.
 
