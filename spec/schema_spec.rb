@@ -323,7 +323,7 @@ RSpec.describe Plumb::Schema do
   end
 
   specify 'Field#meta' do
-    field = described_class::Field.new(:name, Types::String).meta(foo: 1).meta(bar: 2)
+    field = described_class::Field.new(:name, Types::String).metadata(foo: 1).metadata(bar: 2)
     expect(field.metadata).to eq(type: ::String, foo: 1, bar: 2)
     expect(field.metadata).to eq(field.metadata)
   end

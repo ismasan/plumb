@@ -443,19 +443,21 @@ All scalar types support this:
 ten = Types::Integer.value(10)
 ```
 
-### `#meta` and `#metadata`
+### `#metadata`
 
 Add metadata to a type
 
 ```ruby
-type = Types::String.meta(description: 'A long text')
+# A new type with metadata
+type = Types::String.metadata(description: 'A long text')
+# Read a type's metadata
 type.metadata[:description] # 'A long text'
 ```
 
 `#metadata` combines keys from type compositions.
 
 ```ruby
-type = Types::String.meta(description: 'A long text') >> Types::String.match(/@/).meta(note: 'An email address')
+type = Types::String.metadata(description: 'A long text') >> Types::String.match(/@/).metadata(note: 'An email address')
 type.metadata[:description] # 'A long text'
 type.metadata[:note] # 'An email address'
 ```

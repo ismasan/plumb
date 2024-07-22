@@ -140,12 +140,13 @@ module Plumb
         self
       end
 
-      def meta(md = nil)
-        @_type = @_type.meta(md) if md
-        self
+      def metadata(data = Undefined)
+        if data == Undefined
+          @_type.metadata
+        else
+          @_type = @_type.metadata(data)
+        end
       end
-
-      def metadata = @_type.metadata
 
       def options(opts)
         @_type = @_type.options(opts)
