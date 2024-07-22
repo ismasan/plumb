@@ -168,11 +168,15 @@ module Plumb
         types = Array(metadata[:type]).uniq
 
         bargs = [self]
-        bargs << rest.first if rest.any?
+        arg = Undefined
+        if rest.any?
+          bargs << rest.first
+          arg = rest.first
+        end
         block = Plumb.policies.get(types, name)
         pol = block.call(*bargs, &blk)
 
-        Policy.new(name, rest.first, pol)
+        Policy.new(name, arg, pol)
       in [::Hash => opts] # #policy(p1: value, p2: value)
         opts.reduce(self) { |step, (name, value)| step.policy(name, value) }
       else

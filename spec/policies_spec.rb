@@ -20,6 +20,15 @@ RSpec.describe Plumb do
     Plumb.policy :the_size, for_type: :size do |type, size|
       type.check("must be of size #{size}") { |v| size === v.size }
     end
+
+    Plumb.policy :admin, helper: true do |type|
+      type.metadata(admin: true)
+    end
+  end
+
+  it 'works with #metadata' do
+    type = Types::String.admin
+    expect(type.metadata[:admin]).to be(true)
   end
 
   it 'registers a helper method' do

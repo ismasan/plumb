@@ -82,7 +82,9 @@ module Plumb
     end
 
     on(:policy) do |node, props|
-      visit(node.step, props).merge(node.policy_name => node.arg)
+      props = visit(node.step, props)
+      props = props.merge(node.policy_name => node.arg) unless node.arg == Plumb::Undefined
+      props
     end
 
     on(:rules) do |node, props|
