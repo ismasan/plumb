@@ -1104,7 +1104,7 @@ DoubledMoney = Types::Any[Money].multiply_by(2)
 
 #### Self-contained policy modules
 
-You can register a module, class or module with a three-method interface as a policy. This is so that policies can have their own namespace if they need local constants or private methods. For example, this is how the `:split` policy for strings is defined.
+You can register a module, class or object with a three-method interface as a policy. This is so that policies can have their own namespace if they need local constants or private methods. For example, this is how the `:split` policy for strings is defined.
 
 ```ruby
 module SplitPolicy
@@ -1167,6 +1167,7 @@ TODO. See `Plumb::JSONSchemaVisitor`.
 - [ ] `Plumb::Struct`
 - [ ] flesh out and document `Plumb::Pipeline`
 - [ ] document custom visitors
+- [ ] Improve errors, support I18n ?
 
 ## Development
 
