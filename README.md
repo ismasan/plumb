@@ -754,7 +754,7 @@ emails = Types::Array[/@/]
 emails = Types::Array[Types::String[/@/]]
 ```
 
-Prefer the latter (`Types::Array[Types::String[/@/]]`), as that first validates that each element is a `String` before matching agains the regular expression.
+Prefer the latter (`Types::Array[Types::String[/@/]]`), as that first validates that each element is a `String` before matching against the regular expression.
 
 #### Concurrent arrays
 
