@@ -556,7 +556,7 @@ RSpec.describe Plumb::Types do
       assert_result(Types::Array.resolve([]), [], true)
     end
 
-    specify '#of' do
+    specify '#[element_type]' do
       assert_result(
         Types::Array[Types::Boolean].resolve([true, true, false]),
         [true, true, false],
@@ -575,7 +575,15 @@ RSpec.describe Plumb::Types do
       end
     end
 
-    specify '#of with unions' do
+    specify '#[] with some invalid values' do
+      assert_result(
+        Types::Array[Types::Lax::Integer].resolve(%w[10 nope 20]),
+        [10, 'nope', 20],
+        false
+      )
+    end
+
+    specify '#[] with unions' do
       assert_result(
         Types::Array.of(Types::Any.value('a') | Types::Any.value('b')).resolve(%w[a b a]),
         %w[a b a],

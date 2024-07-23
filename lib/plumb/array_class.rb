@@ -47,7 +47,7 @@ module Plumb
       values, errors = map_array_elements(result.value)
       return result.valid(values) unless errors.any?
 
-      result.invalid(errors:)
+      result.invalid(values, errors:)
     end
 
     private
