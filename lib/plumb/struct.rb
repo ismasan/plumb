@@ -15,6 +15,10 @@ module Plumb
       end
     end
 
+    def ==(other)
+      other.is_a?(self.class) && other.attributes == attributes
+    end
+
     def valid? = errors.none?
 
     def inspect
