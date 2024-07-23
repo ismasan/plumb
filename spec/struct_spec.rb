@@ -127,4 +127,13 @@ RSpec.describe Plumb::Struct do
     expect(user.friend.errors[:email]).to eq('Must match /.+@.+/')
     expect(user.errors[:company]).to eq(['Must be a Hash of attributes'])
   end
+
+  specify '#with' do
+    user1 = Types::StaffMember.new(name: 'Jane', age: 20)
+    user2 = user1.with(name: 'John')
+    expect(user1.name).to eq 'Jane'
+    expect(user1.age).to eq 20
+    expect(user2.name).to eq 'John'
+    expect(user2.age).to eq 20
+  end
 end

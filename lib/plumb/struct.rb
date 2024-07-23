@@ -27,8 +27,14 @@ module Plumb
 
     def valid? = errors.none?
 
+    def with(attrs = BLANK_HASH)
+      self.class.new(attributes.merge(attrs))
+    end
+
     def inspect
-      %(#<#{self.class}:#{object_id} #{attributes.map { |k, v| [k, v.inspect].join(': ') }.join(' ')}>)
+      %(#<#{self.class}:#{object_id} [#{valid? ? 'valid' : 'invalid'}] #{attributes.map do |k, v|
+                                                                           [k, v.inspect].join(': ')
+                                                                         end.join(' ')}>)
     end
 
     class << self
