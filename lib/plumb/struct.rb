@@ -6,12 +6,18 @@ module Plumb
 
     def initialize(attrs = {})
       @errors = {}
-      @attributes = self.class.attribute_specs.each_with_object({}) do |(name, type), hash|
-        name = name.to_sym
-        value = attrs.key?(name) ? attrs[name] : Plumb::Undefined
-        result = type.resolve(value)
-        @errors[name] = result.errors unless result.valid?
-        hash[name] = result.value
+      @attributes = self.class.attribute_specs.each_with_object({}) do |(key, type), hash|
+        name = key.to_sym
+        if attrs.key?(name)
+          value = attrs[name]
+          result = type.resolve(value)
+          @errors[name] = result.errors unless result.valid?
+          hash[name] = result.value
+        elsif !key.optional?
+          result = type.resolve(Undefined)
+          @errors[name] = result.errors unless result.valid?
+          hash[name] = result.value
+        end
       end
     end
 
@@ -45,6 +51,7 @@ module Plumb
       # attribute(:friends, Types::Array[Person])
       #
       def attribute(name, *args, &block)
+        key = Key.wrap(name)
         name = name.to_sym
 
         type = case args
@@ -80,8 +87,12 @@ module Plumb
                  raise ArgumentError, "Invalid arguments: #{args.inspect}"
                end
 
-        attribute_specs[name] = type
+        attribute_specs[key] = type
         define_method(name) { @attributes[name] }
+      end
+
+      def attribute?(name, *args, &block)
+        attribute(Key.new(name, optional: true), *args, &block)
       end
 
       def __set_nested_class__(name, klass)

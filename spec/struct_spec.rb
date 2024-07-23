@@ -30,6 +30,7 @@ module Types
   end
 
   class Office < Plumb::Struct
+    attribute? :director, StaffMember
     attribute :staff, Array[StaffMember]
   end
 end
@@ -84,6 +85,16 @@ RSpec.describe Plumb::Struct do
 
     expect(user1 == user2).to be true
     expect(user1 == user3).to be false
+  end
+
+  specify 'optional attributes' do
+    office = Types::Office.new(staff: [])
+    expect(office.valid?).to be true
+    expect(office.director).to eq(nil)
+
+    office = Types::Office.new(director: { name: 'Mr. Burns', age: 100 }, staff: [])
+    expect(office.valid?).to be true
+    expect(office.director).to eq(Types::StaffMember.new(name: 'Mr. Burns', age: 100))
   end
 
   specify 'Array[StructType]' do
