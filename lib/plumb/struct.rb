@@ -87,7 +87,7 @@ module Plumb
                  __set_nested_class__(name, sub)
                  Plumb::Composable.wrap(sub)
                in [Plumb::ArrayClass => type]
-                 sub = type.element_type
+                 sub = type.children.first
                  if sub == Plumb::Types::Any
                    if block_given?
                      sub = Class.new(Plumb::Struct)
