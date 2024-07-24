@@ -6,11 +6,10 @@ module Plumb
   class TupleClass
     include Composable
 
-    attr_reader :types, :children
+    attr_reader :children
 
-    def initialize(*types)
-      @types = types.map { |t| Composable.wrap(t) }.freeze
-      @children = @types
+    def initialize(*children)
+      @children = children.map { |t| Composable.wrap(t) }.freeze
       freeze
     end
 
@@ -22,10 +21,10 @@ module Plumb
 
     def call(result)
       return result.invalid(errors: 'must be an Array') unless result.value.is_a?(::Array)
-      return result.invalid(errors: 'must have the same size') unless result.value.size == @types.size
+      return result.invalid(errors: 'must have the same size') unless result.value.size == @children.size
 
       errors = {}
-      values = @types.map.with_index do |type, idx|
+      values = @children.map.with_index do |type, idx|
         val = result.value[idx]
         r = type.resolve(val)
         errors[idx] = ["expected #{type.inspect}, got #{val.inspect}", r.errors].flatten unless r.valid?
@@ -40,7 +39,7 @@ module Plumb
     private
 
     def _inspect
-      "Tuple[#{@types.map(&:inspect).join(', ')}]"
+      "Tuple[#{@children.map(&:inspect).join(', ')}]"
     end
   end
 end

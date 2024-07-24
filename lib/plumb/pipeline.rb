@@ -19,7 +19,7 @@ module Plumb
       end
     end
 
-    attr_reader :type, :children
+    attr_reader :children
 
     def initialize(type = Types::Any, &setup)
       @type = type

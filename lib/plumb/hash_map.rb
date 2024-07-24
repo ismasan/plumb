@@ -6,7 +6,7 @@ module Plumb
   class HashMap
     include Composable
 
-    attr_reader :key_type, :value_type, :children
+    attr_reader :children
 
     def initialize(key_type, value_type)
       @key_type = key_type
@@ -36,7 +36,7 @@ module Plumb
     end
 
     def filtered
-      FilteredHashMap.new(key_type, value_type)
+      FilteredHashMap.new(@key_type, @value_type)
     end
 
     private def _inspect = "HashMap[#{@key_type.inspect}, #{@value_type.inspect}]"
@@ -44,7 +44,7 @@ module Plumb
     class FilteredHashMap
       include Composable
 
-      attr_reader :key_type, :value_type, :children
+      attr_reader :children
 
       def initialize(key_type, value_type)
         @key_type = key_type

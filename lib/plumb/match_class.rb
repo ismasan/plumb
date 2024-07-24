@@ -6,7 +6,7 @@ module Plumb
   class MatchClass
     include Composable
 
-    attr_reader :matcher, :children
+    attr_reader :children
 
     def initialize(matcher = Undefined, error: nil, label: nil)
       raise TypeError 'matcher must respond to #===' unless matcher.respond_to?(:===)

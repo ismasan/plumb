@@ -9,7 +9,7 @@ module Plumb
   class ArrayClass
     include Composable
 
-    attr_reader :element_type, :children
+    attr_reader :children
 
     def initialize(element_type: Types::Any)
       @element_type = Composable.wrap(element_type)
@@ -52,6 +52,8 @@ module Plumb
     end
 
     private
+
+    attr_reader :element_type
 
     def _inspect
       %(Array[#{element_type}])

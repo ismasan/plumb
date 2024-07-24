@@ -6,7 +6,7 @@ module Plumb
   class StaticClass
     include Composable
 
-    attr_reader :value, :children
+    attr_reader :children
 
     def initialize(value = Undefined)
       raise ArgumentError, 'value must be frozen' unless value.frozen?

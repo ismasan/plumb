@@ -9,7 +9,7 @@ module Plumb
   class Policy
     include Composable
 
-    attr_reader :policy_name, :arg, :step, :children
+    attr_reader :policy_name, :arg, :children
 
     # @param policy_name [Symbol]
     # @param arg [Object, nil] the argument to the policy, if any.

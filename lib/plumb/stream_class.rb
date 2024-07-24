@@ -17,7 +17,7 @@ module Plumb
   class StreamClass
     include Composable
 
-    attr_reader :element_type, :children
+    attr_reader :children
 
     # @option element_type [Composable] the type of the elements in the stream
     def initialize(element_type: Types::Any)
@@ -40,7 +40,7 @@ module Plumb
 
       enum = Enumerator.new do |y|
         result.value.each do |e|
-          y << element_type.resolve(e)
+          y << @element_type.resolve(e)
         end
       end
 

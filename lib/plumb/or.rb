@@ -6,7 +6,7 @@ module Plumb
   class Or
     include Composable
 
-    attr_reader :left, :right, :children
+    attr_reader :children
 
     def initialize(left, right)
       @left = left

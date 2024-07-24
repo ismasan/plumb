@@ -6,7 +6,7 @@ module Plumb
   class Transform
     include Composable
 
-    attr_reader :target_type, :children
+    attr_reader :children
 
     def initialize(target_type, callable)
       @target_type = target_type
