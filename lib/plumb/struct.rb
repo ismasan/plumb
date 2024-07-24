@@ -33,7 +33,7 @@ module Plumb
 
     def inspect
       %(#<#{self.class}:#{object_id} [#{valid? ? 'valid' : 'invalid'}] #{attributes.map do |k, v|
-                                                                           [k, v.inspect].join(': ')
+                                                                           [k, v.inspect].join(':')
                                                                          end.join(' ')}>)
     end
 
