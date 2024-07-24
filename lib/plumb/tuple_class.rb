@@ -6,10 +6,11 @@ module Plumb
   class TupleClass
     include Composable
 
-    attr_reader :types
+    attr_reader :types, :children
 
     def initialize(*types)
-      @types = types.map { |t| Composable.wrap(t) }
+      @types = types.map { |t| Composable.wrap(t) }.freeze
+      @children = @types
       freeze
     end
 

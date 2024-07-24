@@ -6,11 +6,12 @@ module Plumb
   class Build
     include Composable
 
-    attr_reader :type
+    attr_reader :children
 
     def initialize(type, factory_method: :new, &block)
       @type = type
       @block = block || ->(value) { type.send(factory_method, value) }
+      @children = [type].freeze
       freeze
     end
 

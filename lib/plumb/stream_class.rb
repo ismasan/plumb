@@ -17,11 +17,12 @@ module Plumb
   class StreamClass
     include Composable
 
-    attr_reader :element_type
+    attr_reader :element_type, :children
 
     # @option element_type [Composable] the type of the elements in the stream
     def initialize(element_type: Types::Any)
       @element_type = Composable.wrap(element_type)
+      @children = [@element_type].freeze
       freeze
     end
 

@@ -9,10 +9,11 @@ module Plumb
   class ArrayClass
     include Composable
 
-    attr_reader :element_type
+    attr_reader :element_type, :children
 
     def initialize(element_type: Types::Any)
       @element_type = Composable.wrap(element_type)
+      @children = [@element_type].freeze
 
       freeze
     end

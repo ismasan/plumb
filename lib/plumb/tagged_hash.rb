@@ -6,12 +6,13 @@ module Plumb
   class TaggedHash
     include Composable
 
-    attr_reader :key, :types
+    attr_reader :key, :types, :children
 
     def initialize(hash_type, key, types)
       @hash_type = hash_type
       @key = Key.wrap(key)
       @types = types
+      @children = types
 
       raise ArgumentError, 'all types must be HashClass' if @types.size.zero? || @types.any? do |t|
         !t.is_a?(HashClass)

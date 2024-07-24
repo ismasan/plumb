@@ -6,11 +6,12 @@ module Plumb
   class HashMap
     include Composable
 
-    attr_reader :key_type, :value_type
+    attr_reader :key_type, :value_type, :children
 
     def initialize(key_type, value_type)
       @key_type = key_type
       @value_type = value_type
+      @children = [key_type, value_type].freeze
       freeze
     end
 
@@ -43,11 +44,12 @@ module Plumb
     class FilteredHashMap
       include Composable
 
-      attr_reader :key_type, :value_type
+      attr_reader :key_type, :value_type, :children
 
       def initialize(key_type, value_type)
         @key_type = key_type
         @value_type = value_type
+        @children = [key_type, value_type].freeze
         freeze
       end
 

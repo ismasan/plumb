@@ -193,6 +193,8 @@ module Plumb
       end
     end
 
+    def children = BLANK_ARRAY
+
     def build(cns, factory_method = :new, &block)
       self >> Build.new(cns, factory_method:, &block)
     end

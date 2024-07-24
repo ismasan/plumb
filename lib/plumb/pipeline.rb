@@ -19,10 +19,11 @@ module Plumb
       end
     end
 
-    attr_reader :type
+    attr_reader :type, :children
 
     def initialize(type = Types::Any, &setup)
       @type = type
+      @children = [type].freeze
       @around_blocks = []
       return unless block_given?
 
@@ -38,7 +39,7 @@ module Plumb
       callable ||= block
       unless is_a_step?(callable)
         raise ArgumentError,
-          "#step expects an interface #call(Result) Result, but got #{callable.inspect}"
+              "#step expects an interface #call(Result) Result, but got #{callable.inspect}"
       end
 
       callable = @around_blocks.reduce(callable) { |cl, bl| AroundStep.new(cl, bl) } if @around_blocks.any?
