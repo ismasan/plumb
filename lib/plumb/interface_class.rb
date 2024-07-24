@@ -13,6 +13,10 @@ module Plumb
       freeze
     end
 
+    def ==(other)
+      other.is_a?(self.class) && other.method_names == method_names
+    end
+
     def of(*args)
       case args
       in Array => symbols if symbols.all? { |s| s.is_a?(::Symbol) }

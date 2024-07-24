@@ -11,6 +11,10 @@ module Plumb
       freeze
     end
 
+    def ==(other)
+      other.is_a?(self.class) && @metadata == other.metadata
+    end
+
     def call(result) = result
 
     private def _inspect = "Metadata[#{@metadata.inspect}]"

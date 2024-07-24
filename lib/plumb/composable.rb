@@ -193,6 +193,10 @@ module Plumb
       end
     end
 
+    def ==(other)
+      other.is_a?(self.class) && other.children == children
+    end
+
     def children = BLANK_ARRAY
 
     def build(cns, factory_method = :new, &block)

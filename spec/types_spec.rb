@@ -108,6 +108,14 @@ RSpec.describe Plumb::Types do
     expect(Types::Static['hello'].metadata[:type]).to eq(String)
   end
 
+  specify 'Static #==' do
+    t1 = Types::Static['hello']
+    t2 = Types::Static['hello']
+    t3 = Types::Static['bye']
+    expect(t1 == t2).to be(true)
+    expect(t1 == t3).to be(false)
+  end
+
   specify '#check' do
     is_a_string = Types::Any.check('not a string') { |value| value.is_a?(::String) }
     expect(is_a_string.resolve('yup').valid?).to be(true)
@@ -254,6 +262,15 @@ RSpec.describe Plumb::Types do
     expect(Types::String === Types::Integer).to be(false)
   end
 
+  specify '#==' do
+    expect(Types::String === Types::String).to be(true)
+    expect(Types::String[/@/] === Types::String[/@/]).to be(true)
+    expect(Types::Array[Types::String] == Types::Array[Types::String]).to be(true)
+    expect(Types::String.default('a') == Types::String.default('a')).to be(true)
+    expect((Types::String | Types::Integer) == (Types::String | Types::Integer)).to be(true)
+    expect(Types::String.default('a') == Types::String.default('b')).to be(false)
+  end
+
   describe '#pipeline' do
     let(:pipeline) do
       Types::Lax::Integer.pipeline do |pl|
@@ -381,6 +398,14 @@ RSpec.describe Plumb::Types do
       assert_result(Types::String.policy(split: '.').resolve('a,  b.ss , c,d'), ['a,  b', 'ss , c,d'], true)
       expect(Types::String.policy(:split).metadata[:type]).to eq(Array)
     end
+
+    specify '#policy with #==' do
+      t1 = Types::Array.options([1, 2, 3])
+      t2 = Types::Array.options([1, 2, 3])
+      t3 = Types::Array.options([1, 4, 3])
+      expect(t1 == t2).to be(true)
+      expect(t1 == t3).to be(false)
+    end
   end
 
   describe 'built-in types' do
@@ -434,6 +459,14 @@ RSpec.describe Plumb::Types do
       assert_result(Types::Interface[:name, :nope, :test].resolve(obj), obj, false)
 
       expect(Types::Interface[:name, :age].method_names).to eq(%i[name age])
+    end
+
+    specify 'Interface#==' do
+      t1 = Types::Interface[:name, :age]
+      t2 = Types::Interface[:name, :age]
+      t3 = Types::Interface[:name, :age, :foo]
+      expect(t1 == t2).to be(true)
+      expect(t1 == t3).to be(false)
     end
 
     specify Types::Lax::String do
@@ -631,6 +664,14 @@ RSpec.describe Plumb::Types do
       expect(type.metadata).to eq(type: Array, foo: 1)
     end
 
+    specify '#metadata compared with #==' do
+      t1 = Types::Array[Types::Boolean].metadata(foo: 1)
+      t2 = Types::Array[Types::Boolean].metadata(foo: 1)
+      t3 = Types::Array[Types::Boolean].metadata(foo: 2)
+      expect(t1 == t2).to be(true)
+      expect(t1 == t3).to be(false)
+    end
+
     specify '#concurrent' do
       slow_type = Types::Any.transform(NilClass) do |r|
         sleep(0.02)
@@ -682,6 +723,14 @@ RSpec.describe Plumb::Types do
         expect(result.errors[:age].any?).to be(true)
         expect(result.errors[:friend][:name]).to be_a(::String)
       end
+    end
+
+    specify '#==' do
+      hash1 = Types::Hash[title: Types::String.default('Mr')]
+      hash2 = Types::Hash[title: Types::String.default('Mr')]
+      hash3 = Types::Hash[title: Types::String.default('Mrs')]
+      expect(hash1 == hash2).to be(true)
+      expect(hash1 == hash3).to be(false)
     end
 
     specify '#schema with static values' do
@@ -865,6 +914,14 @@ RSpec.describe Plumb::Types do
       specify '#filtered' do
         s1 = Types::Hash[Types::String, Types::Integer].filtered
         expect(s1.parse('a' => 1, 20 => 'nope', 'b' => 2)).to eq('a' => 1, 'b' => 2)
+      end
+
+      specify '#==' do
+        s1 = Types::Hash[Types::String, Types::Integer]
+        s2 = Types::Hash[Types::String, Types::Integer]
+        s3 = Types::Hash[Types::String, Types::String]
+        expect(s1 == s2).to be(true)
+        expect(s1 == s3).to be(false)
       end
     end
 

@@ -121,6 +121,10 @@ module Plumb
       errors.any? ? result.invalid(output, errors:) : result.valid(output)
     end
 
+    def ==(other)
+      other.is_a?(self.class) && other._schema == _schema
+    end
+
     private
 
     def _inspect

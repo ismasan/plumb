@@ -22,6 +22,12 @@ module Plumb
       freeze
     end
 
+    def ==(other)
+      other.is_a?(self.class) &&
+        policy_name == other.policy_name &&
+        arg == other.arg
+    end
+
     # The standard Step interface.
     # @param result [Result::Valid]
     # @return [Result::Valid, Result::Invalid]
