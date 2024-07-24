@@ -25,6 +25,14 @@ module Plumb
       other.is_a?(self.class) && other.attributes == attributes
     end
 
+    def self.[](type_specs)
+      klass = Class.new(self)
+      type_specs.each do |key, type|
+        klass.attribute(key, type)
+      end
+      klass
+    end
+
     def valid? = errors.none?
 
     def with(attrs = BLANK_HASH)

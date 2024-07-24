@@ -155,4 +155,15 @@ RSpec.describe Plumb::Struct do
     expect(office.address.city).to eq 'Springfield'
     expect(office.director).to eq(Types::StaffMember.new(name: 'Mr. Burns', age: 100))
   end
+
+  specify '.[]' do
+    office_with_phone_klass = Types::Office[phone: String]
+    office = office_with_phone_klass.new(
+      director: { name: 'Mr. Burns', age: 100 },
+      staff: [{ name: 'Jane', age: 20 }],
+      phone: '555-1234'
+    )
+    expect(office.staff).to eq([Types::StaffMember.new(name: 'Jane', age: 20)])
+    expect(office.phone).to eq '555-1234'
+  end
 end
