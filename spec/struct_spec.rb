@@ -33,6 +33,13 @@ module Types
     attribute? :director, StaffMember
     attribute :staff, Array[StaffMember]
   end
+
+  class OfficeWithAddress < Office
+    attribute :address do
+      attribute :street, String.present
+      attribute :city, String.present
+    end
+  end
 end
 
 RSpec.describe Plumb::Struct do
@@ -97,14 +104,14 @@ RSpec.describe Plumb::Struct do
     expect(office.director).to eq(Types::StaffMember.new(name: 'Mr. Burns', age: 100))
   end
 
-  specify 'Array[StructType]' do
+  specify 'Types::Array[StructType]' do
     office = Types::Office.new(staff: [{ name: 'Jane', age: '20' }])
     expect(office.valid?).to be true
     expect(office.staff.first.name).to eq 'Jane'
     expect(office.staff.first.age).to eq 20
   end
 
-  specify 'Array[StructType] with errors' do
+  specify 'Types::Array[StructType] with errors' do
     office = Types::Office.new(staff: [{ name: 'Jane' }])
     expect(office.valid?).to be false
     expect(office.staff.first.name).to eq 'Jane'
@@ -135,5 +142,17 @@ RSpec.describe Plumb::Struct do
     expect(user1.age).to eq 20
     expect(user2.name).to eq 'John'
     expect(user2.age).to eq 20
+  end
+
+  specify 'inheritance' do
+    office = Types::OfficeWithAddress.new(
+      director: { name: 'Mr. Burns', age: 100 },
+      staff: [{ name: 'Jane', age: 20 }],
+      address: { street: '123 Main St', city: 'Springfield' }
+    )
+    expect(office.staff).to eq([Types::StaffMember.new(name: 'Jane', age: 20)])
+    expect(office.address.street).to eq '123 Main St'
+    expect(office.address.city).to eq 'Springfield'
+    expect(office.director).to eq(Types::StaffMember.new(name: 'Mr. Burns', age: 100))
   end
 end

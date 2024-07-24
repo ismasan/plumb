@@ -49,6 +49,13 @@ module Plumb
         @attribute_specs ||= {}
       end
 
+      def inherited(subclass)
+        attribute_specs.each do |key, type|
+          subclass.attribute_specs[key] = type
+        end
+        super
+      end
+
       # attribute(:friend) { attribute(:name, String) }
       # attribute(:friend, MyStruct) { attribute(:name, String) }
       # attribute(:name, String)
