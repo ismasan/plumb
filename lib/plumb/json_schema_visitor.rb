@@ -37,7 +37,7 @@ module Plumb
     end
 
     on(:pipeline) do |node, props|
-      visit(node.type, props)
+      visit_children(node, props)
     end
 
     on(:step) do |node, props|
@@ -59,8 +59,7 @@ module Plumb
     end
 
     on(:and) do |node, props|
-      left = visit(node.left)
-      right = visit(node.right)
+      left, right = node.children.map { |c| visit(c) }
       type = right[TYPE] || left[TYPE]
       props = props.merge(left).merge(right)
       props = props.merge(TYPE => type) if type
@@ -69,8 +68,7 @@ module Plumb
 
     # A "default" value is usually an "or" of expected_value | (undefined >> static_value)
     on(:or) do |node, props|
-      left = visit(node.left)
-      right = visit(node.right)
+      left, right = node.children.map { |c| visit(c) }
       any_of = [left, right].uniq
       if any_of.size == 1
         props.merge(left)
@@ -83,22 +81,23 @@ module Plumb
     end
 
     on(:not) do |node, props|
-      props.merge(NOT => visit(node.step))
+      props.merge(NOT => visit_children(node))
     end
 
     on(:value) do |node, props|
-      props = case node.value
+      value = node.children.first
+      props = case value
               when ::String, ::Symbol, ::Numeric
-                props.merge(CONST => node.value)
+                props.merge(CONST => value)
               else
                 props
               end
 
-      visit(node.value, props)
+      visit(value, props)
     end
 
     on(:transform) do |node, props|
-      visit(node.target_type, props)
+      visit_children(node, props)
     end
 
     on(:undefined) do |_node, props|
@@ -108,18 +107,19 @@ module Plumb
     on(:static) do |node, props|
       # Set const AND default
       # to emulate static values
-      props = case node.value
+      value = node.children.first
+      props = case value
               when ::String, ::Symbol, ::Numeric
-                props.merge(CONST => node.value, DEFAULT => node.value)
+                props.merge(CONST => value, DEFAULT => value)
               else
                 props
               end
 
-      visit(node.value, props)
+      visit(value, props)
     end
 
     on(:policy) do |node, props|
-      props = visit(node.step, props)
+      props = visit_children(node, props)
       method_name = :"visit_#{node.policy_name}_policy"
       if respond_to?(method_name)
         send(method_name, node, props)
@@ -168,14 +168,15 @@ module Plumb
 
     on(:match) do |node, props|
       # Set const if primitive
-      props = case node.matcher
+      matcher = node.children.first
+      props = case matcher
               when ::String, ::Symbol, ::Numeric
-                props.merge(CONST => node.matcher)
+                props.merge(CONST => matcher)
               else
                 props
               end
 
-      visit(node.matcher, props)
+      visit(matcher, props)
     end
 
     on(:boolean) do |_node, props|
@@ -245,7 +246,7 @@ module Plumb
       {
         TYPE => 'object',
         'patternProperties' => {
-          '.*' => visit(node.value_type)
+          '.*' => visit(node.children[1])
         }
       }
     end
@@ -254,27 +255,27 @@ module Plumb
       {
         TYPE => 'object',
         'patternProperties' => {
-          '.*' => visit(node.value_type)
+          '.*' => visit(node.children[1])
         }
       }
     end
 
     on(:build) do |node, props|
-      visit(node.type, props)
+      visit_children(node, props)
     end
 
     on(:array) do |node, _props|
-      items = visit(node.element_type)
-      { TYPE => 'array', ITEMS => items }
+      items_props = visit_children(node)
+      { TYPE => 'array', ITEMS => items_props }
     end
 
     on(:stream) do |node, _props|
-      items = visit(node.element_type)
-      { TYPE => 'array', ITEMS => items }
+      items_props = visit_children(node)
+      { TYPE => 'array', ITEMS => items_props }
     end
 
     on(:tuple) do |node, _props|
-      items = node.types.map { |t| visit(t) }
+      items = node.children.map { |t| visit(t) }
       { TYPE => 'array', 'prefixItems' => items }
     end
 
@@ -286,7 +287,7 @@ module Plumb
       }
 
       key = node.key.to_s
-      children = node.types.map { |c| visit(c) }
+      children = node.children.map { |c| visit(c) }
       key_enum =  children.map { |c| c[PROPERTIES][key][CONST] }
       key_type =  children.map { |c| c[PROPERTIES][key][TYPE] }
       required << key

@@ -6,24 +6,24 @@ module Plumb
   class TaggedHash
     include Composable
 
-    attr_reader :key, :types
+    attr_reader :key, :children
 
-    def initialize(hash_type, key, types)
+    def initialize(hash_type, key, children)
       @hash_type = hash_type
       @key = Key.wrap(key)
-      @types = types
+      @children = children
 
-      raise ArgumentError, 'all types must be HashClass' if @types.size.zero? || @types.any? do |t|
+      raise ArgumentError, 'all types must be HashClass' if @children.size.zero? || @children.any? do |t|
         !t.is_a?(HashClass)
       end
-      raise ArgumentError, "all types must define key #{@key}" unless @types.all? { |t| !!t.at_key(@key) }
+      raise ArgumentError, "all types must define key #{@key}" unless @children.all? { |t| !!t.at_key(@key) }
 
       # types are assumed to have literal values for the index field :key
-      @index = @types.each.with_object({}) do |t, memo|
+      @index = @children.each.with_object({}) do |t, memo|
         key_type = t.at_key(@key)
         raise TypeError, "key type at :#{@key} #{key_type} must be a Match type" unless key_type.is_a?(MatchClass)
 
-        memo[key_type.matcher] = t
+        memo[key_type.children[0]] = t
       end
 
       freeze
@@ -41,6 +41,6 @@ module Plumb
 
     private
 
-    def _inspect = "TaggedHash[#{@key.inspect}, #{@types.map(&:inspect).join(', ')}]"
+    def _inspect = "TaggedHash[#{@key.inspect}, #{@children.map(&:inspect).join(', ')}]"
   end
 end

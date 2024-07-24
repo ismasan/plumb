@@ -6,11 +6,12 @@ module Plumb
   class And
     include Composable
 
-    attr_reader :left, :right
+    attr_reader :children
 
     def initialize(left, right)
       @left = left
       @right = right
+      @children = [left, right].freeze
       freeze
     end
 

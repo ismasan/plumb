@@ -6,11 +6,12 @@ module Plumb
   class Transform
     include Composable
 
-    attr_reader :target_type
+    attr_reader :children
 
     def initialize(target_type, callable)
       @target_type = target_type
       @callable = callable || Plumb::NOOP
+      @children = [target_type].freeze
       freeze
     end
 

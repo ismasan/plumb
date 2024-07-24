@@ -6,11 +6,12 @@ module Plumb
   class Not
     include Composable
 
-    attr_reader :step
+    attr_reader :children
 
     def initialize(step, errors: nil)
       @step = step
       @errors = errors
+      @children = [step].freeze
       freeze
     end
 

@@ -39,5 +39,11 @@ module Plumb
     def on_missing_handler(node, _props, method_name)
       raise "No handler for #{node.inspect} with :#{method_name}"
     end
+
+    def visit_children(node, props = BLANK_HASH)
+      node.children.reduce(props) do |acc, child|
+        visit(child, acc)
+      end
+    end
   end
 end

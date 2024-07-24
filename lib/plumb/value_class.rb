@@ -6,10 +6,11 @@ module Plumb
   class ValueClass
     include Composable
 
-    attr_reader :value
+    attr_reader :children
 
     def initialize(value = Undefined)
       @value = value
+      @children = [value].freeze
       freeze
     end
 
