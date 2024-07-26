@@ -53,6 +53,10 @@ module Plumb
 
     self
   end
+
+  def self.decorate(type, &block)
+    Decorator.call(type, &block)
+  end
 end
 
 require 'plumb/result'
@@ -75,3 +79,4 @@ require 'plumb/interface_class'
 require 'plumb/types'
 require 'plumb/json_schema_visitor'
 require 'plumb/schema'
+require 'plumb/decorator'
