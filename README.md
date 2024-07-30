@@ -133,7 +133,7 @@ joe = User.parse({ name: 'Joe', email: 'joe@email.com', age: 20}) # returns vali
 Users.parse([joe]) # returns valid array of user hashes
 ```
 
-More about [Types::Array](#typeshash) and [Types::Array](#typesarray). There's also tuples and hash maps, and it's possible to create your own composite types.
+More about [Types::Array](#typeshash) and [Types::Array](#typesarray). There's also [tuples](#types-tuple) and [hash maps](#hash-maps), and it's possible to create your own composite types.
 
 ## Type composition
 
