@@ -101,7 +101,7 @@ module Plumb
                  Types::Static[value]
                end
 
-    type | (Types::Undefined >> val_type)
+    (Types::Undefined >> val_type) | type
   end
 
   # Split a string into an array. Default separator is /\s*,\s*/
