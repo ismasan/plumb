@@ -25,14 +25,6 @@ module Plumb
       other.is_a?(self.class) && other.attributes == attributes
     end
 
-    def self.[](type_specs)
-      klass = Class.new(self)
-      type_specs.each do |key, type|
-        klass.attribute(key, type)
-      end
-      klass
-    end
-
     def valid? = errors.none?
 
     def with(attrs = BLANK_HASH)
@@ -85,7 +77,7 @@ module Plumb
       #
       def attribute(name, type = Types::Any, &block)
         key = Key.wrap(name)
-        name = name.to_sym
+        name = key.to_sym
         type = Composable.wrap(type)
         if block_given? # :foo, Array[Struct] or :foo, Struct
           type = Composable.wrap(Plumb::Struct) if type == Types::Any
@@ -108,6 +100,15 @@ module Plumb
 
       def attribute?(name, *args, &block)
         attribute(Key.new(name, optional: true), *args, &block)
+      end
+
+      # Person = Struct[:name => String, :age => Integer, title?: String]
+      def [](type_specs)
+        klass = Class.new(self)
+        type_specs.each do |key, type|
+          klass.attribute(key, type)
+        end
+        klass
       end
 
       def __set_nested_class__(name, klass)
