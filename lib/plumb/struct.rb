@@ -64,6 +64,18 @@ module Plumb
         super
       end
 
+      def build_nested(name, node, &block)
+        return node unless node.is_a?(Plumb::Step)
+
+        child = node.children.first
+        return node unless child <= Plumb::Struct
+
+        sub = Class.new(child)
+        sub.instance_exec(&block)
+        __set_nested_class__(name, sub)
+        Composable.wrap(sub)
+      end
+
       # attribute(:friend) { attribute(:name, String) }
       # attribute(:friend, MyStruct) { attribute(:name, String) }
       # attribute(:name, String)
@@ -71,42 +83,24 @@ module Plumb
       # attribute(:friends, Types::Array) # same as Types::Array[Types::Any]
       # attribute(:friends, Types::Array[Person])
       #
-      def attribute(name, *args, &block)
+      def attribute(name, type = Types::Any, &block)
         key = Key.wrap(name)
         name = name.to_sym
-
-        type = case args
-               in [Class => klass] if block_given? # attribute(:friend, MyStruct) { ... }
-                 sub = Class.new(klass)
-                 sub.instance_exec(&block)
-                 __set_nested_class__(name, sub)
-                 Plumb::Composable.wrap(sub)
-               in [] if block_given? # attribute(:friend) { ... }
-                 sub = Class.new(Plumb::Struct)
-                 sub.instance_exec(&block)
-                 __set_nested_class__(name, sub)
-                 Plumb::Composable.wrap(sub)
-               in [Plumb::ArrayClass => type]
-                 sub = type.children.first
-                 if sub == Plumb::Types::Any
-                   if block_given?
-                     sub = Class.new(Plumb::Struct)
-                     sub.instance_exec(&block)
-                     __set_nested_class__(name, sub)
-                     Plumb::Types::Array[Plumb::Composable.wrap(sub)]
-                   else
-                     type
-                   end
-                 else
-                   type
-                 end
-               in [Plumb::Composable => type] # attribute(:name, String)
-                 type
-               in [type]
-                 Plumb::Composable.wrap(type)
-               else
-                 raise ArgumentError, "Invalid arguments: #{args.inspect}"
-               end
+        type = Composable.wrap(type)
+        if block_given? # :foo, Array[Struct] or :foo, Struct
+          type = Composable.wrap(Plumb::Struct) if type == Types::Any
+          type = Plumb.decorate(type) do |node|
+            if node.is_a?(Plumb::ArrayClass)
+              child = node.children.first
+              child = Composable.wrap(Plumb::Struct) if child == Types::Any
+              Types::Array[build_nested(name, child, &block)]
+            elsif node.is_a?(Plumb::Step)
+              build_nested(name, node, &block)
+            else
+              node
+            end
+          end
+        end
 
         attribute_specs[key] = type
         define_method(name) { @attributes[name] }

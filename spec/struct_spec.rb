@@ -31,7 +31,7 @@ module Types
 
   class Office < Plumb::Struct
     attribute? :director, StaffMember
-    attribute :staff, Array[StaffMember]
+    attribute :staff, Array[StaffMember].default([].freeze)
   end
 
   class OfficeWithAddress < Office
@@ -104,14 +104,16 @@ RSpec.describe Plumb::Struct do
     expect(office.director).to eq(Types::StaffMember.new(name: 'Mr. Burns', age: 100))
   end
 
-  specify 'Types::Array[StructType]' do
+  specify 'Types::Array[StructType].default()' do
     office = Types::Office.new(staff: [{ name: 'Jane', age: '20' }])
+    office2 = Types::Office.new
     expect(office.valid?).to be true
     expect(office.staff.first.name).to eq 'Jane'
     expect(office.staff.first.age).to eq 20
+    expect(office2.staff).to eq []
   end
 
-  specify 'Types::Array[StructType] with errors' do
+  specify 'Types::Array[StructType].default() with errors' do
     office = Types::Office.new(staff: [{ name: 'Jane' }])
     expect(office.valid?).to be false
     expect(office.staff.first.name).to eq 'Jane'
