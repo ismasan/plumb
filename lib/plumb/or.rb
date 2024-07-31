@@ -24,7 +24,12 @@ module Plumb
       return left_result if left_result.valid?
 
       right_result = @right.call(result)
-      right_result.valid? ? right_result : result.invalid(errors: [left_result.errors, right_result.errors].flatten)
+      if right_result.valid?
+        right_result
+      else
+        right_result.invalid(errors: [left_result.errors,
+                                      right_result.errors].flatten)
+      end
     end
   end
 end
