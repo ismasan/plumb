@@ -229,6 +229,10 @@ module Plumb
       props.merge(opts)
     end
 
+    on(::Time) do |_node, props|
+      props.merge(TYPE => 'string', 'format' => 'date-time')
+    end
+
     on(::Hash) do |_node, props|
       props.merge(TYPE => 'object')
     end
