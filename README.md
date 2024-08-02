@@ -1283,7 +1283,20 @@ Plumb.policy :split, SplitPolicy
 
 ### JSON Schema
 
-Plumb ships with a JSON schema visitor that compiles a type composition into a JSON Schema Hash.
+Plumb ships with a JSON schema visitor that compiles a type composition into a JSON Schema Hash. All Plumb types support a `#to_json_schema` method.
+
+```ruby
+Payload = Types::Hash[name: String]
+Payload.to_json_schema(root: true)
+# {
+#   "$schema"=>"https://json-schema.org/draft-08/schema#", 
+#   "type"=>"object", 
+#   "properties"=>{"name"=>{"type"=>"string"}}, 
+#   "required"=>["name"]
+# }
+```
+
+The visitor can be used directly, too.
 
 ```ruby
 User = Types::Hash[
@@ -1315,6 +1328,23 @@ end
 type = Types::Decimal.not
 schema = Plumb::JSONSchemaVisitor.visit(type) # { 'not' => { 'type' => 'number' } }
 ```
+
+You can also register custom classes or types that are wrapped by Plumb steps.
+
+```ruby
+module Types
+  DateTime = Any[::DateTime]
+end
+
+Plumb::JSONSchemaVisitor.on(::DateTime) do |node, props|
+  props.merge('type' => 'string', 'format' => 'date-time')
+end
+
+Types::DateTime.to_json_schema
+# {"type"=>"string", "format"=>"date-time"}
+```
+
+
 
 #### JSON Schema handlers for custom policies
 
