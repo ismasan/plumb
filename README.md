@@ -975,7 +975,7 @@ attribute :company, Company | Person do
 ```
 
 #### Optional Attributes
-Using `attribute?` allows for optional attributes. If the attribute is not present, it will be set to `Undefined`.
+Using `attribute?` allows for optional attributes. If the attribute is not present, these attribute values will be `nil`
 
 ```ruby
 attribute? :company, Company
