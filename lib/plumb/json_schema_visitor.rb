@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require 'date'
 require 'plumb/visitor_handlers'
 
 module Plumb
@@ -231,6 +232,10 @@ module Plumb
 
     on(::Time) do |_node, props|
       props.merge(TYPE => 'string', 'format' => 'date-time')
+    end
+
+    on(::Date) do |_node, props|
+      props.merge(TYPE => 'string', 'format' => 'date')
     end
 
     on(::Hash) do |_node, props|
