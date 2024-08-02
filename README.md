@@ -133,7 +133,7 @@ joe = User.parse({ name: 'Joe', email: 'joe@email.com', age: 20}) # returns vali
 Users.parse([joe]) # returns valid array of user hashes
 ```
 
-More about [Types::Array](#typeshash) and [Types::Array](#typesarray). There's also [tuples](#typestuple), [hash maps](#hash-maps) and [structs](#typesstruct), and it's possible to create your own composite types.
+More about [Types::Array](#typeshash) and [Types::Array](#typesarray). There's also [tuples](#typestuple), [hash maps](#hash-maps) and [data structs](#typesdata), and it's possible to create your own composite types.
 
 ## Type composition
 
@@ -876,12 +876,12 @@ Str.parse(data).each do |row|
 end
 ```
 
-### Types::Struct
+### Types::Data
 
-`Types::Struct` provides a superclass to define structs or value objects with typed / coercible attributes.
+`Types::Data` provides a superclass to define **inmutable** structs or value objects with typed / coercible attributes.
 
 ```ruby
-class Person < Types::Struct
+class Person < Types::Data
   attribute :name, Types::String.present
   attribute :age, Types::Integer
 end
@@ -905,7 +905,7 @@ another_person = person.with(age: 20)
 It supports nested attributes:
 
 ```ruby
-class Person < Types::Struct
+class Person < Types::Data
   attribute :friend do
     attribute :name, String
   end
@@ -921,7 +921,7 @@ person.friend_count # 1
 Or arrays of nested attributes:
 
 ```ruby
-class Person < Types::Struct
+class Person < Types::Data
   attribute :friends, Types::Array do
     atrribute :name, String
   end
@@ -933,11 +933,11 @@ person = Person.new(friends: [{ name: 'John' }])
 Or use struct classes defined separately:
 
 ```ruby
-class Company < Types::Struct
+class Company < Types::Data
   attribute :name, String
 end
 
-class Person < Types::Struct
+class Person < Types::Data
   # Single nested struct
   attribute :company, Company
 
@@ -981,11 +981,11 @@ Using `attribute?` allows for optional attributes. If the attribute is not prese
 attribute? :company, Company
 ```
 
-#### Struct Inheritance
-Structs can inherit from other structs. This is useful for defining a base struct with common attributes.
+#### Inheritance
+Data structs can inherit from other structs. This is useful for defining a base struct with common attributes.
 
 ```ruby
-class BasePerson < Types::Struct
+class BasePerson < Types::Data
   attribute :name, String
 end
 
@@ -1012,7 +1012,7 @@ The `[]` syntax is a short-hand for struct definition.
 Like `Plumb::Types::Hash`, suffixing a key with `?` makes it optional.
 
 ```ruby
-Person = Types::Struct[name: String, age?: Integer]
+Person = Types::Data[name: String, age?: Integer]
 person = Person.new(name: 'Jane')
 ```
 
@@ -1025,13 +1025,13 @@ Adult = Person[age?: Types::Integer[18..]]
 
 #### Struct composition
 
-`Types::Struct` supports all the composition operators and helpers.
+`Types::Data` supports all the composition operators and helpers.
 
 Note however that, once you wrap a struct in a composition, you can't instantiate it with `.new` anymore (but you can still use `#parse` or `#resolve` like any other Plumb type).
 
 ```ruby
-Person = Types::Struct[name: String]
-Animal = Types::Struct[species: String]
+Person = Types::Data[name: String]
+Animal = Types::Data[species: String]
 # Compose with |
 Being = Person | Animal
 Being.parse(name: 'Joe') # <Person [valid] name: 'Joe'>
@@ -1361,7 +1361,7 @@ TODO. See `Plumb::JSONSchemaVisitor`.
 
 - [ ] benchmarks and performace. Compare with `Parametric`, `ActiveModel::Attributes`, `ActionController::StrongParameters`
 - [ ] flesh out `Plumb::Schema`
-- [ ] `Plumb::Struct`
+- [x] `Plumb::Struct`
 - [ ] flesh out and document `Plumb::Pipeline`
 - [ ] document custom visitors
 - [ ] Improve errors, support I18n ?
