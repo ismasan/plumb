@@ -70,9 +70,9 @@ module Plumb
     # A "default" value is usually an "or" of expected_value | (undefined >> static_value)
     on(:or) do |node, props|
       left, right = node.children.map { |c| visit(c) }
-      any_of = [left, right].uniq
+      any_of = [left, right].uniq.filter(&:any?)
       if any_of.size == 1
-        props.merge(left)
+        props.merge(any_of.first)
       elsif any_of.size == 2 && (defidx = any_of.index { |p| p.key?(DEFAULT) })
         val = any_of[defidx.zero? ? 1 : 0]
         props.merge(val).merge(DEFAULT => any_of[defidx][DEFAULT])
