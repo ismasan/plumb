@@ -2,11 +2,11 @@
 
 require 'spec_helper'
 require 'plumb'
-require 'plumb/struct'
+# require 'plumb/struct'
 
 module Types
-  class User < Plumb::Struct
-    class Company < Plumb::Struct
+  class User < Types::Struct
+    class Company < Types::Struct
       attribute :name, String
     end
 
@@ -24,12 +24,12 @@ module Types
     def book_count = books.size
   end
 
-  class StaffMember < Plumb::Struct
+  class StaffMember < Types::Struct
     attribute :name, String
     attribute :age, Lax::Integer[18..]
   end
 
-  class Office < Plumb::Struct
+  class Office < Types::Struct
     attribute? :director, StaffMember
     attribute :staff, Array[StaffMember].default([].freeze)
   end
@@ -42,7 +42,7 @@ module Types
   end
 end
 
-RSpec.describe Plumb::Struct do
+RSpec.describe Types::Struct do
   specify 'setting nested classes' do
     expect(Types::User::Friend).to be_a(Class)
     friend = Types::User::Friend.new(name: 'John', email: 'john@server.com')
@@ -62,9 +62,28 @@ RSpec.describe Plumb::Struct do
     expect(user.valid?).to be true
     expect(user.friend.name).to eq 'John'
     expect(user.friend.email).to eq 'john@server.com'
+    expect(user.friend).to be_a(Types::User::Friend)
     expect(user.company.name).to eq 'Acme'
     expect(user.books.map(&:isbn)).to eq ['123']
     expect(user.book_count).to eq 1
+    expect(user.books.first).to be_a(Types::User::Book)
+  end
+
+  specify '#to_h' do
+    user = Types::User.new(
+      name: 'Jane',
+      age: 20,
+      friend: { name: 'John', email: 'john@server.com' },
+      company: { name: 'Acme' },
+      books: [{ isbn: '123' }]
+    )
+    expect(user.to_h).to eq(
+      name: 'Jane',
+      age: 20,
+      friend: { name: 'John', email: 'john@server.com' },
+      company: { name: 'Acme' },
+      books: [{ isbn: '123' }]
+    )
   end
 
   specify '#==' do

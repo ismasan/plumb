@@ -146,6 +146,11 @@ module Plumb
     Hash = HashClass.new
     Interface = InterfaceClass.new
 
+    class Struct
+      extend Composable
+      include Plumb::Attributes
+    end
+
     module Lax
       NUMBER_EXPR = /^\d{1,3}(?:,\d{3})*(?:\.\d+)?$/
 

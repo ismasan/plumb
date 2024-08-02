@@ -17,9 +17,12 @@ module Plumb
       host.extend TypeRegistry
       constants(false).each do |const_name|
         const = const_get(const_name)
+
         anc = [host.name, const_name].join('::')
         case const
         when Module
+          next if const.is_a?(Class)
+
           child_mod = Module.new
           child_mod.define_singleton_method(:name) do
             anc

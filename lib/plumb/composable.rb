@@ -39,9 +39,15 @@ module Plumb
     end
   end
 
-  module Composable
-    include Callable
+  # This module gets included by Composable,
+  # but only when Composable is `included` in classes, not `extended`.
+  # The rule of this module is to assign a name to constants that point to Composable instances.
+  module Naming
+    attr_reader :name
 
+    # When including this module,
+    # define a #node_name method on the Composable instance
+    # #node_name is used by Visitors to determine the type of node.
     def self.included(base)
       nname = base.name.split('::').last
       nname.gsub!(/([a-z\d])([A-Z])/, '\1_\2')
@@ -50,20 +56,6 @@ module Plumb
       nname = nname.to_sym
       base.define_method(:node_name) { nname }
     end
-
-    def self.wrap(callable)
-      if callable.is_a?(Composable)
-        callable
-      elsif callable.is_a?(::Hash)
-        HashClass.new(schema: callable)
-      elsif callable.respond_to?(:call)
-        Step.new(callable)
-      else
-        MatchClass.new(callable)
-      end
-    end
-
-    attr_reader :name
 
     class Name
       def initialize(name)
@@ -90,6 +82,31 @@ module Plumb
     def inspect = name.to_s
 
     def node_name = self.class.name.split('::').last.to_sym
+  end
+
+  #  Composable mixes in composition methods to classes.
+  # such as #>>, #|, #not, and others.
+  # Any Composable class can participate in Plumb compositions.
+  module Composable
+    include Callable
+
+    # This only runs when including Composable,
+    # not extending classes with it.
+    def self.included(base)
+      base.send(:include, Naming)
+    end
+
+    def self.wrap(callable)
+      if callable.is_a?(Composable)
+        callable
+      elsif callable.is_a?(::Hash)
+        HashClass.new(schema: callable)
+      elsif callable.respond_to?(:call)
+        Step.new(callable)
+      else
+        MatchClass.new(callable)
+      end
+    end
 
     def defer(definition = nil, &block)
       Deferred.new(definition || block)
