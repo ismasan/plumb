@@ -133,7 +133,7 @@ joe = User.parse({ name: 'Joe', email: 'joe@email.com', age: 20}) # returns vali
 Users.parse([joe]) # returns valid array of user hashes
 ```
 
-More about [Types::Array](#typeshash) and [Types::Array](#typesarray). There's also [tuples](#typestuple) and [hash maps](#hash-maps), and it's possible to create your own composite types.
+More about [Types::Array](#typeshash) and [Types::Array](#typesarray). There's also [tuples](#typestuple), [hash maps](#hash-maps) and [structs](#typesstruct), and it's possible to create your own composite types.
 
 ## Type composition
 
@@ -876,15 +876,175 @@ Str.parse(data).each do |row|
 end
 ```
 
+### Types::Struct
+
+`Types::Struct` provides a superclass to define structs or value objects with typed / coercible attributes.
+
+```ruby
+class Person < Types::Struct
+  attribute :name, Types::String.present
+  attribute :age, Types::Integer
+end
+```
+
+These classes can be instantiated normally, and expose `#valid?` and `#error`
+
+```ruby
+person = Person.new(name: 'Joe')
+person.name # 'Joe'
+person.valid? # false
+person.errors[:age] # 'must be an integer'
+```
+
+Note that these instances cannot be mutated (there's no attribute setters), but they can be copied with partial attributes with `#with`
+
+```ruby
+another_person = person.with(age: 20)
+```
+
+It supports nested attributes:
+
+```ruby
+class Person < Types::Struct
+  attribute :friend do
+    attribute :name, String
+  end
+  
+  # Custom methods like any other class
+  def friend_count = friends.size
+end
+
+person = Person.new(friend: { name: 'John' })
+person.friend_count # 1
+```
+
+Or arrays of nested attributes:
+
+```ruby
+class Person < Types::Struct
+  attribute :friends, Types::Array do
+    atrribute :name, String
+  end
+end
+
+person = Person.new(friends: [{ name: 'John' }])
+```
+
+Or use struct classes defined separately:
+
+```ruby
+class Company < Types::Struct
+  attribute :name, String
+end
+
+class Person < Types::Struct
+  # Single nested struct
+  attribute :company, Company
+
+  # Array of nested structs
+  attribute :companies, Types::Array[Company]
+end
+```
+
+Arrays and other types support composition and helpers. Ex. `#default`.
+
+```ruby
+attribute :companies, Types::Array[Company].default([].freeze)
+```
+
+Passing a named struct class AND a block will subclass the struct and extend it with new attributes:
+
+```ruby
+attribute :company, Company do
+  attribute :address, String
+end
+```
+
+The same works with arrays:
+
+```ruby
+attribute :companies, Types::Array[Company] do
+  attribute :address, String
+end
+```
+
+Note that this does NOT work with union'd or piped structs.
+
+```ruby
+attribute :company, Company | Person do
+```
+
+#### Optional Attributes
+Using `attribute?` allows for optional attributes. If the attribute is not present, it will be set to `Undefined`.
+
+```ruby
+attribute? :company, Company
+```
+
+#### Struct Inheritance
+Structs can inherit from other structs. This is useful for defining a base struct with common attributes.
+
+```ruby
+class BasePerson < Types::Struct
+  attribute :name, String
+end
+
+class Person < BasePerson
+  attribute :age, Integer
+end
+```
+
+#### Equality with `#==`
+
+`#==` is implemented to compare attributes, recursively.
+
+```ruby
+person1 = Person.new(name: 'Joe', age: 20)
+person2 = Person.new(name: 'Joe', age: 20)
+person1 == person2 # true
+```
+
+
+
+#### `[]` Syntax
+
+The `[]` syntax can be used to define a struct in a single line.
+Like `Plumb::Types::Hash``, suffixing a key with `?` makes it optional.
+
+```ruby
+Person = Struct[name: String, age?: Integer]
+person = Person.new(name: 'Jane')
+```
+
+#### Struct composition
+
+`Types::Struct` supports all the composition operators and helpers.
+
+Note however that, once you wrap a struct in a composition, you can't instantiate it with `.new` anymore (but you can still use `#parse` or `#resolve` like any other Plumb type).
+
+```ruby
+Person = Types::Struct[name: String]
+Animal = Types::Struct[species: String]
+# Compose with |
+Being = Person | Animal
+Being.parse(name: 'Joe') # <Person [valid] name: 'Joe'>
+
+# Compose with other types
+Beings = Types::Array[Person | Animal]
+
+# Default
+Payload = Types::Hash[
+  being: Being.default(Person.new(name: 'Joe Bloggs'))
+]
+```
+
+
+
 ### Plumb::Schema
 
 TODO
 
 ### Plumb::Pipeline
-
-TODO
-
-### Plumb::Struct
 
 TODO
 
