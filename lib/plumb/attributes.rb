@@ -118,23 +118,6 @@ module Plumb
       assign_attributes(attrs)
     end
 
-    private def assign_attributes(attrs = BLANK_HASH)
-      @errors = {}
-      @attributes = self.class._schema.each_with_object({}) do |(key, type), hash|
-        name = key.to_sym
-        if attrs.key?(name)
-          value = attrs[name]
-          result = type.resolve(value)
-          @errors[name] = result.errors unless result.valid?
-          hash[name] = result.value
-        elsif !key.optional?
-          result = type.resolve(Undefined)
-          @errors[name] = result.errors unless result.valid?
-          hash[name] = result.value
-        end
-      end
-    end
-
     def ==(other)
       other.is_a?(self.class) && other.attributes == attributes
     end
@@ -162,6 +145,25 @@ module Plumb
           value.map { |v| v.respond_to?(:to_h) ? v.to_h : v }
         else
           value.respond_to?(:to_h) ? value.to_h : value
+        end
+      end
+    end
+
+    private
+
+    def assign_attributes(attrs = BLANK_HASH)
+      @errors = {}
+      @attributes = self.class._schema.each_with_object({}) do |(key, type), hash|
+        name = key.to_sym
+        if attrs.key?(name)
+          value = attrs[name]
+          result = type.resolve(value)
+          @errors[name] = result.errors unless result.valid?
+          hash[name] = result.value
+        elsif !key.optional?
+          result = type.resolve(Undefined)
+          @errors[name] = result.errors unless result.valid?
+          hash[name] = result.value
         end
       end
     end
