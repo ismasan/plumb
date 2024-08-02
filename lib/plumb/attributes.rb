@@ -120,7 +120,7 @@ module Plumb
 
     private def assign_attributes(attrs = BLANK_HASH)
       @errors = {}
-      @attributes = self.class.attribute_specs.each_with_object({}) do |(key, type), hash|
+      @attributes = self.class._schema.each_with_object({}) do |(key, type), hash|
         name = key.to_sym
         if attrs.key?(name)
           value = attrs[name]
@@ -167,13 +167,13 @@ module Plumb
     end
 
     module ClassMethods
-      def attribute_specs
-        @attribute_specs ||= {}
+      def _schema
+        @_schema ||= {}
       end
 
       def inherited(subclass)
-        attribute_specs.each do |key, type|
-          subclass.attribute_specs[key] = type
+        _schema.each do |key, type|
+          subclass._schema[key] = type
         end
         super
       end
@@ -196,6 +196,9 @@ module Plumb
         end
         klass
       end
+
+      # node name for visitors
+      def node_name = :struct
 
       # attribute(:friend) { attribute(:name, String) }
       # attribute(:friend, MyStruct) { attribute(:name, String) }
@@ -225,7 +228,7 @@ module Plumb
           end
         end
 
-        attribute_specs[key] = type
+        _schema[key] = type
         define_method(name) { @attributes[name] }
       end
 

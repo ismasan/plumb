@@ -25,6 +25,31 @@ RSpec.describe Plumb::JSONSchemaVisitor do
     )
   end
 
+  specify 'Types::Struct' do
+    type = Types::Struct[
+      name: Types::String,
+      friend: Types::Struct[age: Integer]
+    ]
+
+    expect(described_class.call(type)).to eq(
+      {
+        '$schema' => 'https://json-schema.org/draft-08/schema#',
+        'type' => 'object',
+        'properties' => {
+          'name' => { 'type' => 'string' },
+          'friend' => {
+            'type' => 'object',
+            'properties' => {
+              'age' => { 'type' => 'integer' }
+            },
+            'required' => %w[age]
+          }
+        },
+        'required' => %w[name friend]
+      }
+    )
+  end
+
   specify 'Hash with key and value types (Hash Map)' do
     type = Types::Hash[
       Types::String,

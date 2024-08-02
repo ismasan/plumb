@@ -59,6 +59,10 @@ module Plumb
       )
     end
 
+    on(:struct) do |node, props|
+      visit_name :hash, node, props
+    end
+
     on(:and) do |node, props|
       left, right = node.children.map { |c| visit(c) }
       type = right[TYPE] || left[TYPE]
