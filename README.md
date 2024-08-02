@@ -1267,7 +1267,7 @@ AccountName.metadata # => { type: String, admin: true }
 
 #### Type-specific policies
 
-You can use the `for_type:` option to define policies that only apply to steps that output certain types. This example only applies for types that return `Integer` values.
+You can use the `for_type:` option to define policies that only apply to steps that output certain types. This example is only applicable for types that return `Integer` values.
 
 ```ruby
 Plumb.policy :multiply_by, for_type: Integer, helper: true do |type, factor|
@@ -1277,7 +1277,7 @@ end
 Doubled = Types::Integer.multiply_by(2)
 Doubled.parse(2) # 4
 
-# Tryin to apply this policy to a non Integer will raise an exception
+# Trying to apply this policy to a non Integer will raise an exception
 DoubledString = Types::String.multiply_by(2) # raises error
 ```
 
@@ -1352,7 +1352,7 @@ json_schema = Plumb::JSONSchemaVisitor.call(User)
 }
 ```
 
-The built-in JSON Schema generator handles most standard types and compositions. You can add or override handles on a per-type basis with:
+The built-in JSON Schema generator handles most standard types and compositions. You can add or override handlers on a per-type basis with:
 
 ```ruby
 Plumb::JSONSchemaVisitor.on(:not) do |node, props|
@@ -1380,10 +1380,6 @@ Types::DateTime.to_json_schema
 ```
 
 
-
-#### JSON Schema handlers for custom policies
-
-TODO. See `Plumb::JSONSchemaVisitor`.
 
 ## TODO:
 
