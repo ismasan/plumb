@@ -1165,7 +1165,7 @@ MyType = Types::String >> Greeting.new('Hola')
 
 This is useful when you want to parameterize your custom steps, for example by initialising them with arguments like the example above.
 
-#### Mix in `Plumb::Composable` to make a class a full Step
+#### Include `Plumb::Composable` to make instance of a class full "steps"
 
 The class above will be wrapped by `Plumb::Step` when piped into other steps, but it doesn't support Plumb methods on its own.
 
@@ -1197,7 +1197,20 @@ Now you can use your class as a composition starting point directly.
 LoudGreeting = Greeting.new('Hola').default('no greeting').invoke(:upcase)
 ```
 
+#### Extend a class with `Plumb::Composable` to make the class itself a composable step.
 
+```ruby
+class User
+  extend Composable
+  
+  def self.class(result)
+    # do something here. Perhaps returning a Result with an instance of this class
+    return result.valid(new)
+  end
+end
+```
+
+This is how [Plumb::Types::Data](#typesdata) is implemented.
 
 ### Custom policies
 
