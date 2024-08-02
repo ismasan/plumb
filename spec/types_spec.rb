@@ -940,6 +940,11 @@ RSpec.describe Plumb::Types do
     end
   end
 
+  specify '#to_json_schema' do
+    expect((Types::String | Types::Integer).to_json_schema)
+      .to eq({ 'anyOf' => [{ 'type' => 'string' }, { 'type' => 'integer' }] })
+  end
+
   private
 
   def bench

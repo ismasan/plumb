@@ -24,11 +24,15 @@ module Plumb
     MAX_ITEMS = 'maxItems'
     MIN_LENGTH = 'minLength'
     MAX_LENGTH = 'maxLength'
+    ENVELOPE = {
+      '$schema' => 'https://json-schema.org/draft-08/schema#'
+    }.freeze
 
-    def self.call(node)
-      {
-        '$schema' => 'https://json-schema.org/draft-08/schema#'
-      }.merge(new.visit(node))
+    def self.call(node, root: true)
+      data = new.visit(node)
+      return data unless root
+
+      ENVELOPE.merge(data)
     end
 
     private def stringify_keys(hash) = hash.transform_keys(&:to_s)

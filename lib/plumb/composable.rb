@@ -228,6 +228,12 @@ module Plumb
       inspect
     end
 
+    # @option root [Boolean] whether to include JSON Schema $schema property
+    # @return [Hash]
+    def to_json_schema(root: false)
+      JSONSchemaVisitor.call(self, root:)
+    end
+
     # Build a step that will invoke one or more methods on the value.
     # Ex 1: Types::String.invoke(:downcase)
     # Ex 2: Types::Array.invoke(:[], 1)
