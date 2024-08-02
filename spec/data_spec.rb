@@ -5,8 +5,8 @@ require 'plumb'
 # require 'plumb/struct'
 
 module Types
-  class User < Types::Struct
-    class Company < Types::Struct
+  class User < Types::Data
+    class Company < Types::Data
       attribute :name, String
     end
 
@@ -24,12 +24,12 @@ module Types
     def book_count = books.size
   end
 
-  class StaffMember < Types::Struct
+  class StaffMember < Types::Data
     attribute :name, String
     attribute :age, Lax::Integer[18..]
   end
 
-  class Office < Types::Struct
+  class Office < Types::Data
     attribute? :director, StaffMember
     attribute :staff, Array[StaffMember].default([].freeze)
   end
@@ -42,7 +42,7 @@ module Types
   end
 end
 
-RSpec.describe Types::Struct do
+RSpec.describe Types::Data do
   specify 'setting nested classes' do
     expect(Types::User::Friend).to be_a(Class)
     friend = Types::User::Friend.new(name: 'John', email: 'john@server.com')
@@ -144,7 +144,7 @@ RSpec.describe Types::Struct do
     expect(office.director).to eq(Types::StaffMember.new(name: 'Mr. Burns', age: 100))
   end
 
-  specify 'Types::Array[StructType].default()' do
+  specify 'Types::Array[Data].default()' do
     office = Types::Office.new(staff: [{ name: 'Jane', age: '20' }])
     office2 = Types::Office.new
     expect(office.valid?).to be true
@@ -153,7 +153,7 @@ RSpec.describe Types::Struct do
     expect(office2.staff).to eq []
   end
 
-  specify 'Types::Array[StructType].default() with errors' do
+  specify 'Types::Array[Data].default() with errors' do
     office = Types::Office.new(staff: [{ name: 'Jane' }])
     expect(office.valid?).to be false
     expect(office.staff.first.name).to eq 'Jane'

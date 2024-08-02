@@ -25,10 +25,10 @@ RSpec.describe Plumb::JSONSchemaVisitor do
     )
   end
 
-  specify 'Types::Struct' do
-    type = Types::Struct[
+  specify 'Types::Data' do
+    type = Types::Data[
       name: Types::String,
-      friend: Types::Struct[age: Integer]
+      friend: Types::Data[age: Integer]
     ]
 
     expect(described_class.call(type)).to eq(

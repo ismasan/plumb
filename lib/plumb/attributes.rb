@@ -105,7 +105,7 @@ module Plumb
     # The `[]` syntax can be used to define a struct in a single line.
     # Like Plumb::Types::Hash, suffixing a key with `?` makes it optional.
     #
-    #   Person = Struct[name: String, age?: Integer]
+    #   Person = Data[name: String, age?: Integer]
     #   person = Person.new(name: 'Jane')
     #
     def self.included(base)
@@ -193,7 +193,7 @@ module Plumb
         instance.valid? ? result.valid(instance) : result.invalid(instance, errors: instance.errors)
       end
 
-      # Person = Struct[:name => String, :age => Integer, title?: String]
+      # Person = Data[:name => String, :age => Integer, title?: String]
       def [](type_specs)
         klass = Class.new(self)
         type_specs.each do |key, type|
@@ -203,7 +203,7 @@ module Plumb
       end
 
       # node name for visitors
-      def node_name = :struct
+      def node_name = :data
 
       # attribute(:friend) { attribute(:name, String) }
       # attribute(:friend, MyStruct) { attribute(:name, String) }
@@ -216,12 +216,12 @@ module Plumb
         key = Key.wrap(name)
         name = key.to_sym
         type = Composable.wrap(type)
-        if block_given? # :foo, Array[Struct] or :foo, Struct
-          type = Composable.wrap(Types::Struct) if type == Types::Any
+        if block_given? # :foo, Array[Data] or :foo, Struct
+          type = Composable.wrap(Types::Data) if type == Types::Any
           type = Plumb.decorate(type) do |node|
             if node.is_a?(Plumb::ArrayClass)
               child = node.children.first
-              child = Composable.wrap(Types::Struct) if child == Types::Any
+              child = Composable.wrap(Types::Data) if child == Types::Any
               Types::Array[build_nested(name, child, &block)]
             elsif node.is_a?(Plumb::Step)
               build_nested(name, node, &block)

@@ -146,7 +146,7 @@ module Plumb
     Hash = HashClass.new
     Interface = InterfaceClass.new
 
-    class Struct
+    class Data
       extend Composable
       include Plumb::Attributes
     end

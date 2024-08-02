@@ -63,7 +63,7 @@ module Plumb
       )
     end
 
-    on(:struct) do |node, props|
+    on(:data) do |node, props|
       visit_name :hash, node, props
     end
 
