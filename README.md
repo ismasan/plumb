@@ -1045,6 +1045,21 @@ Payload = Types::Hash[
 ]
 ```
 
+#### Recursive struct definitions
+
+You can use `#defer`. See [recursive types](#recursive-types).
+
+```ruby
+Person = Types::Data[
+  name: String,
+  friend?: Types::Any.defer { Person }
+]
+
+person = Person.new(name: 'Joe', friend: { name: 'Joan'})
+person.friend.name # 'joan'
+person.friend.friend # nil
+```
+
 
 
 ### Plumb::Schema
