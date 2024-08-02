@@ -1008,12 +1008,19 @@ person1 == person2 # true
 
 #### `[]` Syntax
 
-The `[]` syntax can be used to define a struct in a single line.
-Like `Plumb::Types::Hash``, suffixing a key with `?` makes it optional.
+The `[]` syntax is a short-hand for struct definition.
+Like `Plumb::Types::Hash`, suffixing a key with `?` makes it optional.
 
 ```ruby
-Person = Struct[name: String, age?: Integer]
+Person = Types::Struct[name: String, age?: Integer]
 person = Person.new(name: 'Jane')
+```
+
+This syntax creates subclasses too.
+
+```ruby
+# Subclass Person with and redefine the :age type.
+Adult = Person[age?: Types::Integer[18..]]
 ```
 
 #### Struct composition
