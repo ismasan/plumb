@@ -113,6 +113,27 @@ RSpec.describe Types::Struct do
     expect(user1 == user3).to be false
   end
 
+  describe 'pattern matching' do
+    let(:user) do
+      Types::User.new(
+        name: 'Jane',
+        age: 20,
+        friend: { name: 'John', email: 'john@server.com' },
+        company: { name: 'Acme' },
+        books: [{ isbn: '123' }]
+      )
+    end
+
+    specify '#deconstruct' do
+      expect(user.deconstruct).to eq(['Jane', 20, { email: 'john@server.com', name: 'John' }, { name: 'Acme' },
+                                      [{ isbn: '123' }]])
+    end
+
+    specify '#deconstruct_keys' do
+      expect(user.deconstruct_keys(nil)).to eq(user.to_h)
+    end
+  end
+
   specify 'optional attributes' do
     office = Types::Office.new(staff: [])
     expect(office.valid?).to be true

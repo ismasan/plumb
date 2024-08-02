@@ -68,7 +68,7 @@ module Plumb
     #
     # Passing a named struct class AND a block will subclass the struct and extend it with new attributes:
     #
-    #   attribute :companby, Company do
+    #   attribute :company, Company do
     #     attribute :address, String
     #   end
     #
@@ -148,6 +148,9 @@ module Plumb
         end
       end
     end
+
+    def deconstruct(...) = to_h.values.deconstruct(...)
+    def deconstruct_keys(...) = to_h.deconstruct_keys(...)
 
     private
 
