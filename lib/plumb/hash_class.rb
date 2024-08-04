@@ -10,6 +10,8 @@ module Plumb
   class HashClass
     include Composable
 
+    NOT_A_HASH = { _: 'must be a Hash' }.freeze
+
     attr_reader :_schema
 
     def initialize(schema: BLANK_HASH, inclusive: false)
@@ -102,7 +104,7 @@ module Plumb
     end
 
     def call(result)
-      return result.invalid(errors: 'must be a Hash') unless result.value.is_a?(::Hash)
+      return result.invalid(errors: NOT_A_HASH) unless result.value.is_a?(::Hash)
       return result unless _schema.any?
 
       input = result.value
