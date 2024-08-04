@@ -64,7 +64,7 @@ module Plumb
     end
 
     on(:data) do |node, props|
-      visit_name :hash, node, props
+      visit_name :hash, node._schema, props
     end
 
     on(:and) do |node, props|

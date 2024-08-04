@@ -123,7 +123,7 @@ module Plumb
     end
 
     # @return [Boolean]
-    def valid? = errors.none?
+    def valid? = !errors || errors.none?
 
     # @param attrs [Hash]
     # @return [Plumb::Attributes]
@@ -155,30 +155,22 @@ module Plumb
     private
 
     def assign_attributes(attrs = BLANK_HASH)
-      @errors = {}
-      @attributes = self.class._schema.each_with_object({}) do |(key, type), hash|
-        name = key.to_sym
-        if attrs.key?(name)
-          value = attrs[name]
-          result = type.resolve(value)
-          @errors[name] = result.errors unless result.valid?
-          hash[name] = result.value
-        elsif !key.optional?
-          result = type.resolve(Undefined)
-          @errors[name] = result.errors unless result.valid?
-          hash[name] = result.value
-        end
-      end
+      raise ArgumentError, 'Must be a Hash of attributes' unless attrs.is_a?(::Hash)
+
+      @errors = BLANK_HASH
+      result = self.class._schema.resolve(attrs)
+      @attributes = result.value
+      @errors = result.errors unless result.valid?
     end
 
     module ClassMethods
       def _schema
-        @_schema ||= {}
+        @_schema ||= HashClass.new
       end
 
       def inherited(subclass)
-        _schema.each do |key, type|
-          subclass._schema[key] = type
+        _schema._schema.each do |key, type|
+          subclass.attribute(key, type)
         end
         super
       end
@@ -233,7 +225,7 @@ module Plumb
           end
         end
 
-        _schema[key] = type
+        @_schema = _schema + { key => type }
         define_method(name) { @attributes[name] }
       end
 

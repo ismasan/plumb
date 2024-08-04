@@ -69,6 +69,12 @@ RSpec.describe Types::Data do
     expect(user.books.first).to be_a(Types::User::Book)
   end
 
+  specify 'invalid with non-hash value' do
+    expect do
+      Types::User.new(1)
+    end.to raise_error(ArgumentError)
+  end
+
   specify '#to_h' do
     user = Types::User.new(
       name: 'Jane',
