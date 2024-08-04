@@ -909,9 +909,6 @@ class Person < Types::Data
   attribute :friend do
     attribute :name, String
   end
-  
-  # Custom methods like any other class
-  def friend_count = friends.size
 end
 
 person = Person.new(friend: { name: 'John' })
@@ -925,6 +922,9 @@ class Person < Types::Data
   attribute :friends, Types::Array do
     atrribute :name, String
   end
+    
+  # Custom methods like any other class
+  def friend_count = friends.size
 end
 
 person = Person.new(friends: [{ name: 'John' }])
