@@ -44,9 +44,14 @@ module Plumb
     # we need to keep the right-side key, because even if the key name is the same,
     # it's optional flag might have changed
     def +(other)
-      raise ArgumentError, "expected a HashClass, got #{other.class}" unless other.is_a?(HashClass)
+      other_schema = case other
+                     when HashClass then other._schema
+                     when ::Hash then other
+                     else
+                       raise ArgumentError, "expected a HashClass or Hash, got #{other.class}"
+                     end
 
-      self.class.new(schema: merge_rightmost_keys(_schema, other._schema), inclusive: @inclusive)
+      self.class.new(schema: merge_rightmost_keys(_schema, other_schema), inclusive: @inclusive)
     end
 
     def &(other)

@@ -769,6 +769,12 @@ RSpec.describe Plumb::Types do
       assert_result(s3.resolve(age: 42), { age: 42 }, true)
     end
 
+    specify '#+ (merge) with Hash' do
+      s1 = Types::Hash[name: String]
+      s2 = s1 + { age: Integer }
+      assert_result(s2.resolve(name: 'Joe', age: 42), { name: 'Joe', age: 42 }, true)
+    end
+
     specify '#filtered' do
       hash = Types::Hash[name: String, age: Integer].filtered
       expect(hash.parse(name: 'Ismael', age: 46, address: 'foo bar'))
