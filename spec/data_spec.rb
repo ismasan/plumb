@@ -217,4 +217,28 @@ RSpec.describe Types::Data do
     office2 = office.with(kind: 'bar')
     expect(office2.kind).to eq 'bar'
   end
+
+  describe 'Composable' do
+    it 'is composable' do
+      expect(Types::User).to be_a(Plumb::Composable)
+    end
+
+    specify '.resolve with hash attributes' do
+      assert_result(
+        Types::StaffMember.resolve(name: 'Jane', age: 20),
+        Types::StaffMember.new(name: 'Jane', age: 20),
+        true
+      )
+    end
+
+    specify '.resolve with instance' do
+      instance = Types::StaffMember.new(name: 'Jane', age: 20)
+
+      assert_result(
+        Types::StaffMember.resolve(instance),
+        Types::StaffMember.new(name: 'Jane', age: 20),
+        true
+      )
+    end
+  end
 end

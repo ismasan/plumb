@@ -179,6 +179,7 @@ module Plumb
       # @param result [Plumb::Result::Valid]
       # @return [Plumb::Result::Valid, Plumb::Result::Invalid]
       def call(result)
+        return result if result.value.is_a?(self)
         return result.invalid(errors: ['Must be a Hash of attributes']) unless result.value.is_a?(Hash)
 
         instance = new(result.value)
