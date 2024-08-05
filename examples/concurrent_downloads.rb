@@ -15,8 +15,8 @@ module Types
   # Turn a string into an URI
   URL = String[/^https?:/].build(::URI, :parse)
 
-  # a Struct to holw image data
-  Image = Data.define(:url, :io)
+  # a Struct to hold image data
+  Image = ::Data.define(:url, :io)
 
   # A (naive) step to download files from the internet
   # and return an Image struct.

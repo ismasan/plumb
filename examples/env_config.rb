@@ -32,10 +32,10 @@ module Types
   end
 
   # A dummy S3 client
-  S3Client = Data.define(:bucket, :region)
+  S3Client = ::Data.define(:bucket, :region)
 
   # A dummy SFTP client
-  SFTPClient = Data.define(:host, :username, :password)
+  SFTPClient = ::Data.define(:host, :username, :password)
 
   # Map these fields to an S3 client
   S3Config = Types::Hash[
