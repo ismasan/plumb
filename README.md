@@ -880,11 +880,21 @@ end
 
 `Types::Data` provides a superclass to define **inmutable** structs or value objects with typed / coercible attributes.
 
+#### `[]` Syntax
+
+The `[]` syntax is a short-hand for struct definition.
+Like `Plumb::Types::Hash`, suffixing a key with `?` makes it optional.
+
 ```ruby
-class Person < Types::Data
-  attribute :name, Types::String.present
-  attribute :age, Types::Integer
-end
+Person = Types::Data[name: String, age?: Integer]
+person = Person.new(name: 'Jane')
+```
+
+This syntax creates subclasses too.
+
+```ruby
+# Subclass Person with and redefine the :age type.
+Adult = Person[age?: Types::Integer[18..]]
 ```
 
 These classes can be instantiated normally, and expose `#valid?` and `#error`
@@ -896,10 +906,23 @@ person.valid? # false
 person.errors[:age] # 'must be an integer'
 ```
 
+#### `#with`
+
 Note that these instances cannot be mutated (there's no attribute setters), but they can be copied with partial attributes with `#with`
 
 ```ruby
 another_person = person.with(age: 20)
+```
+
+#### `.attribute` syntax
+
+This syntax allows defining struct classes with typed attributes, including nested structs.
+
+```ruby
+class Person < Types::Data
+  attribute :name, Types::String.present
+  attribute :age, Types::Integer
+end
 ```
 
 It supports nested attributes:
@@ -1002,25 +1025,6 @@ end
 person1 = Person.new(name: 'Joe', age: 20)
 person2 = Person.new(name: 'Joe', age: 20)
 person1 == person2 # true
-```
-
-
-
-#### `[]` Syntax
-
-The `[]` syntax is a short-hand for struct definition.
-Like `Plumb::Types::Hash`, suffixing a key with `?` makes it optional.
-
-```ruby
-Person = Types::Data[name: String, age?: Integer]
-person = Person.new(name: 'Jane')
-```
-
-This syntax creates subclasses too.
-
-```ruby
-# Subclass Person with and redefine the :age type.
-Adult = Person[age?: Types::Integer[18..]]
 ```
 
 #### Struct composition
