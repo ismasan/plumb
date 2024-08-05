@@ -51,7 +51,7 @@ end
 #
 #  # Use #follow(payload Hash) => Event to produce events following a command or parent event
 #  create_user = CreateUser.new(...)
-#  user_created = create_user.follow('users.created', name: 'Joe', email: '...')
+#  user_created = create_user.follow(UserCreated, name: 'Joe', email: '...')
 #  user_created.causation_id == create_user.id
 #  user_created.correlation_id == create_user.correlation_id
 #  user_created.stream_id == create_user.stream_id
@@ -89,10 +89,10 @@ class Event < Types::Data
     klass.new(attrs)
   end
 
-  def follow(type, payload_attrs = nil)
-    attrs = { stream_id:, type:, causation_id: id, correlation_id: }
+  def follow(event_class, payload_attrs = nil)
+    attrs = { stream_id:, causation_id: id, correlation_id: }
     attrs[:payload] = payload_attrs if payload_attrs
-    Event.from(attrs)
+    event_class.new(attrs)
   end
 end
 
@@ -117,3 +117,4 @@ end
 # UserNameUpdated = Event.define('users.name_updated') do
 #   attribute :name, Types::String
 # end
+# debugger
