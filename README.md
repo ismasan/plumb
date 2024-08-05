@@ -135,11 +135,11 @@ Users.parse([joe]) # returns valid array of user hashes
 
 More about [Types::Array](#typeshash) and [Types::Array](#typesarray). There's also [tuples](#typestuple), [hash maps](#hash-maps) and [data structs](#typesdata), and it's possible to create your own composite types.
 
-## Type composition
+### Type composition
 
 At the core, Plumb types are little [Railway-oriented pipelines](https://ismaelcelis.com/posts/composable-pipelines-in-ruby/) that can be composed together with _AND_, _OR_ and _NOT_ semantics. Everything else builds on top of these two ideas.
 
-### Composing types with `#>>` ("And")
+#### Composing types with `#>>` ("And")
 
 ```ruby
 Email = Types::String[/@/]
@@ -153,7 +153,7 @@ Similar to Ruby's built-in [function composition](https://thoughtbot.com/blog/pr
 
 In other words, `A >> B` means "if A succeeds, pass its result to B. Otherwise return A's failed result."
 
-### Disjunction with `#|` ("Or")
+#### Disjunction with `#|` ("Or")
 
 `A | B` means "if A returns a valid result, return that. Otherwise try B with the original input."
 
@@ -172,7 +172,7 @@ EmailOrDefault.parse('joe@bloggs.com') # "Your email is joe@bloggs.com"
 EmailOrDefault.parse('nope') # "no email"
 ```
 
-## Composing with `#>>` and `#|`
+#### Composing with `#>>` and `#|`
 
 Combine `#>>` and `#|` to compose branching workflows, or types that accept and output several possible data types.
 
@@ -212,7 +212,7 @@ FlexibleUSD.parse(Money.new(1000, 'GBP')) # Money(USD 15.00)
 
 You can see more use cases in [the examples directory](https://github.com/ismasan/plumb/tree/main/examples)
 
-## Built-in types
+### Built-in types
 
 * `Types::Value`
 * `Types::Array`
@@ -244,7 +244,7 @@ TODO: date and datetime, UUIDs, Email, others.
 
 Policies are helpers that encapsulate common compositions. Plumb ships with some handy ones, listed below, and you can also define your own.
 
-### `#present`
+#### `#present`
 
 Checks that the value is not blank (`""` if string, `[]` if array, `{}` if Hash, or `nil`)
 
@@ -253,7 +253,7 @@ Types::String.present.resolve('') # Failure with errors
 Types::Array[Types::String].resolve([]) # Failure with errors
 ```
 
-### `#nullable`
+#### `#nullable`
 
 Allow `nil` values.
 
@@ -270,7 +270,7 @@ Note that this just encapsulates the following composition:
 nullable_str = Types::String | Types::Nil
 ```
 
-### `#not`
+#### `#not`
 
 Negates a type. 
 ```ruby
@@ -280,7 +280,7 @@ NotEmail.parse('hello') # "hello"
 NotEmail.parse('hello@server.com') # error
 ```
 
-### `#options`
+#### `#options`
 
 Sets allowed options for value.
 
@@ -298,7 +298,7 @@ type.resolve(['a', 'a', 'b']) # Valid
 type.resolve(['a', 'x', 'b']) # Failure
 ```
 
-### `#transform`
+#### `#transform`
 
 Transform value. Requires specifying the resulting type of the value after transformation.
 
@@ -310,7 +310,7 @@ StringToInt = Types::String.transform(Integer, &:to_i)
 StringToInteger.parse('10') # => 10
 ```
 
-### `#invoke`
+#### `#invoke`
 
 `#invoke` builds a Step that will invoke one or more methods on the value.
 
@@ -347,7 +347,7 @@ type.parse([1, 2]) # raises NoMethodError because Array doesn't respond to #stri
 
 Use with caution.
 
-### `#default`
+#### `#default`
 
 Default value when no value given (ie. when key is missing in Hash payloads. See `Types::Hash` below).
 
@@ -381,7 +381,7 @@ Same if you want to apply a default to several cases.
 str = Types::String | ((Types::Nil | Types::Undefined) >> Types::Static['nope'.freeze])
 ```
 
-### `#build`
+#### `#build`
 
 Build a custom object or class.
 
@@ -414,7 +414,7 @@ Note that this case is identical to `#transform` with a block.
 StringToMoney = Types::String.transform(Money) { |value| Monetize.parse(value) }
 ```
 
-### `#check`
+#### `#check`
 
 Pass the value through an arbitrary validation
 
@@ -424,9 +424,7 @@ type.parse('Role: Manager') # 'Role: Manager'
 type.parse('Manager') # fails
 ```
 
-
-
-### `#value` 
+####  `#value` 
 
 Constrain a type to a specific value. Compares with `#==`
 
@@ -443,7 +441,7 @@ All scalar types support this:
 ten = Types::Integer.value(10)
 ```
 
-### `#metadata`
+#### `#metadata`
 
 Add metadata to a type
 
