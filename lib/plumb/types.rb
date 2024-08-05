@@ -101,7 +101,7 @@ module Plumb
                  Types::Static[value]
                end
 
-    type | (Types::Undefined >> val_type)
+    (Types::Undefined >> val_type) | type
   end
 
   # Split a string into an array. Default separator is /\s*,\s*/
@@ -145,6 +145,11 @@ module Plumb
     Tuple = TupleClass.new
     Hash = HashClass.new
     Interface = InterfaceClass.new
+
+    class Data
+      extend Composable
+      include Plumb::Attributes
+    end
 
     module Lax
       NUMBER_EXPR = /^\d{1,3}(?:,\d{3})*(?:\.\d+)?$/

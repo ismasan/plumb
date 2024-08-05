@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require 'date'
 require 'plumb/visitor_handlers'
 
 module Plumb
@@ -23,11 +24,15 @@ module Plumb
     MAX_ITEMS = 'maxItems'
     MIN_LENGTH = 'minLength'
     MAX_LENGTH = 'maxLength'
+    ENVELOPE = {
+      '$schema' => 'https://json-schema.org/draft-08/schema#'
+    }.freeze
 
-    def self.call(node)
-      {
-        '$schema' => 'https://json-schema.org/draft-08/schema#'
-      }.merge(new.visit(node))
+    def self.call(node, root: true)
+      data = new.visit(node)
+      return data unless root
+
+      ENVELOPE.merge(data)
     end
 
     private def stringify_keys(hash) = hash.transform_keys(&:to_s)
@@ -58,6 +63,10 @@ module Plumb
       )
     end
 
+    on(:data) do |node, props|
+      visit_name :hash, node._schema, props
+    end
+
     on(:and) do |node, props|
       left, right = node.children.map { |c| visit(c) }
       type = right[TYPE] || left[TYPE]
@@ -69,9 +78,9 @@ module Plumb
     # A "default" value is usually an "or" of expected_value | (undefined >> static_value)
     on(:or) do |node, props|
       left, right = node.children.map { |c| visit(c) }
-      any_of = [left, right].uniq
+      any_of = [left, right].uniq.filter(&:any?)
       if any_of.size == 1
-        props.merge(left)
+        props.merge(any_of.first)
       elsif any_of.size == 2 && (defidx = any_of.index { |p| p.key?(DEFAULT) })
         val = any_of[defidx.zero? ? 1 : 0]
         props.merge(val).merge(DEFAULT => any_of[defidx][DEFAULT])
@@ -227,6 +236,14 @@ module Plumb
         opts[MAXIMUM] = node.max if node.end
       end
       props.merge(opts)
+    end
+
+    on(::Time) do |_node, props|
+      props.merge(TYPE => 'string', 'format' => 'date-time')
+    end
+
+    on(::Date) do |_node, props|
+      props.merge(TYPE => 'string', 'format' => 'date')
     end
 
     on(::Hash) do |_node, props|

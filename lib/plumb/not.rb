@@ -6,7 +6,7 @@ module Plumb
   class Not
     include Composable
 
-    attr_reader :children
+    attr_reader :children, :errors
 
     def initialize(step, errors: nil)
       @step = step

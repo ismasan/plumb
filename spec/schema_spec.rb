@@ -43,13 +43,13 @@ RSpec.describe Plumb::Schema do
                                  })
     end
 
-    specify '#json_schema' do
+    specify '#to_json_schema' do
       schema = described_class.new do |sc|
         sc.field :title, Types::String.default('Mr')
         sc.field? :age, Types::Integer
         sc.field? :foo, Types::String.transform(::Integer, &:to_i)
       end
-      data = schema.json_schema
+      data = schema.to_json_schema
       expect(data).to eq({
                            '$schema' => 'https://json-schema.org/draft-08/schema#',
                            'type' => 'object',

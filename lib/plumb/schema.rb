@@ -49,8 +49,8 @@ module Plumb
       self
     end
 
-    def json_schema
-      JSONSchemaVisitor.call(_hash).to_h
+    def to_json_schema
+      _hash.to_json_schema(root: true)
     end
 
     def call(result)

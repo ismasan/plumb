@@ -25,6 +25,31 @@ RSpec.describe Plumb::JSONSchemaVisitor do
     )
   end
 
+  specify 'Types::Data' do
+    type = Types::Data[
+      name: Types::String,
+      friend: Types::Data[age: Integer]
+    ]
+
+    expect(described_class.call(type)).to eq(
+      {
+        '$schema' => 'https://json-schema.org/draft-08/schema#',
+        'type' => 'object',
+        'properties' => {
+          'name' => { 'type' => 'string' },
+          'friend' => {
+            'type' => 'object',
+            'properties' => {
+              'age' => { 'type' => 'integer' }
+            },
+            'required' => %w[age]
+          }
+        },
+        'required' => %w[name friend]
+      }
+    )
+  end
+
   specify 'Hash with key and value types (Hash Map)' do
     type = Types::Hash[
       Types::String,
@@ -84,6 +109,16 @@ RSpec.describe Plumb::JSONSchemaVisitor do
   specify 'Float' do
     type = Types::Any[Float]
     expect(described_class.visit(type)).to eq('type' => 'number')
+  end
+
+  specify 'Time' do
+    type = Types::Any[Time]
+    expect(described_class.visit(type)).to eq('type' => 'string', 'format' => 'date-time')
+  end
+
+  specify 'Date' do
+    type = Types::Any[Date]
+    expect(described_class.visit(type)).to eq('type' => 'string', 'format' => 'date')
   end
 
   specify 'Not' do

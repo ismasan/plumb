@@ -133,7 +133,7 @@ joe = User.parse({ name: 'Joe', email: 'joe@email.com', age: 20}) # returns vali
 Users.parse([joe]) # returns valid array of user hashes
 ```
 
-More about [Types::Array](#typeshash) and [Types::Array](#typesarray). There's also [tuples](#typestuple) and [hash maps](#hash-maps), and it's possible to create your own composite types.
+More about [Types::Array](#typeshash) and [Types::Array](#typesarray). There's also [tuples](#typestuple), [hash maps](#hash-maps) and [data structs](#typesdata), and it's possible to create your own composite types.
 
 ## Type composition
 
@@ -876,15 +876,201 @@ Str.parse(data).each do |row|
 end
 ```
 
+### Types::Data
+
+`Types::Data` provides a superclass to define **inmutable** structs or value objects with typed / coercible attributes.
+
+#### `[]` Syntax
+
+The `[]` syntax is a short-hand for struct definition.
+Like `Plumb::Types::Hash`, suffixing a key with `?` makes it optional.
+
+```ruby
+Person = Types::Data[name: String, age?: Integer]
+person = Person.new(name: 'Jane')
+```
+
+This syntax creates subclasses too.
+
+```ruby
+# Subclass Person with and redefine the :age type.
+Adult = Person[age?: Types::Integer[18..]]
+```
+
+These classes can be instantiated normally, and expose `#valid?` and `#error`
+
+```ruby
+person = Person.new(name: 'Joe')
+person.name # 'Joe'
+person.valid? # false
+person.errors[:age] # 'must be an integer'
+```
+
+#### `#with`
+
+Note that these instances cannot be mutated (there's no attribute setters), but they can be copied with partial attributes with `#with`
+
+```ruby
+another_person = person.with(age: 20)
+```
+
+#### `.attribute` syntax
+
+This syntax allows defining struct classes with typed attributes, including nested structs.
+
+```ruby
+class Person < Types::Data
+  attribute :name, Types::String.present
+  attribute :age, Types::Integer
+end
+```
+
+It supports nested attributes:
+
+```ruby
+class Person < Types::Data
+  attribute :friend do
+    attribute :name, String
+  end
+end
+
+person = Person.new(friend: { name: 'John' })
+person.friend_count # 1
+```
+
+Or arrays of nested attributes:
+
+```ruby
+class Person < Types::Data
+  attribute :friends, Types::Array do
+    atrribute :name, String
+  end
+    
+  # Custom methods like any other class
+  def friend_count = friends.size
+end
+
+person = Person.new(friends: [{ name: 'John' }])
+```
+
+Or use struct classes defined separately:
+
+```ruby
+class Company < Types::Data
+  attribute :name, String
+end
+
+class Person < Types::Data
+  # Single nested struct
+  attribute :company, Company
+
+  # Array of nested structs
+  attribute :companies, Types::Array[Company]
+end
+```
+
+Arrays and other types support composition and helpers. Ex. `#default`.
+
+```ruby
+attribute :companies, Types::Array[Company].default([].freeze)
+```
+
+Passing a named struct class AND a block will subclass the struct and extend it with new attributes:
+
+```ruby
+attribute :company, Company do
+  attribute :address, String
+end
+```
+
+The same works with arrays:
+
+```ruby
+attribute :companies, Types::Array[Company] do
+  attribute :address, String
+end
+```
+
+Note that this does NOT work with union'd or piped structs.
+
+```ruby
+attribute :company, Company | Person do
+```
+
+#### Optional Attributes
+Using `attribute?` allows for optional attributes. If the attribute is not present, these attribute values will be `nil`
+
+```ruby
+attribute? :company, Company
+```
+
+#### Inheritance
+Data structs can inherit from other structs. This is useful for defining a base struct with common attributes.
+
+```ruby
+class BasePerson < Types::Data
+  attribute :name, String
+end
+
+class Person < BasePerson
+  attribute :age, Integer
+end
+```
+
+#### Equality with `#==`
+
+`#==` is implemented to compare attributes, recursively.
+
+```ruby
+person1 = Person.new(name: 'Joe', age: 20)
+person2 = Person.new(name: 'Joe', age: 20)
+person1 == person2 # true
+```
+
+#### Struct composition
+
+`Types::Data` supports all the composition operators and helpers.
+
+Note however that, once you wrap a struct in a composition, you can't instantiate it with `.new` anymore (but you can still use `#parse` or `#resolve` like any other Plumb type).
+
+```ruby
+Person = Types::Data[name: String]
+Animal = Types::Data[species: String]
+# Compose with |
+Being = Person | Animal
+Being.parse(name: 'Joe') # <Person [valid] name: 'Joe'>
+
+# Compose with other types
+Beings = Types::Array[Person | Animal]
+
+# Default
+Payload = Types::Hash[
+  being: Being.default(Person.new(name: 'Joe Bloggs'))
+]
+```
+
+#### Recursive struct definitions
+
+You can use `#defer`. See [recursive types](#recursive-types).
+
+```ruby
+Person = Types::Data[
+  name: String,
+  friend?: Types::Any.defer { Person }
+]
+
+person = Person.new(name: 'Joe', friend: { name: 'Joan'})
+person.friend.name # 'joan'
+person.friend.friend # nil
+```
+
+
+
 ### Plumb::Schema
 
 TODO
 
 ### Plumb::Pipeline
-
-TODO
-
-### Plumb::Struct
 
 TODO
 
@@ -983,7 +1169,7 @@ MyType = Types::String >> Greeting.new('Hola')
 
 This is useful when you want to parameterize your custom steps, for example by initialising them with arguments like the example above.
 
-#### Mix in `Plumb::Composable` to make a class a full Step
+#### Include `Plumb::Composable` to make instance of a class full "steps"
 
 The class above will be wrapped by `Plumb::Step` when piped into other steps, but it doesn't support Plumb methods on its own.
 
@@ -1015,7 +1201,20 @@ Now you can use your class as a composition starting point directly.
 LoudGreeting = Greeting.new('Hola').default('no greeting').invoke(:upcase)
 ```
 
+#### Extend a class with `Plumb::Composable` to make the class itself a composable step.
 
+```ruby
+class User
+  extend Composable
+  
+  def self.class(result)
+    # do something here. Perhaps returning a Result with an instance of this class
+    return result.valid(new)
+  end
+end
+```
+
+This is how [Plumb::Types::Data](#typesdata) is implemented.
 
 ### Custom policies
 
@@ -1072,7 +1271,7 @@ AccountName.metadata # => { type: String, admin: true }
 
 #### Type-specific policies
 
-You can use the `for_type:` option to define policies that only apply to steps that output certain types. This example only applies for types that return `Integer` values.
+You can use the `for_type:` option to define policies that only apply to steps that output certain types. This example is only applicable for types that return `Integer` values.
 
 ```ruby
 Plumb.policy :multiply_by, for_type: Integer, helper: true do |type, factor|
@@ -1082,7 +1281,7 @@ end
 Doubled = Types::Integer.multiply_by(2)
 Doubled.parse(2) # 4
 
-# Tryin to apply this policy to a non Integer will raise an exception
+# Trying to apply this policy to a non Integer will raise an exception
 DoubledString = Types::String.multiply_by(2) # raises error
 ```
 
@@ -1123,7 +1322,20 @@ Plumb.policy :split, SplitPolicy
 
 ### JSON Schema
 
-Plumb ships with a JSON schema visitor that compiles a type composition into a JSON Schema Hash.
+Plumb ships with a JSON schema visitor that compiles a type composition into a JSON Schema Hash. All Plumb types support a `#to_json_schema` method.
+
+```ruby
+Payload = Types::Hash[name: String]
+Payload.to_json_schema(root: true)
+# {
+#   "$schema"=>"https://json-schema.org/draft-08/schema#", 
+#   "type"=>"object", 
+#   "properties"=>{"name"=>{"type"=>"string"}}, 
+#   "required"=>["name"]
+# }
+```
+
+The visitor can be used directly, too.
 
 ```ruby
 User = Types::Hash[
@@ -1144,7 +1356,7 @@ json_schema = Plumb::JSONSchemaVisitor.call(User)
 }
 ```
 
-The built-in JSON Schema generator handles most standard types and compositions. You can add or override handles on a per-type basis with:
+The built-in JSON Schema generator handles most standard types and compositions. You can add or override handlers on a per-type basis with:
 
 ```ruby
 Plumb::JSONSchemaVisitor.on(:not) do |node, props|
@@ -1156,15 +1368,28 @@ type = Types::Decimal.not
 schema = Plumb::JSONSchemaVisitor.visit(type) # { 'not' => { 'type' => 'number' } }
 ```
 
-#### JSON Schema handlers for custom policies
+You can also register custom classes or types that are wrapped by Plumb steps.
 
-TODO. See `Plumb::JSONSchemaVisitor`.
+```ruby
+module Types
+  DateTime = Any[::DateTime]
+end
+
+Plumb::JSONSchemaVisitor.on(::DateTime) do |node, props|
+  props.merge('type' => 'string', 'format' => 'date-time')
+end
+
+Types::DateTime.to_json_schema
+# {"type"=>"string", "format"=>"date-time"}
+```
+
+
 
 ## TODO:
 
 - [ ] benchmarks and performace. Compare with `Parametric`, `ActiveModel::Attributes`, `ActionController::StrongParameters`
 - [ ] flesh out `Plumb::Schema`
-- [ ] `Plumb::Struct`
+- [x] `Plumb::Struct`
 - [ ] flesh out and document `Plumb::Pipeline`
 - [ ] document custom visitors
 - [ ] Improve errors, support I18n ?
