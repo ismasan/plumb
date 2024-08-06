@@ -904,6 +904,13 @@ person.valid? # false
 person.errors[:age] # 'must be an integer'
 ```
 
+Data structs can also be defined from `Types::Hash` instances.
+
+```ruby
+PersonHash = Types::Hash[name: String, age?: Integer]
+PersonStruct = Types::Data[PersonHash]
+```
+
 #### `#with`
 
 Note that these instances cannot be mutated (there's no attribute setters), but they can be copied with partial attributes with `#with`

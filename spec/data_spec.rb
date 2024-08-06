@@ -246,4 +246,12 @@ RSpec.describe Types::Data do
       expect(type.metadata[:type]).to eq([Types::StaffMember, Types::User])
     end
   end
+
+  specify 'defining from Types::Hash' do
+    hash = Types::Hash[name: String, age?: Integer]
+    data = Types::Data[hash]
+    instance = data.new(name: 'Joe')
+    expect(instance.name).to eq('Joe')
+    expect(instance.age).to be(nil)
+  end
 end
