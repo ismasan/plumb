@@ -188,6 +188,7 @@ module Plumb
 
       # Person = Data[:name => String, :age => Integer, title?: String]
       def [](type_specs)
+        type_specs = type_specs._schema if type_specs.is_a?(Plumb::HashClass)
         klass = Class.new(self)
         type_specs.each do |key, type|
           klass.attribute(key, type)
