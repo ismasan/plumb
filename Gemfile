@@ -15,3 +15,10 @@ end
 group :examples do
   gem 'money'
 end
+
+group :benchmark do
+  gem 'benchmark-ips'
+  gem 'monetize'
+  gem 'money'
+  gem 'parametric'
+end
