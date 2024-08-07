@@ -10,6 +10,8 @@ If you're after raw performance and versatility I strongly recommend you use the
 
 For a description of the core architecture you can read [this article](https://ismaelcelis.com/posts/composable-pipelines-in-ruby/).
 
+Some use cases in the [examples directory](https://github.com/ismasan/plumb/tree/main/examples)
+
 ## Installation
 
 Install in your environment with `gem install plumb`, or in your `Gemfile` with
