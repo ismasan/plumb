@@ -21,7 +21,7 @@ module Plumb
       # types are assumed to have literal values for the index field :key
       @index = @children.each.with_object({}) do |t, memo|
         key_type = t.at_key(@key)
-        raise TypeError, "key type at :#{@key} #{key_type} must be a Match type" unless key_type.is_a?(MatchClass)
+        raise ParseError, "key type at :#{@key} #{key_type} must be a Match type" unless key_type.is_a?(MatchClass)
 
         memo[key_type.children[0]] = t
       end

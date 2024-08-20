@@ -60,7 +60,7 @@ module Types
 end
 
 Types::String.parse("hello") # => "hello"
-Types::String.parse(10) # raises "Must be a String" (Plumb::TypeError)
+Types::String.parse(10) # raises "Must be a String" (Plumb::ParseError)
 ```
 
 Plumb ships with basic types already defined, such as `Types::String` and `Types::Integer`. See the full list below.
@@ -77,7 +77,7 @@ Email.parse('hello@server.com') # 'hello@server.com'
 # Or a Range
 AdultAge = Types::Integer[18..]
 AdultAge.parse(20) # 20
-AdultAge.parse(17) # raises "Must be within 18.."" (Plumb::TypeError)
+AdultAge.parse(17) # raises "Must be within 18.."" (Plumb::ParseError)
 
 # Or literal values
 Twenty = Types::Integer[20]
@@ -115,7 +115,7 @@ result.errors # 'must be an Integer'
 
 ```ruby
 Types::Integer.parse(10) # 10
-Types::Integer.parse('10') # raises Plumb::TypeError
+Types::Integer.parse('10') # raises Plumb::ParseError
 ```
 
 
@@ -163,7 +163,7 @@ In other words, `A >> B` means "if A succeeds, pass its result to B. Otherwise r
 StringOrInt = Types::String | Types::Integer
 StringOrInt.parse('hello') # "hello"
 StringOrInt.parse(10) # 10
-StringOrInt.parse({}) # raises Plumb::TypeError
+StringOrInt.parse({}) # raises Plumb::ParseError
 ```
 
 Custom default value logic for non-emails
@@ -263,7 +263,7 @@ Allow `nil` values.
 nullable_str = Types::String.nullable
 nullable_srt.parse(nil) # nil
 nullable_str.parse('hello') # 'hello'
-nullable_str.parse(10) # TypeError
+nullable_str.parse(10) # ParseError
 ```
 
 Note that this just encapsulates the following composition:

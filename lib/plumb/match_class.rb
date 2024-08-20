@@ -9,7 +9,7 @@ module Plumb
     attr_reader :children
 
     def initialize(matcher = Undefined, error: nil, label: nil)
-      raise TypeError 'matcher must respond to #===' unless matcher.respond_to?(:===)
+      raise ParseError 'matcher must respond to #===' unless matcher.respond_to?(:===)
 
       @matcher = matcher
       @error = error.nil? ? build_error(matcher) : (error % matcher)

@@ -13,7 +13,7 @@ module Plumb
     def empty? = true
   end
 
-  TypeError = Class.new(::TypeError)
+  ParseError = Class.new(::TypeError)
   Undefined = UndefinedClass.new.freeze
 
   BLANK_STRING = ''
@@ -29,7 +29,7 @@ module Plumb
 
     def parse(value = Undefined)
       result = resolve(value)
-      raise TypeError, result.errors if result.invalid?
+      raise ParseError, result.errors if result.invalid?
 
       result.value
     end

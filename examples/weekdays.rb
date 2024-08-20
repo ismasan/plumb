@@ -52,7 +52,7 @@ p Types::DayName.parse('TueSday')                   # => "tuesday
 p Types::Week.parse([3, 2, 1, 4, 5, 6, 7])          # => [1, 2, 3, 4, 5, 6, 7]
 p Types::Week.parse([1, 'Tuesday', 3, 4, 5, 'saturday', 7]) # => [1, 2, 3, 4, 5, 6, 7]
 
-# p Types::Week[[1, 1, 3, 4, 5, 6, 7]] # raises Plumb::TypeError: repeated days
+# p Types::Week[[1, 1, 3, 4, 5, 6, 7]] # raises Plumb::ParseError: repeated days
 #
 # Or use these types as part of other composite types, ex.
 #

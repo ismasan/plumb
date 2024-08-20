@@ -176,7 +176,7 @@ RSpec.describe Plumb::Types do
 
   specify '#parse' do
     integer = Types::Any[::Integer]
-    expect { integer.parse('10') }.to raise_error(Plumb::TypeError)
+    expect { integer.parse('10') }.to raise_error(Plumb::ParseError)
     expect(integer.parse(10)).to eq(10)
   end
 
