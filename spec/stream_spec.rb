@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
 require 'spec_helper'
-require 'plumb'
 
 RSpec.describe Plumb::Types::Stream do
   it 'returns an Enumerator that validates each row' do

@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
 require 'spec_helper'
-require 'plumb'
 
 RSpec.describe Plumb::Schema do
   describe 'a schema with nested schemas' do

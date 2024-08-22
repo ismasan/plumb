@@ -1,8 +1,6 @@
 # frozen_string_literal: true
 
 require 'spec_helper'
-require 'plumb'
-# require 'plumb/struct'
 
 module Types
   class User < Types::Data
