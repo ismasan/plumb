@@ -42,6 +42,7 @@ module Plumb
               "#step expects an interface #call(Result) Result, but got #{callable.inspect}"
       end
 
+      callable = prepare_step(callable)
       callable = @around_blocks.reduce(callable) { |cl, bl| AroundStep.new(cl, bl) } if @around_blocks.any?
       @type >>= callable
       self
@@ -70,5 +71,7 @@ module Plumb
 
       true
     end
+
+    def prepare_step(callable) = callable
   end
 end
