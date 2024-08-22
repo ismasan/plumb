@@ -19,12 +19,28 @@ module Plumb
       end
     end
 
+    class << self
+      def around_blocks
+        @around_blocks ||= []
+      end
+
+      def around(callable = nil, &block)
+        around_blocks << (callable || block)
+        self
+      end
+
+      def inherited(subclass)
+        around_blocks.each { |block| subclass.around(block) }
+        super
+      end
+    end
+
     attr_reader :children
 
     def initialize(type = Types::Any, &setup)
       @type = type
       @children = [type].freeze
-      @around_blocks = []
+      @around_blocks = self.class.around_blocks.dup
       return unless block_given?
 
       configure(&setup)
@@ -43,7 +59,7 @@ module Plumb
       end
 
       callable = prepare_step(callable)
-      callable = @around_blocks.reduce(callable) { |cl, bl| AroundStep.new(cl, bl) } if @around_blocks.any?
+      callable = @around_blocks.reverse.reduce(callable) { |cl, bl| AroundStep.new(cl, bl) } if @around_blocks.any?
       @type >>= callable
       self
     end

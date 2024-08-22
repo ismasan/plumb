@@ -24,6 +24,22 @@ module Tests
       callable
     end
   end
+
+  class WithAround < Plumb::Pipeline
+    around do |step, result|
+      step.call(result.valid(result.value + 1))
+    end
+  end
+
+  Multiplier = Data.define(:factor) do
+    def call(step, result)
+      step.call(result.valid(result.value * factor))
+    end
+  end
+
+  class WithAroundSub < WithAround
+    around Multiplier.new(2)
+  end
 end
 
 RSpec.describe Plumb::Pipeline do
@@ -41,6 +57,34 @@ RSpec.describe Plumb::Pipeline do
       end
 
       expect(pipeline.input_schema._schema.keys.map(&:to_sym)).to eq(%i[q currency country])
+    end
+
+    describe 'class level .around' do
+      it 'initializes instances with class-level around blocks' do
+        pipeline = Tests::WithAround.new do |pl|
+          pl.step(->(r) { r })
+          pl.step(->(r) { r })
+        end
+        expect(pipeline.resolve(2).value).to eq(4)
+      end
+
+      it 'adds instance-defined around blocks' do
+        pipeline = Tests::WithAround.new do |pl|
+          pl.around do |step, result|
+            step.call(result.valid(result.value * 2))
+          end
+          pl.step(->(r) { r })
+          pl.step(->(r) { r })
+        end
+        expect(pipeline.resolve(2).value).to eq(14)
+      end
+
+      it 'inherits around blocks from parent class' do
+        pipeline = Tests::WithAroundSub.new do |pl|
+          pl.step(->(r) { r })
+        end
+        expect(pipeline.resolve(2).value).to eq(6)
+      end
     end
   end
 
