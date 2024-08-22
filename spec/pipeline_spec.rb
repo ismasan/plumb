@@ -43,4 +43,41 @@ RSpec.describe Plumb::Pipeline do
       expect(pipeline.input_schema._schema.keys.map(&:to_sym)).to eq(%i[q currency country])
     end
   end
+
+  describe '#around' do
+    specify 'with block' do
+      count = 0
+      pipeline = Plumb::Pipeline.new do |pl|
+        pl.around do |step, result|
+          count += 1
+          step.call(result.valid(result.value + count))
+        end
+        pl.step(->(r) { r })
+        pl.step(->(r) { r })
+      end
+
+      expect(pipeline.resolve(2).value).to eq(5)
+    end
+
+    specify 'with #call(step, result) => result interface' do
+      adder = Class.new do
+        def initialize(count = 0)
+          @count = count
+        end
+
+        def call(step, result)
+          @count += 1
+          step.call(result.valid(result.value + @count))
+        end
+      end
+
+      pipeline = Plumb::Pipeline.new do |pl|
+        pl.around adder.new
+        pl.step(->(r) { r })
+        pl.step(->(r) { r })
+      end
+
+      expect(pipeline.resolve(2).value).to eq(5)
+    end
+  end
 end
