@@ -15,7 +15,7 @@ module Types
       attribute :email, String[/.+@.+/]
     end
     attribute :company, Company
-    attribute :books, Array do
+    attribute :books, Array.default([].freeze) do
       attribute :isbn, String
     end
 
