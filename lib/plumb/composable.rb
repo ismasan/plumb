@@ -186,7 +186,7 @@ module Plumb
 
         bargs = [self]
         arg = Undefined
-        if rest.any?
+        if rest.size.positive?
           bargs << rest.first
           arg = rest.first
         end

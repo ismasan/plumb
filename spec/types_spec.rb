@@ -246,6 +246,7 @@ RSpec.describe Plumb::Types do
     assert_result(Types::String.default('hello').resolve(nil), nil, false)
     assert_result(Types::String.default('hello').resolve(Plumb::Undefined), 'hello', true)
     assert_result(Types::String.default { 'hi' }.resolve(Plumb::Undefined), 'hi', true)
+    assert_result(Types::Any.default(nil).resolve, nil, true)
   end
 
   specify '#nullable' do
