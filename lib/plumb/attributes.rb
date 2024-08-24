@@ -155,10 +155,10 @@ module Plumb
     private
 
     def assign_attributes(attrs = BLANK_HASH)
-      raise ArgumentError, 'Must be a Hash of attributes' unless attrs.is_a?(::Hash)
+      raise ArgumentError, 'Must be a Hash of attributes' unless attrs.respond_to?(:to_h)
 
       @errors = BLANK_HASH
-      result = self.class._schema.resolve(attrs)
+      result = self.class._schema.resolve(attrs.to_h)
       @attributes = result.value
       @errors = result.errors unless result.valid?
     end
@@ -180,10 +180,10 @@ module Plumb
       # @return [Plumb::Result::Valid, Plumb::Result::Invalid]
       def call(result)
         return result if result.value.is_a?(self)
-        return result.invalid(errors: ['Must be a Hash of attributes']) unless result.value.is_a?(Hash)
+        return result.invalid(errors: ['Must be a Hash of attributes']) unless result.value.respond_to?(:to_h)
 
-        instance = new(result.value)
-        instance.valid? ? result.valid(instance) : result.invalid(instance, errors: instance.errors)
+        instance = new(result.value.to_h)
+        instance.valid? ? result.valid(instance) : result.invalid(instance, errors: instance.errors.to_h)
       end
 
       # Person = Data[:name => String, :age => Integer, title?: String]
