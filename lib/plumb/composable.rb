@@ -211,7 +211,7 @@ module Plumb
     end
 
     def ==(other)
-      other.is_a?(self.class) && other.children == children
+      other.is_a?(self.class) && other.respond_to?(:children) && other.children == children
     end
 
     def children = BLANK_ARRAY
