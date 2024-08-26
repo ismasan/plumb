@@ -211,11 +211,11 @@ module Plumb
         name = key.to_sym
         type = Composable.wrap(type)
         if block_given? # :foo, Array[Data] or :foo, Struct
-          type = Types::Data if type == Types::Any
+          type = __plumb_struct_class__ if type == Types::Any
           type = Plumb.decorate(type) do |node|
             if node.is_a?(Plumb::ArrayClass)
               child = node.children.first
-              child = Types::Data if child == Types::Any
+              child = __plumb_struct_class__ if child == Types::Any
               Types::Array[build_nested(name, child, &block)]
             elsif node.is_a?(Plumb::Step)
               build_nested(name, node, &block)
@@ -228,6 +228,12 @@ module Plumb
         end
 
         @_schema = _schema + { key => type }
+        __plumb_define_attribute_method__(name)
+      end
+
+      def __plumb_struct_class__ = Types::Data
+
+      def __plumb_define_attribute_method__(name)
         define_method(name) { @attributes[name] }
       end
 
