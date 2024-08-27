@@ -38,6 +38,14 @@ module Types
       attribute :city, String.present
     end
   end
+
+  class DifferentClass
+    include Plumb::Attributes
+    attribute :name, String
+    attribute :thing do
+      attribute :name, String
+    end
+  end
 end
 
 RSpec.describe Types::Data do
@@ -251,5 +259,13 @@ RSpec.describe Types::Data do
     instance = data.new(name: 'Joe')
     expect(instance.name).to eq('Joe')
     expect(instance.age).to be(nil)
+  end
+
+  specify 'a different class that includes Plumb::Attributes' do
+    instance = Types::DifferentClass.new(name: 'Joe', thing: { name: 'foo' })
+    expect(instance.name).to eq('Joe')
+    expect(instance.thing.name).to eq('foo')
+    expect(instance.thing).to be_a(Types::DifferentClass)
+    expect(instance.thing).to be_a(Types::DifferentClass::Thing)
   end
 end

@@ -110,6 +110,7 @@ module Plumb
     #
     def self.included(base)
       base.send(:extend, ClassMethods)
+      base.define_singleton_method(:__plumb_struct_class__) { base }
     end
 
     attr_reader :errors, :attributes
@@ -230,8 +231,6 @@ module Plumb
         @_schema = _schema + { key => type }
         __plumb_define_attribute_method__(name)
       end
-
-      def __plumb_struct_class__ = Types::Data
 
       def __plumb_define_attribute_method__(name)
         define_method(name) { @attributes[name] }
