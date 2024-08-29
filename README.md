@@ -1071,13 +1071,168 @@ person.friend.name # 'joan'
 person.friend.friend # nil
 ```
 
+### Plumb::Pipeline
 
+`Plumb::Pipeline` offers a sequential, step-by-step syntax for composing processing steps, as well as a simple middleware API to wrap steps for metrics, logging, debugging, caching and more. See the [command objects](https://github.com/ismasan/plumb/blob/main/examples/command_objects.rb) example for a worked use case.
+
+#### `#pipeline` helper
+
+All plumb steps have a `#pipeline` helper.
+
+```ruby
+User = Types::Data[name: String, age: Integer]
+
+CreateUser = User.pipeline do |pl|
+  # Add steps as #call(Result) => Result interfaces
+  pl.step ValidateUser.new
+  
+  # Or as procs
+  pl.step do |result|
+    Logger.info "We have a valid user #{result.value}"
+    result
+  end
+  
+  # Or as other Plumb steps
+  pl.step User.transform(User) { |user| user.with(name: user.name.upcase) }
+  
+  pl.step do |result|
+    DB.create(result.value)
+  end
+end
+
+# User normally as any other Plumb step
+result = CreateUser.resolve(name: 'Joe', age: 40)
+# result.valid?
+# result.errors
+# result.value => User
+```
+
+Pipelines are Plumb steps, so they can be composed further.
+
+```ruby
+IsJoe = User.check('must be named joe') { |user| 
+  result.value.name == 'Joe' 
+}
+
+CreateIfJoe = IsJoe >> CreateUser
+```
+
+##### `#around`
+
+Use `#around` in a pipeline definition to add a middleware step that wraps all other steps registered.
+
+```ruby
+# The #around interface is #call(Step, Result::Valid) => Result::Valid | Result::Invalid
+StepLogger = proc do |step, result|
+  Logger.info "Processing step #{step}"
+  step.call(result)
+end
+
+CreateUser = User.pipeline do |pl|
+  # Around middleware will wrap all other steps registered below
+  pl.around StepLogger
+  
+  pl.step ValidateUser.new
+  pl.step ...etc
+end
+```
+
+Note that order matters: an _around_ step will only wrap steps registered _after it_.
+
+```ruby
+# This step will not be wrapper by StepLogger
+pl.step Step1
+
+pl.around StepLogger
+# This step WILL be wrapped
+pl.step Step2
+```
+
+Like regular steps, `around` middleware can be a class, an instance, a proc, or anything that implements the middleware interface.
+
+```ruby
+# As class instance
+#   pl.around StepLogger.new(:warn)
+class StepLogger
+  def initialize(level = :info)
+    @level = level
+  end
+  
+  def call(step, result)
+    Logger.send(@level) "Processing step #{step}"
+    step.call(result)
+  end
+end
+
+# As proc
+pl.around do |step, result|
+  Logger.info "Processing step #{step}"
+  step.call(result)
+end
+```
+
+#### As stand-alone `Plumb::Pipeline` class
+
+`Plumb::Pipeline` can also be used on its own, sub-classed, and it can take class-level `around` middleware.
+
+```ruby
+class LoggedPipeline < Plumb::Pipeline
+  # class-level midleware will be inherited by sub-classes
+  around StepLogged
+end
+
+# Subclass inherits class-level middleware stack,
+# and it can also add its own class or instance-level middleware
+class ChildPipeline < LoggedPipeline
+  # class-level middleware
+  around Telemetry.new
+end
+
+# Instantiate and add instance-level middleware
+pipe = ChildPipeline.new do |pl|
+  pl.around NotifyErrors
+  pl.step Step1
+  pl.step Step2
+end
+```
+
+Sub-classing `Plumb::Pipeline` can be useful to add helpers or domain-specific functionality
+
+```ruby
+class DebuggablePipeline < LoggedPipeline
+  # Use #debug! for inserting a debugger between steps
+  def debug!
+    step do |result|
+      debugger
+      result
+    end
+  end
+end
+
+pipe = DebuggablePipeline.new do |pl|
+  pl.step Step1
+  pl.debug!
+  pl.step Step2
+end
+```
+
+#### Pipelines all the way down :turtle:
+
+Pipelines are full Plumb steps, so they can themselves be used as steps.
+
+```ruby
+Pipe1 = DebuggablePipeline.new do |pl|
+  pl.step Step1
+  pl.step Step2
+end
+
+Pipe2 = DebuggablePipeline.new do |pl|
+  pl.step Pipe1 # <= A pipeline instance as step
+  pl.step Step3
+end
+```
 
 ### Plumb::Schema
-
-TODO
-
-### Plumb::Pipeline
 
 TODO
 
@@ -1397,7 +1552,7 @@ Types::DateTime.to_json_schema
 - [ ] benchmarks and performace. Compare with `Parametric`, `ActiveModel::Attributes`, `ActionController::StrongParameters`
 - [ ] flesh out `Plumb::Schema`
 - [x] `Plumb::Struct`
-- [ ] flesh out and document `Plumb::Pipeline`
+- [x] flesh out and document `Plumb::Pipeline`
 - [ ] document custom visitors
 - [ ] Improve errors, support I18n ?
 
