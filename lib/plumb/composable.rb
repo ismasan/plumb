@@ -87,6 +87,7 @@ module Plumb
   #  Composable mixes in composition methods to classes.
   # such as #>>, #|, #not, and others.
   # Any Composable class can participate in Plumb compositions.
+  # A host object only needs to implement the Step interface `call(Result::Valid) => Result::Valid | Result::Invalid`
   module Composable
     include Callable
 
@@ -96,6 +97,19 @@ module Plumb
       base.send(:include, Naming)
     end
 
+    # Wrap an object in a Composable instance.
+    # Anything that includes Composable is a noop.
+    # A Hash is assumed to be a HashClass schema.
+    # Any `#call(Result) => Result` interface is wrapped in a Step.
+    # Anything else is assumed to be something you want to match against via `#===`.
+    #
+    # @example
+    #   ten = Composable.wrap(10)
+    #   ten.resolve(10) # => Result::Valid
+    #   ten.resolve(11) # => Result::Invalid
+    #
+    # @param callable [Object]
+    # @return [Composable]
     def self.wrap(callable)
       if callable.is_a?(Composable)
         callable
@@ -108,26 +122,66 @@ module Plumb
       end
     end
 
+    # A helper to wrap a block in a Step that will defer execution.
+    # This so that types can be used recursively in compositions.
+    # @example
+    #   LinkedList = Types::Hash[
+    #     value: Types::Any,
+    #     next: Types::Any.defer { LinkedList }
+    #   ]
     def defer(definition = nil, &block)
       Deferred.new(definition || block)
     end
 
+    # Chain two composable objects together.
+    # A.K.A "and" or "sequence"
+    # @example
+    #   Step1 >> Step2 >> Step3
+    #
+    # @param other [Composable]
+    # @return [And]
     def >>(other)
       And.new(self, Composable.wrap(other))
     end
 
+    # Chain two composable objects together as a disjunction ("or").
+    #
+    # @param other [Composable]
+    # @return [Or]
     def |(other)
       Or.new(self, Composable.wrap(other))
     end
 
+    # Transform value. Requires specifying the resulting type of the value after transformation.
+    # @example
+    #   Types::String.transform(Types::Symbol, &:to_sym)
+    #
+    # @param target_type [Class] what type this step will transform the value to
+    # @param callable [#call, nil] a callable that will be applied to the value, or nil if block provided
+    # @param block [Proc] a block that will be applied to the value, or nil if callable provided
+    # @return [And]
     def transform(target_type, callable = nil, &block)
       self >> Transform.new(target_type, callable || block)
     end
 
+    # Pass the value through an arbitrary validation
+    # @example
+    #   type = Types::String.check('must start with "Role:"') { |value| value.start_with?('Role:') }
+    #
+    # @param errors [String] error message to use when validation fails
+    # @param block [Proc] a block that will be applied to the value
+    # @return [And]
     def check(errors = 'did not pass the check', &block)
       self >> MatchClass.new(block, error: errors, label: errors)
     end
 
+    # Return a new Step with added metadata, or build step metadata if no argument is provided.
+    # @example
+    #   type = Types::String.metadata(label: 'Name')
+    #   type.metadata # => { type: String, label: 'Name' }
+    #
+    # @param data [Hash] metadata to add to the step
+    # @return [Hash, And]
     def metadata(data = Undefined)
       if data == Undefined
         MetadataVisitor.call(self)
@@ -136,24 +190,54 @@ module Plumb
       end
     end
 
+    # Negate the result of a step.
+    # Ie. if the step is valid, it will be invalid, and vice versa.
+    # @example
+    #   type = Types::String.not
+    #   type.resolve('foo') # invalid
+    #   type.resolve(10) # valid
+    #
+    # @return [Not]
     def not(other = self)
       Not.new(other)
     end
 
+    # Like #not, but with a custom error message.
+    #
+    # @option errors [String] error message to use when validation fails
+    # @return [Not]
     def invalid(errors: nil)
       Not.new(self, errors:)
     end
 
+    #  Match a value using `#==`
+    # Normally you'll build matchers via ``#[]`, which uses `#===`.
+    # Use this if you want to match against concrete instances of things that respond to `#===`
+    # @example
+    #   regex = Types::Any.value(/foo/)
+    #   regex.resolve('foo') # invalid. We're matching against the regex itself.
+    #   regex.resolve(/foo/) # valid
+    #
+    # @param value [Object]
+    # @rerurn [And]
     def value(val)
       self >> ValueClass.new(val)
     end
 
+    # Alias of `#[]`
+    # Match a value using `#===`
+    # @example
+    #   email = Types::String['@']
+    #
+    # @param args [Array<Object>]
+    # @return [And]
     def match(*args)
       self >> MatchClass.new(*args)
     end
 
     def [](val) = match(val)
 
+    #  Support #as_node.
     class Node
       include Composable
 
@@ -169,6 +253,14 @@ module Plumb
       def call(result) = type.call(result)
     end
 
+    #  Wrap a Step in a node with a custom #node_name
+    # which is expected by visitors.
+    # So that we can define special visitors for certain compositions.
+    # Ex. Types::Boolean is a compoition of Types::True | Types::False, but we want to treat it as a single node.
+    #
+    # @param node_name [Symbol]
+    # @param metadata [Hash]
+    # @return [Node]
     def as_node(node_name, metadata = BLANK_HASH)
       Node.new(node_name, self, metadata)
     end
@@ -201,6 +293,9 @@ module Plumb
       end
     end
 
+    # `#===` equality. So that Plumb steps can be used in case statements and pattern matching.
+    # @param other [Object]
+    # @return [Boolean]
     def ===(other)
       case other
       when Composable
@@ -214,12 +309,36 @@ module Plumb
       other.is_a?(self.class) && other.respond_to?(:children) && other.children == children
     end
 
+    # Visitors expect a #node_name and #children interface.
+    # @return [Array<Composable>]
     def children = BLANK_ARRAY
 
+    # Compose a step that instantiates a class.
+    # @example
+    #   type = Types::String.build(MyClass, :new)
+    #   thing = type.parse('foo') # same as MyClass.new('foo')
+    #
+    # It sets the class as the output type of the step.
+    # Optionally takes a block.
+    #
+    #   type = Types::String.build(Money) { |value| Monetize.parse(value) }
+    #
+    # @param cns [Class] constructor class or object.
+    # @param factory_method [Symbol] method to call on the class to instantiate it.
+    # @return [And]
     def build(cns, factory_method = :new, &block)
       self >> Build.new(cns, factory_method:, &block)
     end
 
+    # Build a Plumb::Pipeline with this object as the starting step.
+    # @example
+    #   pipe = Types::Data[name: String].pipeline do |pl|
+    #     pl.step Validate
+    #     pl.step Debug
+    #     pl.step Log
+    # end
+    #
+    # @return [Pipeline]
     def pipeline(&block)
       Pipeline.new(self, &block)
     end
