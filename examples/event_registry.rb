@@ -11,8 +11,8 @@ require 'debug'
 module Types
   include Plumb::Types
 
-  # Turn an ISO8601 sring into a Time object
-  ISOTime = String.build(::Time, :parse)
+  # Turn an ISO8601 string into a Time object
+  ISOTime = String.build(::Time, :parse).policy(:rescue, ArgumentError)
 
   # A type that can be a Time object or an ISO8601 string >> Time
   Time = Any[::Time] | ISOTime
@@ -52,7 +52,7 @@ end
 #  user_created.stream_id == create_user.stream_id
 #
 # ## JSON Schemas
-# Plumb data structs support `.to_json_schema`, to you can document all events in the registry with something like
+# Plumb data structs support `.to_json_schema`, so you can document all events in the registry with something like
 #
 #   Event.registry.values.map(&:to_json_schema)
 #
@@ -69,9 +69,14 @@ class Event < Types::Data
     @registry ||= {}
   end
 
+  # Custom node_name to trigger specialiesed JSON Schema visitor handler.
+  def self.node_name = :event
+
   def self.define(type_str, &payload_block)
     type_str.freeze unless type_str.frozen?
     registry[type_str] = Class.new(self) do
+      def self.node_name = :data
+
       attribute :type, Types::Static[type_str]
       attribute :payload, &payload_block if block_given?
     end
@@ -94,22 +99,29 @@ end
 # Example command and events for a simple event-sourced system
 #
 # ## Commands
-# CreateUser = Event.define('users.create') do
-#   attribute :name, Types::String.present
-#   attribute :email, Types::Email
-# end
-#
-# UpdateUserName = Event.define('users.update_name') do
-#   attribute :name, Types::String.present
-# end
+CreateUser = Event.define('users.create') do
+  attribute :name, Types::String.present
+  attribute :email, Types::Email
+end
+
+UpdateUserName = Event.define('users.update_name') do
+  attribute :name, Types::String.present
+end
 #
 # ## Events
-# UserCreated = Event.define('users.created') do
-#   attribute :name, Types::String
-#   attribute :email, Types::Email
-# end
-#
-# UserNameUpdated = Event.define('users.name_updated') do
-#   attribute :name, Types::String
-# end
+UserCreated = Event.define('users.created') do
+  attribute :name, Types::String
+  attribute :email, Types::Email
+end
+
+UserNameUpdated = Event.define('users.name_updated') do
+  attribute :name, Types::String
+end
+
+# Register a JSON Schema visitor handlers to render Event.registry as a "AnyOf" list of event types
+Plumb::JSONSchemaVisitor.on(:event) do |node, props|
+  props.merge('type' => 'object', 'anyOf' => node.registry.values.map { |v| visit(v) })
+end
+
+p Plumb::JSONSchemaVisitor.call(Event)
 # debugger
