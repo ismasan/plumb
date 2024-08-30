@@ -130,6 +130,11 @@ RSpec.describe Plumb::JSONSchemaVisitor do
     expect(described_class.visit(type)).to eq('type' => 'string', 'format' => 'email')
   end
 
+  specify 'Types::Time' do
+    type = Types::Time
+    expect(described_class.visit(type)).to eq('type' => 'string', 'format' => 'date-time')
+  end
+
   specify 'Not' do
     type = Types::Decimal.not
     expect(described_class.visit(type)).to eq('not' => { 'type' => 'number' })
