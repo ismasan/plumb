@@ -255,6 +255,18 @@ module Plumb
       props.merge(TYPE => 'string', FORMAT => 'date')
     end
 
+    on(::URI::Generic) do |_node, props|
+      props.merge(TYPE => 'string', FORMAT => 'uri')
+    end
+
+    on(::URI::HTTP) do |_node, props|
+      props.merge(TYPE => 'string', FORMAT => 'uri')
+    end
+
+    on(::URI::File) do |_node, props|
+      props.merge(TYPE => 'string', FORMAT => 'uri')
+    end
+
     on(::Hash) do |_node, props|
       props.merge(TYPE => 'object')
     end
