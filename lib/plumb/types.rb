@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'bigdecimal'
+require 'uri'
 
 module Plumb
   # Define core policies
@@ -145,6 +146,7 @@ module Plumb
     Tuple = TupleClass.new
     Hash = HashClass.new
     Interface = InterfaceClass.new
+    Email = String[URI::MailTo::EMAIL_REGEXP]
 
     module UUID
       V4 = String[/\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/i]

@@ -444,6 +444,14 @@ RSpec.describe Plumb::Types do
       assert_result(Types::UUID::V4.resolve("#{uuid_v4}-EEE"), "#{uuid_v4}-EEE", false)
     end
 
+    specify Types::Email do
+      assert_result(Types::Email.resolve('joe@email.com'), 'joe@email.com', true)
+      assert_result(Types::Email.resolve('joe.bloggs@email.com'), 'joe.bloggs@email.com', true)
+      assert_result(Types::Email.resolve('joe.bloggs+one@email.co.uk'), 'joe.bloggs+one@email.co.uk', true)
+      assert_result(Types::Email.resolve('joe.bloggs+one@email'), 'joe.bloggs+one@email', true)
+      assert_result(Types::Email.resolve('joe.bloggs+oneemail'), 'joe.bloggs+oneemail', false)
+    end
+
     specify Types::Lax::String do
       assert_result(Types::Lax::String.resolve('aa'), 'aa', true)
       assert_result(Types::Lax::String.resolve(11), '11', true)
