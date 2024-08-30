@@ -159,7 +159,7 @@ module Plumb
     Tuple = TupleClass.new
     Hash = HashClass.new
     Interface = InterfaceClass.new
-    Email = String[URI::MailTo::EMAIL_REGEXP]
+    Email = String[URI::MailTo::EMAIL_REGEXP].as_node(:email)
     Date = Any[::Date]
 
     module UUID

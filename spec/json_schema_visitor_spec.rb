@@ -116,13 +116,18 @@ RSpec.describe Plumb::JSONSchemaVisitor do
   end
 
   specify 'Date' do
-    type = Types::Any[Date]
+    type = Types::Date
     expect(described_class.visit(type)).to eq('type' => 'string', 'format' => 'date')
   end
 
   specify 'Types::UUID::V4' do
     type = Types::UUID::V4
     expect(described_class.visit(type)).to eq('type' => 'string', 'format' => 'uuid')
+  end
+
+  specify 'Types::Email' do
+    type = Types::Email
+    expect(described_class.visit(type)).to eq('type' => 'string', 'format' => 'email')
   end
 
   specify 'Not' do

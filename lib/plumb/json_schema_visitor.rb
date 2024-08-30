@@ -197,6 +197,10 @@ module Plumb
       props.merge(TYPE => 'string', FORMAT => 'uuid')
     end
 
+    on(:email) do |_node, props|
+      props.merge(TYPE => 'string', FORMAT => 'email')
+    end
+
     on(::String) do |_node, props|
       props.merge(TYPE => 'string')
     end
