@@ -468,6 +468,54 @@ RSpec.describe Plumb::Types do
       assert_result(Types::Email.resolve('joe.bloggs+oneemail'), 'joe.bloggs+oneemail', false)
     end
 
+    describe 'URI' do
+      let(:http_str) { 'http://foo.bar' }
+      let(:file_str) { 'file:///foo/bar' }
+      let(:http_uri) { URI.parse(http_str) }
+      let(:file_uri) { URI.parse(file_str) }
+
+      specify Types::URI::Generic do
+        assert_result(Types::URI::Generic.resolve(http_uri), http_uri, true)
+        assert_result(Types::URI::Generic.resolve(file_uri), file_uri, true)
+        assert_result(Types::URI::Generic.resolve(19), 19, false)
+      end
+
+      specify Types::URI::HTTP do
+        assert_result(Types::URI::HTTP.resolve(http_uri), http_uri, true)
+        assert_result(Types::URI::HTTP.resolve(file_uri), file_uri, false)
+        assert_result(Types::URI::HTTP.resolve(19), 19, false)
+      end
+
+      specify Types::URI::File do
+        assert_result(Types::URI::File.resolve(http_uri), http_uri, false)
+        assert_result(Types::URI::File.resolve(file_uri), file_uri, true)
+        assert_result(Types::URI::File.resolve(19), 19, false)
+      end
+
+      describe 'Forms::URI' do
+        specify Types::Forms::URI::Generic do
+          assert_result(Types::Forms::URI::Generic.resolve(http_uri), http_uri, true)
+          assert_result(Types::Forms::URI::Generic.resolve(file_uri), file_uri, true)
+          assert_result(Types::Forms::URI::Generic.resolve(http_str), http_uri, true)
+          assert_result(Types::Forms::URI::Generic.resolve(file_str), file_uri, true)
+        end
+
+        specify Types::Forms::URI::HTTP do
+          assert_result(Types::Forms::URI::HTTP.resolve(http_uri), http_uri, true)
+          assert_result(Types::Forms::URI::HTTP.resolve(file_uri), file_uri, false)
+          assert_result(Types::Forms::URI::HTTP.resolve(http_str), http_uri, true)
+          assert_result(Types::Forms::URI::HTTP.resolve(file_str), file_uri, false)
+        end
+
+        specify Types::Forms::URI::File do
+          assert_result(Types::Forms::URI::File.resolve(http_uri), http_uri, false)
+          assert_result(Types::Forms::URI::File.resolve(file_uri), file_uri, true)
+          assert_result(Types::Forms::URI::File.resolve(http_str), http_uri, false)
+          assert_result(Types::Forms::URI::File.resolve(file_str), file_uri, true)
+        end
+      end
+    end
+
     specify Types::Date do
       date = Date.new(2024, 1, 2)
       assert_result(Types::Date.resolve(date), date, true)

@@ -168,6 +168,12 @@ module Plumb
       V4 = String[/\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/i].as_node(:uuid)
     end
 
+    module URI
+      Generic = Any[::URI::Generic]
+      HTTP = Any[::URI::HTTP]
+      File = Any[::URI::File]
+    end
+
     class Data
       extend Composable
       include Plumb::Attributes
@@ -217,6 +223,15 @@ module Plumb
       # via Date.parse
       Date = Date | (String >> Any.build(::Date, :parse).policy(:rescue, ::Date::Error))
       Time = Time | (String >> Any.build(::Time, :parse).policy(:rescue, ::ArgumentError))
+
+      # Turn strings into different URI types
+      module URI
+        # URI.parse is very permisive - a blank string is valid.
+        # We want to ensure that a generic URI at least starts with a scheme as per RFC 3986
+        Generic = Types::URI::Generic | (String[/^([a-z][a-z0-9+\-.]*)/].build(::URI, :parse))
+        HTTP = Generic[::URI::HTTP]
+        File = Generic[::URI::File]
+      end
     end
   end
 end
