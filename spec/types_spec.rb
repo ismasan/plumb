@@ -263,8 +263,8 @@ RSpec.describe Plumb::Types do
   end
 
   specify '#==' do
-    expect(Types::String === Types::String).to be(true)
-    expect(Types::String[/@/] === Types::String[/@/]).to be(true)
+    expect(Types::String == Types::String).to be(true)
+    expect(Types::String[/@/] == Types::String[/@/]).to be(true)
     expect(Types::Array[Types::String] == Types::Array[Types::String]).to be(true)
     expect(Types::String.default('a') == Types::String.default('a')).to be(true)
     expect((Types::String | Types::Integer) == (Types::String | Types::Integer)).to be(true)
