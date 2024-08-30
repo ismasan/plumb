@@ -12,22 +12,12 @@ module PlumbHash
   BLANK_STRING = ''
   MONEY_EXP = /(\W{1}|\w{3})?[\d+,.]/
 
-  PARSE_DATE = proc do |result|
-    date = ::Date.parse(result.value)
-    result.valid(date)
-  rescue ::Date::Error
-    result.invalid(errors: 'invalid date')
-  end
-
   PARSE_MONEY = proc do |result|
     value = Monetize.parse!(result.value.to_s.gsub(',', ''))
     result.valid(value)
   end
 
-  Date = Any[::Date] \
-    | (String[MONEY_EXP] >> PARSE_DATE)
-
-  BlankStringOrDate = Forms::Nil | Date
+  BlankStringOrDate = Forms::Nil | Forms::Date
 
   Money = Any[::Money] \
     | (String.present >> PARSE_MONEY) \
