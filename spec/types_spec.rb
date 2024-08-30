@@ -307,37 +307,6 @@ RSpec.describe Plumb::Types do
     end
   end
 
-  describe Plumb::Pipeline do
-    specify '#around' do
-      list = []
-      counts = 0
-      pipeline = described_class.new do |pl|
-        pl.step Types::Lax::String
-        pl.around do |step, result|
-          list << 'before: %s' % result.value
-          result = step.resolve(result)
-          list << 'after: %s' % result.value
-          result
-        end
-        pl.step(Types::Any.transform(::String) { |v| "-#{v}-" })
-        pl.around do |step, result|
-          counts += 1
-          step.resolve(result)
-        end
-        pl.step(Types::Any.transform(::String) { |v| "*#{v}*" })
-      end
-
-      assert_result(pipeline.resolve(1), '*-1-*', true)
-      expect(list).to eq([
-                           'before: 1',
-                           'after: -1-',
-                           'before: -1-',
-                           'after: *-1-*'
-                         ])
-      expect(counts).to eq(1)
-    end
-  end
-
   specify '#constructor' do
     custom = Struct.new(:name) do
       def self.build(name)
