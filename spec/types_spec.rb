@@ -452,6 +452,22 @@ RSpec.describe Plumb::Types do
       assert_result(Types::Email.resolve('joe.bloggs+oneemail'), 'joe.bloggs+oneemail', false)
     end
 
+    specify Types::Date do
+      date = Date.new(2024, 1, 2)
+      assert_result(Types::Date.resolve(date), date, true)
+      assert_result(Types::Date.resolve(10), 10, false)
+    end
+
+    specify Types::Forms::Date do
+      date = Date.new(2024, 1, 2)
+      date_str = '2024-01-02'
+      assert_result(Types::Forms::Date.resolve(date), date, true)
+      assert_result(Types::Forms::Date.resolve(date_str), date, true)
+      assert_result(Types::Forms::Date.resolve(10), 10, false)
+      assert_result(Types::Forms::Date.resolve('2024-'), '2024-', false)
+      expect(Types::Forms::Date.metadata[:type]).to eq([Date, String])
+    end
+
     specify Types::Lax::String do
       assert_result(Types::Lax::String.resolve('aa'), 'aa', true)
       assert_result(Types::Lax::String.resolve(11), '11', true)

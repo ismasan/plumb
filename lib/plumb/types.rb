@@ -2,6 +2,7 @@
 
 require 'bigdecimal'
 require 'uri'
+require 'date'
 
 module Plumb
   # Define core policies
@@ -147,6 +148,7 @@ module Plumb
     Hash = HashClass.new
     Interface = InterfaceClass.new
     Email = String[URI::MailTo::EMAIL_REGEXP]
+    Date = Any[::Date]
 
     module UUID
       V4 = String[/\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/i]
@@ -196,6 +198,14 @@ module Plumb
       Boolean = True | False
 
       Nil = Nil | (String[BLANK_STRING] >> nil)
+
+      # Accept a Date, or a string that can be parsed into a Date
+      # via Date.parse
+      Date = Date | (String >> (Plumb::Step.new do |result|
+        result.valid ::Date.parse(result.value)
+      rescue ::Date::Error => e
+        result.invalid(errors: e.message)
+      end))
     end
   end
 end
