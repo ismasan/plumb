@@ -528,6 +528,27 @@ CSVLine = Types::String.split(/\s*;\s*/)
 CSVLine.parse('a;b;c') # => ['a', 'b', 'c']
 ```
 
+#### `:rescue`
+
+Wraps a step's execution, rescues a specific exception and returns an invalid result.
+
+Useful for turning a 3rd party library's exception into an invalid result that plays well with Plumb's type compositions.
+
+Example: this is how `Types::Forms::Date` uses the `:rescue` policy to parse strings with `Date.parse` and turn `Date::Error` exceptions into Plumb errors.
+
+```ruby
+# Accept a string that can be parsed into a Date
+# via Date.parse
+# If Date.parse raises a Date::Error, return a Result::Invalid with
+# the exception's message as error message.
+type = Types::String
+	.build(::Date, :parse)
+	.policy(:rescue, ::Date::Error)
+
+type.resolve('2024-02-02') # => Result::Valid with Date object
+type.resolve('2024-') # => Result::Invalid with error message
+```
+
 ### `Types::Interface`
 
 Use this for objects that must respond to one or more methods.
