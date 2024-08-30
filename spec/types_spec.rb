@@ -307,7 +307,7 @@ RSpec.describe Plumb::Types do
     end
   end
 
-  specify '#constructor' do
+  specify '#build' do
     custom = Struct.new(:name) do
       def self.build(name)
         new(name)
