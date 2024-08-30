@@ -19,8 +19,6 @@ module Types
 
   # A UUID string, or generate a new one
   AutoUUID = UUID::V4.default { SecureRandom.uuid }
-
-  Email = String[URI::MailTo::EMAIL_REGEXP]
 end
 
 # A superclass and registry to define event types
