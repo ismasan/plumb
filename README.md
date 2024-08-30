@@ -524,7 +524,17 @@ CSVLine = Types::String.split(/\s*;\s*/)
 CSVLine.parse('a;b;c') # => ['a', 'b', 'c']
 ```
 
+### `Types::Interface`
 
+Use this for objects that must respond to one or more methods.
+
+```ruby
+Iterable = Types::Interface[:each, :map]
+Iterable.parse([1,2,3]) # => [1,2,3]
+Iterable.parse(10) # => raises error
+```
+
+TODO: make this a bit more advanced. Check for method arity.
 
 ### `Types::Hash`
 
