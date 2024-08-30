@@ -534,6 +534,20 @@ Iterable.parse([1,2,3]) # => [1,2,3]
 Iterable.parse(10) # => raises error
 ```
 
+This can be useful combined with `case` statements, too:
+
+```ruby
+value = [1,2,3]
+case value
+when Iterable
+  # do something with array
+when Stringable
+  # do something with string
+when Readable
+  # do something with IO or similar
+end
+```
+
 TODO: make this a bit more advanced. Check for method arity.
 
 ### `Types::Hash`
