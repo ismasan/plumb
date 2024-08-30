@@ -106,6 +106,18 @@ module Plumb
     (Types::Undefined >> val_type) | type
   end
 
+  # Wrap a step execution in a rescue block.
+  # Expect a specific exception class, and return an invalid result if it is raised.
+  # Usage:
+  #   type = Types::String.build(Date, :parse).policy(:rescue, Date::Error)
+  policy :rescue do |type, exception_class|
+    Step.new(nil, 'Rescue') do |result|
+      type.call(result)
+    rescue exception_class => e
+      result.invalid(errors: e.message)
+    end
+  end
+
   # Split a string into an array. Default separator is /\s*,\s*/
   # Usage:
   #   type = Types::String.split
@@ -201,11 +213,7 @@ module Plumb
 
       # Accept a Date, or a string that can be parsed into a Date
       # via Date.parse
-      Date = Date | (String >> (Plumb::Step.new do |result|
-        result.valid ::Date.parse(result.value)
-      rescue ::Date::Error => e
-        result.invalid(errors: e.message)
-      end))
+      Date = Date | (String >> Any.build(::Date, :parse).policy(:rescue, ::Date::Error))
     end
   end
 end

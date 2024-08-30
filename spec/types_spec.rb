@@ -368,6 +368,22 @@ RSpec.describe Plumb::Types do
       expect(Types::String.policy(:split).metadata[:type]).to eq(Array)
     end
 
+    specify ':rescue' do
+      type = Plumb::Step.new do |r|
+        raise ArgumentError, 'nope' unless r.value == 10
+
+        r
+      end
+
+      rescued = type.policy(:rescue, ArgumentError)
+      result = rescued.resolve(10)
+      expect(result.valid?).to be(true)
+
+      result = rescued.resolve(11)
+      expect(result.valid?).to be(false)
+      expect(result.errors).to be('nope')
+    end
+
     specify '#policy with #==' do
       t1 = Types::Array.options([1, 2, 3])
       t2 = Types::Array.options([1, 2, 3])
