@@ -232,6 +232,8 @@ You can see more use cases in [the examples directory](https://github.com/ismasa
 * `Types::Numeric`
 * `Types::String`
 * `Types::Hash`
+* `Types::UUID::V4`
+* `Types::Email`
 * `Types::Lax::Integer`
 * `Types::Lax::String`
 * `Types::Lax::Symbol`
@@ -240,7 +242,7 @@ You can see more use cases in [the examples directory](https://github.com/ismasa
 * `Types::Forms::True`
 * `Types::Forms::False`
 
-TODO: date and datetime, UUIDs, Email, others.
+TODO: date and datetime, others.
 
 ### Policies
 
