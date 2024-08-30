@@ -236,6 +236,9 @@ You can see more use cases in [the examples directory](https://github.com/ismasa
 * `Types::Email`
 * `Types::Date`
 * `Types::Time`
+* `Types::URI::Generic`
+* `Types::URI::HTTP`
+* `Types::URI::File`
 * `Types::Lax::Integer`
 * `Types::Lax::String`
 * `Types::Lax::Symbol`
@@ -245,6 +248,9 @@ You can see more use cases in [the examples directory](https://github.com/ismasa
 * `Types::Forms::False`
 * `Types::Forms::Date`
 * `Types::Forms::Time`
+* `Types::Forms::URI::Generic`
+* `Types::Forms::URI::HTTP`
+* `Types::Forms::URI::File`
 
 TODO: datetime, others.
 
