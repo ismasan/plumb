@@ -438,6 +438,12 @@ RSpec.describe Plumb::Types do
       expect(t1 == t3).to be(false)
     end
 
+    specify Types::UUID::V4 do
+      uuid_v4 = 'fb1c58ab-9fe8-4039-b075-3d990f52910e'
+      assert_result(Types::UUID::V4.resolve(uuid_v4), uuid_v4, true)
+      assert_result(Types::UUID::V4.resolve("#{uuid_v4}-EEE"), "#{uuid_v4}-EEE", false)
+    end
+
     specify Types::Lax::String do
       assert_result(Types::Lax::String.resolve('aa'), 'aa', true)
       assert_result(Types::Lax::String.resolve(11), '11', true)
