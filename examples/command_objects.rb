@@ -26,9 +26,6 @@ module Types
   # Turn integers into Money objects (requires the money gem)
   Amount = Integer.build(Money)
 
-  # A naive email check
-  Email = String[/\w+@\w+\.\w+/]
-
   # A valid customer type
   Customer = Hash[
     name: String.present,
