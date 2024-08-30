@@ -17,11 +17,8 @@ module Types
   # A type that can be a Time object or an ISO8601 string >> Time
   Time = Any[::Time] | ISOTime
 
-  # A UUID string
-  UUID = String[/\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/i]
-
   # A UUID string, or generate a new one
-  AutoUUID = UUID.default { SecureRandom.uuid }
+  AutoUUID = UUID::V4.default { SecureRandom.uuid }
 
   Email = String[URI::MailTo::EMAIL_REGEXP]
 end
@@ -66,8 +63,8 @@ class Event < Types::Data
   attribute :stream_id, Types::String.present
   attribute :type, Types::String
   attribute(:created_at, Types::Time.default { ::Time.now })
-  attribute? :causation_id, Types::UUID
-  attribute? :correlation_id, Types::UUID
+  attribute? :causation_id, Types::UUID::V4
+  attribute? :correlation_id, Types::UUID::V4
   attribute :payload, Types::Static[nil]
 
   def self.registry
