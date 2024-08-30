@@ -484,6 +484,22 @@ RSpec.describe Plumb::Types do
       expect(Types::Forms::Date.metadata[:type]).to eq([Date, String])
     end
 
+    specify Types::Time do
+      time = Time.parse('2024-08-30T20:15:23Z')
+      assert_result(Types::Time.resolve(time), time, true)
+      assert_result(Types::Time.resolve(10), 10, false)
+    end
+
+    specify Types::Forms::Date do
+      str = '2024-08-30T20:15:23Z'
+      time = Time.parse(str)
+      assert_result(Types::Forms::Time.resolve(time), time, true)
+      assert_result(Types::Forms::Time.resolve(str), time, true)
+      assert_result(Types::Forms::Time.resolve(10), 10, false)
+      assert_result(Types::Forms::Time.resolve('2024-'), '2024-', false)
+      expect(Types::Forms::Time.metadata[:type]).to eq([Time, String])
+    end
+
     specify Types::Lax::String do
       assert_result(Types::Lax::String.resolve('aa'), 'aa', true)
       assert_result(Types::Lax::String.resolve(11), '11', true)

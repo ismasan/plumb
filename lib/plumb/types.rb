@@ -3,6 +3,7 @@
 require 'bigdecimal'
 require 'uri'
 require 'date'
+require 'time'
 
 module Plumb
   # Define core policies
@@ -161,6 +162,7 @@ module Plumb
     Interface = InterfaceClass.new
     Email = String[URI::MailTo::EMAIL_REGEXP].as_node(:email)
     Date = Any[::Date]
+    Time = Any[::Time]
 
     module UUID
       V4 = String[/\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/i].as_node(:uuid)
@@ -214,6 +216,7 @@ module Plumb
       # Accept a Date, or a string that can be parsed into a Date
       # via Date.parse
       Date = Date | (String >> Any.build(::Date, :parse).policy(:rescue, ::Date::Error))
+      Time = Time | (String >> Any.build(::Time, :parse).policy(:rescue, ::ArgumentError))
     end
   end
 end

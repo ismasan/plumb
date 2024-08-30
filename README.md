@@ -235,6 +235,7 @@ You can see more use cases in [the examples directory](https://github.com/ismasa
 * `Types::UUID::V4`
 * `Types::Email`
 * `Types::Date`
+* `Types::Time`
 * `Types::Lax::Integer`
 * `Types::Lax::String`
 * `Types::Lax::Symbol`
@@ -243,6 +244,7 @@ You can see more use cases in [the examples directory](https://github.com/ismasa
 * `Types::Forms::True`
 * `Types::Forms::False`
 * `Types::Forms::Date`
+* `Types::Forms::Time`
 
 TODO: datetime, others.
 
