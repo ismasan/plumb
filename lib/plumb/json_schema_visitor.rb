@@ -24,6 +24,7 @@ module Plumb
     MAX_ITEMS = 'maxItems'
     MIN_LENGTH = 'minLength'
     MAX_LENGTH = 'maxLength'
+    FORMAT = 'format'
     ENVELOPE = {
       '$schema' => 'https://json-schema.org/draft-08/schema#'
     }.freeze
@@ -192,6 +193,10 @@ module Plumb
       props.merge(TYPE => 'boolean')
     end
 
+    on(:uuid) do |_node, props|
+      props.merge(TYPE => 'string', FORMAT => 'uuid')
+    end
+
     on(::String) do |_node, props|
       props.merge(TYPE => 'string')
     end
@@ -239,11 +244,11 @@ module Plumb
     end
 
     on(::Time) do |_node, props|
-      props.merge(TYPE => 'string', 'format' => 'date-time')
+      props.merge(TYPE => 'string', FORMAT => 'date-time')
     end
 
     on(::Date) do |_node, props|
-      props.merge(TYPE => 'string', 'format' => 'date')
+      props.merge(TYPE => 'string', FORMAT => 'date')
     end
 
     on(::Hash) do |_node, props|

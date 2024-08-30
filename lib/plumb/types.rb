@@ -163,7 +163,7 @@ module Plumb
     Date = Any[::Date]
 
     module UUID
-      V4 = String[/\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/i]
+      V4 = String[/\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/i].as_node(:uuid)
     end
 
     class Data
