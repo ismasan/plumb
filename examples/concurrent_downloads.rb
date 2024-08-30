@@ -12,9 +12,6 @@ require 'digest/md5'
 module Types
   include Plumb::Types
 
-  # Turn a string into an URI
-  URL = String[/^https?:/].build(::URI, :parse)
-
   # a Struct to hold image data
   Image = ::Data.define(:url, :io)
 
@@ -24,7 +21,7 @@ module Types
   # required by all Plumb steps.
   # URI => Image
   Download = Plumb::Step.new do |result|
-    io = URI.open(result.value)
+    io = ::URI.open(result.value)
     result.valid(Image.new(result.value.to_s, io))
   end
 
@@ -81,7 +78,7 @@ cache = Types::Cache.new('./examples/data/downloads')
 # 1). Take a valid URL string.
 # 2). Attempt reading the file from the cache. Return that if it exists.
 # 3). Otherwise, download the file from the internet and write it to the cache.
-IdempotentDownload = Types::URL >> (cache.read | (Types::Download >> cache.write))
+IdempotentDownload = Types::Forms::URI::HTTP >> (cache.read | (Types::Download >> cache.write))
 
 # An array of downloadable images,
 # marked as concurrent so that all IO operations are run in threads.
