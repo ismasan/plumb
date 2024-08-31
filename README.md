@@ -1157,7 +1157,7 @@ CreateUser = User.pipeline do |pl|
   end
 end
 
-# User normally as any other Plumb step
+# Use normally as any other Plumb step
 result = CreateUser.resolve(name: 'Joe', age: 40)
 # result.valid?
 # result.errors
@@ -1197,7 +1197,7 @@ end
 Note that order matters: an _around_ step will only wrap steps registered _after it_.
 
 ```ruby
-# This step will not be wrapper by StepLogger
+# This step will not be wrapped by StepLogger
 pl.step Step1
 
 pl.around StepLogger
@@ -1235,7 +1235,7 @@ end
 ```ruby
 class LoggedPipeline < Plumb::Pipeline
   # class-level midleware will be inherited by sub-classes
-  around StepLogged
+  around StepLogger
 end
 
 # Subclass inherits class-level middleware stack,
