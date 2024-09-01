@@ -812,13 +812,13 @@ RSpec.describe Plumb::Types do
       expect(hash1 == hash3).to be(false)
     end
 
-    specify '#schema with static values' do
-      hash = Types::Hash.schema(
+    specify 'schema with static values' do
+      hash = Types::Hash[
         title: Types::String.default('Mr'),
         name: Types::Static['Ismael'],
         age: Types::Static[45],
         friend: Types::Hash.schema(name: Types::String)
-      )
+      ]
 
       assert_result(hash.resolve({ friend: { name: 'Joe' } }),
                     { title: 'Mr', name: 'Ismael', age: 45, friend: { name: 'Joe' } }, true)
@@ -827,6 +827,11 @@ RSpec.describe Plumb::Types do
     specify 'schema with primitive classes' do
       hash = Types::Hash[name: ::String, age: ::Integer]
       assert_result(hash.resolve(name: 'Ismael', age: 42), { name: 'Ismael', age: 42 }, true)
+    end
+
+    specify 'schema with with nested hash' do
+      hash = Types::Hash[user: { name: String }]
+      assert_result(hash.resolve(user: { name: 'Ismael' }), { user: { name: 'Ismael' } }, true)
     end
 
     specify '#|' do

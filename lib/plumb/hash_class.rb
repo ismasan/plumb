@@ -139,17 +139,21 @@ module Plumb
     end
 
     def wrap_keys_and_values(hash)
-      case hash
+      hash.each.with_object({}) do |(k, v), ret|
+        ret[Key.wrap(k)] = wrap_value(v)
+      end
+    end
+
+    def wrap_value(value)
+      case value
       when ::Array
-        hash.map { |e| wrap_keys_and_values(e) }
+        value.map { |e| wrap_value(e) }
       when ::Hash
-        hash.each.with_object({}) do |(k, v), ret|
-          ret[Key.wrap(k)] = wrap_keys_and_values(v)
-        end
+        schema wrap_keys_and_values(value)
       when Callable
-        hash
+        value
       else #  leaf values
-        Composable.wrap(hash)
+        Composable.wrap(value)
       end
     end
 
