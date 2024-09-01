@@ -140,28 +140,7 @@ module Plumb
 
     def wrap_keys_and_values(hash)
       hash.each.with_object({}) do |(k, v), ret|
-        ret[Key.wrap(k)] = wrap_value(v)
-      end
-    end
-
-    def wrap_value(value)
-      case value
-      when ::Array
-        element_type = case value.size
-                       when 0
-                         Types::Any
-                       when 1
-                         value.first
-                       else
-                         raise ArgumentError, '[element_type] syntax allows a single element type'
-                       end
-        Types::Array[element_type]
-      when ::Hash
-        schema wrap_keys_and_values(value)
-      when Callable
-        value
-      else #  leaf values
-        Composable.wrap(value)
+        ret[Key.wrap(k)] = Composable.wrap(v)
       end
     end
 

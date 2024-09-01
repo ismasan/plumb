@@ -100,6 +100,7 @@ module Plumb
     # Wrap an object in a Composable instance.
     # Anything that includes Composable is a noop.
     # A Hash is assumed to be a HashClass schema.
+    # An Array with zero or 1 element is assumed to be an ArrayClass.
     # Any `#call(Result) => Result` interface is wrapped in a Step.
     # Anything else is assumed to be something you want to match against via `#===`.
     #
@@ -115,6 +116,16 @@ module Plumb
         callable
       elsif callable.is_a?(::Hash)
         HashClass.new(schema: callable)
+      elsif callable.is_a?(::Array)
+        element_type = case callable.size
+                       when 0
+                         Types::Any
+                       when 1
+                         callable.first
+                       else
+                         raise ArgumentError, '[element_type] syntax allows a single element type'
+                       end
+        Types::Array[element_type]
       elsif callable.respond_to?(:call)
         Step.new(callable)
       else
