@@ -829,9 +829,14 @@ RSpec.describe Plumb::Types do
       assert_result(hash.resolve(name: 'Ismael', age: 42), { name: 'Ismael', age: 42 }, true)
     end
 
-    specify 'schema with with nested hash' do
+    specify 'schema with nested hash' do
       hash = Types::Hash[user: { name: String }]
       assert_result(hash.resolve(user: { name: 'Ismael' }), { user: { name: 'Ismael' } }, true)
+    end
+
+    specify 'schema with array value' do
+      hash = Types::Hash[numbers: [Integer]]
+      assert_result(hash.resolve(numbers: [1, 2, 3]), { numbers: [1, 2, 3] }, true)
     end
 
     specify '#|' do

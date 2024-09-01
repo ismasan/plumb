@@ -147,7 +147,15 @@ module Plumb
     def wrap_value(value)
       case value
       when ::Array
-        value.map { |e| wrap_value(e) }
+        element_type = case value.size
+                       when 0
+                         Types::Any
+                       when 1
+                         value.first
+                       else
+                         raise ArgumentError, '[element_type] syntax allows a single element type'
+                       end
+        Types::Array[element_type]
       when ::Hash
         schema wrap_keys_and_values(value)
       when Callable
