@@ -196,7 +196,7 @@ RSpec.describe Types::Data do
       klass = Class.new(Types::Data) do
         attribute :typed_array, [Integer, String]
       end
-    end.to raise_error(ArgumentError, 'Array type must have a single element')
+    end.to raise_error(ArgumentError)
   end
 
   specify 'invalid' do

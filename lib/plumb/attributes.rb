@@ -212,12 +212,6 @@ module Plumb
       def attribute(name, type = Types::Any, &block)
         key = Key.wrap(name)
         name = key.to_sym
-        if type.is_a?(::Array)
-          raise ArgumentError, 'Array type must have a single element' if type.size > 1
-
-          element = type.any? ? type.first : Types::Any
-          type = Types::Array[element]
-        end
 
         type = Composable.wrap(type)
         if block_given? # :foo, Array[Data] or :foo, Struct
