@@ -173,6 +173,32 @@ RSpec.describe Types::Data do
     expect(office.staff.first.errors[:age]).not_to be_empty
   end
 
+  specify 'shorthand typed array syntax' do
+    klass = Class.new(Types::Data) do
+      attribute :typed_array, [Integer]
+      attribute :untyped_array, []
+      attribute :data_array, [] do
+        attribute :name, String
+      end
+    end
+
+    thing = klass.new(typed_array: [1, 2, 3], untyped_array: [1, 'hello'], data_array: [{ name: 'foo' }])
+    expect(thing.typed_array).to eq([1, 2, 3])
+    expect(thing.untyped_array).to eq([1, 'hello'])
+    expect(thing.data_array.map(&:name)).to eq(['foo'])
+    expect(thing.valid?).to be(true)
+    thing = klass.new(typed_array: [1, 2, '3'])
+    expect(thing.valid?).to be(false)
+  end
+
+  specify 'invalid shorthard array with multiple elements' do
+    expect do
+      klass = Class.new(Types::Data) do
+        attribute :typed_array, [Integer, String]
+      end
+    end.to raise_error(ArgumentError, 'Array type must have a single element')
+  end
+
   specify 'invalid' do
     user = Types::User.new(
       name: 'Jane',
