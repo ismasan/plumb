@@ -205,12 +205,15 @@ module Plumb
       # attribute(:name, String)
       # attribute(:friends, Types::Array) { attribute(:name, String) }
       # attribute(:friends, Types::Array) # same as Types::Array[Types::Any]
+      # attribute(:friends, []) # same as Types::Array[Types::Any]
       # attribute(:friends, Types::Array[Person])
+      # attribute(:friends, [Person])
       #
       def attribute(name, type = Types::Any, &block)
         key = Key.wrap(name)
         name = key.to_sym
         type = Composable.wrap(type)
+
         if block_given? # :foo, Array[Data] or :foo, Struct
           type = __plumb_struct_class__ if type == Types::Any
           type = Plumb.decorate(type) do |node|
