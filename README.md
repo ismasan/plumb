@@ -1061,7 +1061,25 @@ Note that this does NOT work with union'd or piped structs.
 attribute :company, Company | Person do
 ```
 
+#### Shorthand array syntax
+
+```ruby
+attribute :things, [] # Same as attribute :things, Types::Array
+attribute :numbers, [Integer] # Same as attribute :numbers, Types::Array[Integer]
+attribute :people, [Person] # same as attribute :people, Types::Array[Person]
+attribute :friends, [Person] do # same as attribute :friends, Types::Array[Person] do...
+  attribute :phone_number, Integer
+end
+```
+
+Note that, if you want to match an attribute value against a literal array, you need to use `#value`
+
+```ruby
+attribute :one_two_three, Types::Array.value[[1, 2, 3]])
+```
+
 #### Optional Attributes
+
 Using `attribute?` allows for optional attributes. If the attribute is not present, these attribute values will be `nil`
 
 ```ruby
