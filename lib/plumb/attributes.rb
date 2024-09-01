@@ -212,8 +212,8 @@ module Plumb
       def attribute(name, type = Types::Any, &block)
         key = Key.wrap(name)
         name = key.to_sym
-
         type = Composable.wrap(type)
+
         if block_given? # :foo, Array[Data] or :foo, Struct
           type = __plumb_struct_class__ if type == Types::Any
           type = Plumb.decorate(type) do |node|
