@@ -832,13 +832,15 @@ Images = Types::Array[ImageDownload].concurrent
 Images.parse(['https://images.com/1.png', 'https://images.com/2.png'])
 ```
 
+See the [concurrent downloads example](https://github.com/ismasan/plumb/blob/main/examples/concurrent_downloads.rb).
+
 TODO: pluggable concurrency engines (Async?)
 
 #### `#stream`
 
 Turn an Array definition into an enumerator that yields each element wrapped in `Result::Valid` or `Result::Invalid`.
 
-See `Types::Stream` below for more.
+See [`Types::Stream`](#typesstream) below for more.
 
 #### `#filtered`
 
@@ -906,6 +908,8 @@ stream.each.with_index(1) do |result, line|
   end
 end
 ```
+
+See a more complete the [CSV Stream example](https://github.com/ismasan/plumb/blob/main/examples/csv_stream.rb)
 
 #### `Types::Stream#filtered`
 

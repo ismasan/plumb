@@ -4,7 +4,7 @@ require 'bundler'
 Bundler.setup(:examples)
 require 'plumb'
 
-#   bundle exec examples/weekdays.rb
+#   bundle exec ruby examples/weekdays.rb
 #
 # Data types to represent and parse an array of days of the week.
 # Input data can be an array of day names or numbers, ex.
