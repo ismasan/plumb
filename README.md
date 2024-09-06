@@ -455,6 +455,69 @@ All scalar types support this:
 ten = Types::Integer.value(10)
 ```
 
+#### `#static`
+
+A type that always returns a valid, static value, regardless of input.
+
+```ruby
+ten = Types::Integer.static(10)
+ten.parse(10) # => 10
+ten.parse(100) # => 10
+ten.parse('hello') # => 10
+ten.parse() # => 10
+ten.metadata[:type] # => Integer
+```
+
+Useful for data structures where some fields shouldn't change. Example:
+
+```ruby
+CreateUserEvent = Types::Hash[
+  type: Types::String.static('CreateUser'),
+  name: String,
+  age: Integer
+]
+```
+
+Note that the value must be of the same type as the starting step's target type.
+
+```ruby
+Types::Integer.static('nope') # raises ArgumentError
+```
+
+This usage is similar as using `Types::Static['hello']`directly.
+
+This helper is shorthand for the following composition:
+
+```ruby
+Types::Static[value] >> step
+```
+
+This means that validations and coercions in the original step are still applied to the static value.
+
+```ruby
+ten = Types::Integer[100..].static(10)
+ten.parse # => Plumb::ParseError "Must be within 100..."
+```
+
+So, normally you'd only use this attached to primitive types without further processing (but your use case may vary).
+
+##### Block usage
+
+Passing a proc will evaluate the proc on every invocation. Use this for generated values.
+
+```ruby
+random_number = Types::Numeric.static { rand }
+random_number.parse # 0.32332
+random_number.parse('foo') # 0.54322 etc
+```
+
+Note that in this mode, the type of generated value must match the initial step's type, validated at invocation.
+
+```ruby
+random_number = Types::String.static { rand } # this won't raise an error here
+random_number.parse # raises Plumb::ParseError because `rand` is not a String
+```
+
 #### `#metadata`
 
 Add metadata to a type

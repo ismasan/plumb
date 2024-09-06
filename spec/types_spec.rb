@@ -321,6 +321,33 @@ RSpec.describe Plumb::Types do
     expect(with_symbol.metadata[:type]).to eq(custom)
   end
 
+  describe '#static' do
+    it 'returns a static value if argument given' do
+      type = Types::Integer.static(10)
+      expect(type.parse(10)).to eq(10)
+      expect(type.parse(11)).to eq(10)
+      expect(type.parse('foo')).to eq(10)
+      expect(type.parse).to eq(10)
+      expect(type.metadata[:type]).to eq(Integer)
+    end
+
+    it 'does not allow inconsistent types' do
+      expect do
+        Types::Integer.static('nope')
+      end.to raise_error(ArgumentError)
+    end
+
+    it 'lazily evaluates a block, if given' do
+      count = 0
+      type = Types::Integer.static { count += 1 }
+      expect(type.parse(10)).to eq(1)
+      expect(type.parse(100)).to eq(2)
+      expect(type.parse).to eq(3)
+      expect(type.parse('foo')).to eq(4)
+      expect(type.metadata[:type]).to eq(Integer)
+    end
+  end
+
   describe '#policy' do
     specify ':size' do
       assert_result(Types::Array.policy(size: 2).resolve([1]), [1], false)
