@@ -342,10 +342,12 @@ RSpec.describe Plumb::Types do
       expect(ten.parse).to eq(10)
       expect(ten.metadata[:type]).to eq(Integer)
     end
+  end
 
-    it 'lazily evaluates a block, if given' do
+  describe '#generate' do
+    it 'lazily evaluates a block' do
       count = 0
-      type = Types::Integer.static { count += 1 }
+      type = Types::Integer.generate { count += 1 }
       expect(type.parse(10)).to eq(1)
       expect(type.parse(100)).to eq(2)
       expect(type.parse).to eq(3)

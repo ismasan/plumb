@@ -341,33 +341,38 @@ module Plumb
       self >> Build.new(cns, factory_method:, &block)
     end
 
-    # Always return a static value, regarless of the input.
-    # When given a block, the block will be called to get the value, on every invocation.
+    # Always return a static value, regardless of the input.
     # @example
     #   type = Types::Integer.static(10)
     #   type.parse(10) # => 10
     #   type.parse(100) # => 10
     #   type.parse # => 10
     #
-    #  # with block
-    #  type = Types::Integer.static { Time.now.to_i }
-    # @param value [Object, Undefined]
-    # @param block [Proc]
+    # @param value [Object]
     # @return [And]
-    def static(value = Undefined, &block)
-      if value == Undefined
-        raise ArgumentError, 'expected a value or block' unless block_given?
-
-        Step.new(->(r) { r.valid(block.call) }, 'static') >> self
-      else
-        my_type = Array(metadata[:type]).first
-        unless my_type.nil? || value.instance_of?(my_type)
-          raise ArgumentError,
-                "can't set a static #{value.class} value for a #{my_type} step"
-        end
-
-        StaticClass.new(value) >> self
+    def static(value)
+      my_type = Array(metadata[:type]).first
+      unless my_type.nil? || value.instance_of?(my_type)
+        raise ArgumentError,
+              "can't set a static #{value.class} value for a #{my_type} step"
       end
+
+      StaticClass.new(value) >> self
+    end
+
+    # Return the output of a block or #call interface, regardless of input.
+    # The block will be called to get the value, on every invocation.
+    # @example
+    #  now = Types::Integer.generate { Time.now.to_i }
+    #
+    # @param generator [#call, nil] a callable that will be applied to the value, or nil if block
+    # @param block [Proc] a block that will be applied to the value, or nil if callable
+    # @return [And]
+    def generate(generator = nil, &block)
+      generator ||= block
+      raise ArgumentError, 'expected a generator' unless generator.respond_to?(:call)
+
+      Step.new(->(r) { r.valid(generator.call) }, 'generator') >> self
     end
 
     # Build a Plumb::Pipeline with this object as the starting step.

@@ -501,7 +501,7 @@ ten.parse # => Plumb::ParseError "Must be within 100..."
 
 So, normally you'd only use this attached to primitive types without further processing (but your use case may vary).
 
-##### Block usage
+#### `#generate`
 
 Passing a proc will evaluate the proc on every invocation. Use this for generated values.
 
@@ -511,12 +511,14 @@ random_number.parse # 0.32332
 random_number.parse('foo') # 0.54322 etc
 ```
 
-Note that in this mode, the type of generated value must match the initial step's type, validated at invocation.
+Note that the type of generated value must match the initial step's type, validated at invocation.
 
 ```ruby
 random_number = Types::String.static { rand } # this won't raise an error here
 random_number.parse # raises Plumb::ParseError because `rand` is not a String
 ```
+
+You can also pass any `#call() => Object` interface as a generator, instead of a proc.
 
 #### `#metadata`
 
