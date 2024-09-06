@@ -361,7 +361,7 @@ module Plumb
         Step.new(->(r) { r.valid(block.call) }, 'static') >> self
       else
         my_type = Array(metadata[:type]).first
-        unless value.instance_of?(my_type)
+        unless my_type.nil? || value.instance_of?(my_type)
           raise ArgumentError,
                 "can't set a static #{value.class} value for a #{my_type} step"
         end

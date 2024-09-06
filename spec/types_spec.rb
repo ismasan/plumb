@@ -337,6 +337,12 @@ RSpec.describe Plumb::Types do
       end.to raise_error(ArgumentError)
     end
 
+    it 'does not check type for Types::Any' do
+      ten = Types::Any.static(10)
+      expect(ten.parse).to eq(10)
+      expect(ten.metadata[:type]).to eq(Integer)
+    end
+
     it 'lazily evaluates a block, if given' do
       count = 0
       type = Types::Integer.static { count += 1 }
