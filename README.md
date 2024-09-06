@@ -484,7 +484,22 @@ Note that the value must be of the same type as the starting step's target type.
 Types::Integer.static('nope') # raises ArgumentError
 ```
 
-This usage is the same as using `Types::Static['hello']`directly.
+This usage is similar as using `Types::Static['hello']`directly.
+
+This helper is shorthand for the following composition:
+
+```ruby
+Types::Static[value] >> step
+```
+
+This means that validations and coercions in the original step are still applied to the static value.
+
+```ruby
+ten = Types::Integer[100..].static(10)
+ten.parse # => Plumb::ParseError "Must be within 100..."
+```
+
+So, normally you'd only use this attached to primitive types without further processing (but your use case may vary).
 
 ##### Block usage
 
