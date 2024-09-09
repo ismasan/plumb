@@ -45,7 +45,7 @@ module Plumb
     def call(result)
       return result.invalid(errors: 'is not an Array') unless ::Array === result.value
 
-      values, errors = map_array_elements(result.value)
+      values, errors = map_array_elements(result)
       return result.valid(values) unless errors.any?
 
       result.invalid(values, errors:)
@@ -59,14 +59,14 @@ module Plumb
       %(Array[#{element_type}])
     end
 
-    def map_array_elements(list)
+    def map_array_elements(result)
       # Reuse the same result object for each element
       # to decrease object allocation.
       # Steps might return the same result instance, so we map the values directly
       # separate from the errors.
-      element_result = BLANK_RESULT.dup
+      element_result = result.dup
       errors = {}
-      values = list.map.with_index do |e, idx|
+      values = result.value.map.with_index do |e, idx|
         re = element_type.call(element_result.reset(e))
         errors[idx] = re.errors unless re.valid?
         re.value
@@ -78,12 +78,12 @@ module Plumb
     class ConcurrentArrayClass < self
       private
 
-      def map_array_elements(list)
+      def map_array_elements(result)
         errors = {}
 
-        values = list
-                 .map { |e| Concurrent::Future.execute { element_type.resolve(e) } }
-                 .map.with_index do |f, idx|
+        values = result.value
+                       .map { |e| Concurrent::Future.execute { element_type.resolve(e) } }
+                       .map.with_index do |f, idx|
           re = f.value
           errors[idx] = f.reason if f.rejected?
           re.value
