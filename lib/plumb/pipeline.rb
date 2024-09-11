@@ -37,14 +37,14 @@ module Plumb
 
     attr_reader :children
 
-    def initialize(type = Types::Any, &setup)
+    def initialize(type: Types::Any, freeze_after: true, &setup)
       @type = type
       @children = [type].freeze
       @around_blocks = self.class.around_blocks.dup
       return unless block_given?
 
       configure(&setup)
-      freeze
+      freeze if freeze_after
     end
 
     def call(result)

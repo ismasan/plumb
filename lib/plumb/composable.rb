@@ -385,7 +385,7 @@ module Plumb
     #
     # @return [Pipeline]
     def pipeline(&block)
-      Pipeline.new(self, &block)
+      Pipeline.new(type: self, &block)
     end
 
     def to_s
