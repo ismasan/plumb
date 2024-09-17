@@ -14,9 +14,6 @@ module Types
   # Turn an ISO8601 string into a Time object
   ISOTime = String.build(::Time, :parse).policy(:rescue, ArgumentError)
 
-  # A type that can be a Time object or an ISO8601 string >> Time
-  Time = Any[::Time] | ISOTime
-
   # A UUID string, or generate a new one
   AutoUUID = UUID::V4.default { SecureRandom.uuid }
 end
@@ -60,7 +57,7 @@ class Event < Types::Data
   attribute :id, Types::AutoUUID
   attribute :stream_id, Types::String.present
   attribute :type, Types::String
-  attribute(:created_at, Types::Time.default { ::Time.now })
+  attribute(:created_at, Types::Forms::Time.default { ::Time.now })
   attribute? :causation_id, Types::UUID::V4
   attribute? :correlation_id, Types::UUID::V4
   attribute :payload, Types::Static[nil]
