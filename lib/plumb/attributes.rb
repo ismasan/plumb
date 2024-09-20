@@ -160,9 +160,11 @@ module Plumb
 
       @errors = BLANK_HASH
       result = self.class._schema.resolve(attrs.to_h)
-      @attributes = result.value
+      @attributes = prepare_attributes(result.value)
       @errors = result.errors unless result.valid?
     end
+
+    def prepare_attributes(attrs) = attrs
 
     module ClassMethods
       def _schema
