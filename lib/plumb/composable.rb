@@ -84,6 +84,26 @@ module Plumb
     def node_name = self.class.name.split('::').last.to_sym
   end
 
+  # Override #=== and #== for Composable instances.
+  # but only when included in classes, not extended.
+  module Equality
+    # `#===` equality. So that Plumb steps can be used in case statements and pattern matching.
+    # @param other [Object]
+    # @return [Boolean]
+    def ===(other)
+      case other
+      when Composable
+        other == self
+      else
+        resolve(other).valid?
+      end
+    end
+
+    def ==(other)
+      other.is_a?(self.class) && other.respond_to?(:children) && other.children == children
+    end
+  end
+
   #  Composable mixes in composition methods to classes.
   # such as #>>, #|, #not, and others.
   # Any Composable class can participate in Plumb compositions.
@@ -95,6 +115,7 @@ module Plumb
     # not extending classes with it.
     def self.included(base)
       base.send(:include, Naming)
+      base.send(:include, Equality)
     end
 
     # Wrap an object in a Composable instance.
@@ -302,22 +323,6 @@ module Plumb
       else
         raise ArgumentError, "expected a symbol or hash, got #{args.inspect}"
       end
-    end
-
-    # `#===` equality. So that Plumb steps can be used in case statements and pattern matching.
-    # @param other [Object]
-    # @return [Boolean]
-    def ===(other)
-      case other
-      when Composable
-        other == self
-      else
-        resolve(other).valid?
-      end
-    end
-
-    def ==(other)
-      other.is_a?(self.class) && other.respond_to?(:children) && other.children == children
     end
 
     # Visitors expect a #node_name and #children interface.

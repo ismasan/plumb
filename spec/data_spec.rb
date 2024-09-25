@@ -294,4 +294,12 @@ RSpec.describe Types::Data do
     expect(instance.thing).to be_a(Types::DifferentClass)
     expect(instance.thing).to be_a(Types::DifferentClass::Thing)
   end
+
+  specify 'Data.===(instance)' do
+    class_a = Types::Data[name: String]
+    class_b = Types::Data[name: String]
+    a = class_a.new(name: 'Joe')
+    expect(class_a === a).to be true
+    expect(class_b === a).to be false
+  end
 end
