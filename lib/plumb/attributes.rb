@@ -144,6 +144,8 @@ module Plumb
         case value
         when ::Array
           value.map { |v| v.respond_to?(:to_h) ? v.to_h : v }
+        when ::NilClass
+          nil
         else
           value.respond_to?(:to_h) ? value.to_h : value
         end
