@@ -230,6 +230,11 @@ RSpec.describe Plumb::Types do
     assert_result(Types::Any.not(string).resolve('hello'), 'hello', false)
 
     assert_result(string.not.resolve(10), 10, true)
+
+    not_nil = Types::Any.not(nil)
+    assert_result(not_nil.resolve(10), 10, true)
+    assert_result(not_nil.resolve('aa'), 'aa', true)
+    assert_result(not_nil.resolve(nil), nil, false)
   end
 
   specify '#invalid' do

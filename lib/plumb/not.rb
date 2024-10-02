@@ -9,8 +9,8 @@ module Plumb
     attr_reader :children, :errors
 
     def initialize(step, errors: nil)
-      @step = step
-      @errors = errors
+      @step = Composable.wrap(step)
+      @errors = errors || "must not be #{step.inspect}"
       @children = [step].freeze
       freeze
     end

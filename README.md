@@ -294,6 +294,13 @@ NotEmail.parse('hello') # "hello"
 NotEmail.parse('hello@server.com') # error
 ```
 
+`#not` can also be given a type as argument, which might read better:
+
+```ruby
+Types::Any.not(nil)
+Types::Any.not(Types::Email)
+```
+
 #### `#options`
 
 Sets allowed options for value.
