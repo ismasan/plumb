@@ -301,6 +301,15 @@ Types::Any.not(nil)
 Types::Any.not(Types::Email)
 ```
 
+Finally, you can use `Types::Not` for the same effect.
+
+```ruby
+NotNil = Types::Not[nil]
+NotNil.parse(1) # 1
+NotNil.parse('hello') # 'hello'
+NotNil.parse(nil) # error
+```
+
 #### `#options`
 
 Sets allowed options for value.

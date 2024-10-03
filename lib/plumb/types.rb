@@ -159,6 +159,7 @@ module Plumb
     Stream = StreamClass.new
     Tuple = TupleClass.new
     Hash = HashClass.new
+    Not = Plumb::Not.new
     Interface = InterfaceClass.new
     Email = String[URI::MailTo::EMAIL_REGEXP].as_node(:email)
     Date = Any[::Date]

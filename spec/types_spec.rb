@@ -237,6 +237,13 @@ RSpec.describe Plumb::Types do
     assert_result(not_nil.resolve(nil), nil, false)
   end
 
+  specify 'Types::Not' do
+    not_nil = Types::Not[nil]
+    assert_result(not_nil.resolve(10), 10, true)
+    assert_result(not_nil.resolve('aa'), 'aa', true)
+    assert_result(not_nil.resolve(nil), nil, false)
+  end
+
   specify '#invalid' do
     type = Types::Integer[..10].invalid(errors: 'nope')
     assert_result(type.resolve(9), 9, false)
