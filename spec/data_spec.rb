@@ -98,6 +98,7 @@ RSpec.describe Types::Data do
     )
     nillable = Types::Data[foo: Types::String.nullable, count?: Integer]
     expect(nillable.new(foo: nil, count: 10).to_h).to eq(foo: nil, count: 10)
+    expect(nillable.new(foo: nil).to_h).to eq(foo: nil, count: nil)
   end
 
   specify '#==' do

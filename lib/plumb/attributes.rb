@@ -140,15 +140,18 @@ module Plumb
 
     # @return [Hash]
     def to_h
-      attributes.transform_values do |value|
-        case value
-        when ::Array
-          value.map { |v| v.respond_to?(:to_h) ? v.to_h : v }
-        when ::NilClass
-          nil
-        else
-          value.respond_to?(:to_h) ? value.to_h : value
-        end
+      self.class._schema._schema.keys.each.with_object({}) do |key, memo|
+        key = key.to_sym
+        value = attributes[key]
+        val = case value
+              when ::Array
+                value.map { |v| v.respond_to?(:to_h) ? v.to_h : v }
+              when ::NilClass
+                nil
+              else
+                value.respond_to?(:to_h) ? value.to_h : value
+              end
+        memo[key] = val
       end
     end
 
