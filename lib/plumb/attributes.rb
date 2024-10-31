@@ -117,6 +117,7 @@ module Plumb
 
     def initialize(attrs = {})
       assign_attributes(attrs)
+      freeze
     end
 
     def ==(other)
