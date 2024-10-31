@@ -314,4 +314,17 @@ RSpec.describe Types::Data do
     expect(class_a === a).to be true
     expect(class_b === a).to be false
   end
+
+  specify 'private attributes' do
+    klass = Class.new(Types::Data) do
+      attribute :name, String
+      private attribute :age, Integer
+
+      def full = "#{name} (#{age})"
+    end
+
+    obj = klass.new(name: 'Joe', age: 20)
+    expect { obj.age }.to raise_error(NoMethodError)
+    expect(obj.full).to eq('Joe (20)')
+  end
 end
