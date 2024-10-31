@@ -257,7 +257,7 @@ module Plumb
           if result.valid?
             @errors.delete(name)
           else
-            @errors.merge!(result.errors)
+            @errors.merge!(name => result.errors)
           end
           result.value
         end

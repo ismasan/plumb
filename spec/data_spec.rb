@@ -347,5 +347,9 @@ RSpec.describe Types::Data do
     expect(config.thing.name).to eq 'foo'
     expect(config.thing.name = 'bar').to eq 'bar'
     expect(config.thing.name).to eq 'bar'
+
+    config.host = 10
+    expect(config.valid?).to be false
+    expect(config.errors[:host].any?).to be true
   end
 end
