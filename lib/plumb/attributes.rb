@@ -117,6 +117,7 @@ module Plumb
 
     def initialize(attrs = {})
       assign_attributes(attrs)
+      freeze
     end
 
     def ==(other)
@@ -163,7 +164,7 @@ module Plumb
     def assign_attributes(attrs = BLANK_HASH)
       raise ArgumentError, 'Must be a Hash of attributes' unless attrs.respond_to?(:to_h)
 
-      @errors = BLANK_HASH
+      @errors = {}
       result = self.class._schema.resolve(attrs.to_h)
       @attributes = prepare_attributes(result.value)
       @errors = result.errors unless result.valid?
@@ -216,7 +217,7 @@ module Plumb
       # attribute(:friends, Types::Array[Person])
       # attribute(:friends, [Person])
       #
-      def attribute(name, type = Types::Any, &block)
+      def attribute(name, type = Types::Any, writer: false, &block)
         key = Key.wrap(name)
         name = key.to_sym
         type = Composable.wrap(type)
@@ -239,11 +240,28 @@ module Plumb
         end
 
         @_schema = _schema + { key => type }
-        __plumb_define_attribute_method__(name)
+        __plumb_define_attribute_reader_method__(name)
+        return name unless writer
+
+        __plumb_define_attribute_writer_method__(name)
       end
 
-      def __plumb_define_attribute_method__(name)
+      def __plumb_define_attribute_reader_method__(name)
         define_method(name) { @attributes[name] }
+      end
+
+      def __plumb_define_attribute_writer_method__(name)
+        define_method("#{name}=") do |value|
+          type = self.class._schema.at_key(name)
+          result = type.resolve(value)
+          @attributes[name] = result.value
+          if result.valid?
+            @errors.delete(name)
+          else
+            @errors.merge!(name => result.errors)
+          end
+          result.value
+        end
       end
 
       def attribute?(name, *args, &block)

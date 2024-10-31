@@ -314,4 +314,42 @@ RSpec.describe Types::Data do
     expect(class_a === a).to be true
     expect(class_b === a).to be false
   end
+
+  specify 'private attributes' do
+    klass = Class.new(Types::Data) do
+      attribute :name, String
+      private attribute :age, Integer
+
+      def full = "#{name} (#{age})"
+    end
+
+    obj = klass.new(name: 'Joe', age: 20)
+    expect { obj.age }.to raise_error(NoMethodError)
+    expect(obj.full).to eq('Joe (20)')
+  end
+
+  specify 'writer: true' do
+    klass = Class.new(Types::Data) do
+      attribute :host, Types::Forms::URI::HTTP, writer: true
+      attribute :port, Types::Lax::Integer.default(80), writer: true
+      attribute :thing do
+        attribute :name, String, writer: true
+      end
+    end
+
+    config = klass.new(thing: { name: 'foo' })
+    expect(config.valid?).to be false
+    expect(config.port).to eq 80
+
+    config.host = 'http://example.com'
+    expect(config.valid?).to be true
+    expect(config.host).to be_a(URI::HTTP)
+    expect(config.thing.name).to eq 'foo'
+    expect(config.thing.name = 'bar').to eq 'bar'
+    expect(config.thing.name).to eq 'bar'
+
+    config.host = 10
+    expect(config.valid?).to be false
+    expect(config.errors[:host].any?).to be true
+  end
 end
