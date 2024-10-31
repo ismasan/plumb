@@ -101,31 +101,40 @@ RSpec.describe Types::Data do
     expect(nillable.new(foo: nil).to_h).to eq(foo: nil, count: nil)
   end
 
-  specify '#==' do
-    user1 = Types::User.new(
-      name: 'Jane',
-      age: 20,
-      friend: { name: 'John', email: 'john@server.com' },
-      company: { name: 'Acme' },
-      books: [{ isbn: '123' }]
-    )
-    user2 = Types::User.new(
-      name: 'Jane',
-      age: 20,
-      friend: { name: 'John', email: 'john@server.com' },
-      company: { name: 'Acme' },
-      books: [{ isbn: '123' }]
-    )
-    user3 = Types::User.new(
-      name: 'Jane',
-      age: 20,
-      friend: { name: 'Phil', email: 'phil@server.com' },
-      company: { name: 'Acme' },
-      books: [{ isbn: '123' }]
-    )
+  describe '#==' do
+    specify 'nested structs' do
+      user1 = Types::User.new(
+        name: 'Jane',
+        age: 20,
+        friend: { name: 'John', email: 'john@server.com' },
+        company: { name: 'Acme' },
+        books: [{ isbn: '123' }]
+      )
+      user2 = Types::User.new(
+        name: 'Jane',
+        age: 20,
+        friend: { name: 'John', email: 'john@server.com' },
+        company: { name: 'Acme' },
+        books: [{ isbn: '123' }]
+      )
+      user3 = Types::User.new(
+        name: 'Jane',
+        age: 20,
+        friend: { name: 'Phil', email: 'phil@server.com' },
+        company: { name: 'Acme' },
+        books: [{ isbn: '123' }]
+      )
 
-    expect(user1 == user2).to be true
-    expect(user1 == user3).to be false
+      expect(user1 == user2).to be true
+      expect(user1 == user3).to be false
+    end
+
+    specify 'optional keys' do
+      klass = Types::Data[foo?: Types::String.nullable, age: Integer]
+      k1 = klass.new(age: 20, foo: nil)
+      k2 = klass.new(age: 20)
+      expect(k1 == k2).to be false
+    end
   end
 
   describe 'pattern matching' do
@@ -196,7 +205,7 @@ RSpec.describe Types::Data do
 
   specify 'invalid shorthard array with multiple elements' do
     expect do
-      klass = Class.new(Types::Data) do
+      Class.new(Types::Data) do
         attribute :typed_array, [Integer, String]
       end
     end.to raise_error(ArgumentError)
