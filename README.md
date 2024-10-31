@@ -1216,6 +1216,30 @@ Payload = Types::Hash[
 ]
 ```
 
+#### Attribute writers
+
+By default `Types::Data` classes are inmutable, but you can define attribute writers to allow for mutation using the `writer: true` option.
+
+```ruby
+class DBConfig < Types::Data
+  attribute :host, Types::String.default('localhost'), writer: true
+end
+
+class Config < Types::Data
+  attribute :host, Types::Forms::URI::HTTP, writer: true
+  attribute :port, Types::Integer.default(80), writer: true
+
+  # Nested structs can have writers too
+  attribute :db, DBConfig.default(DBConfig.new)
+end
+
+config = Config.new
+config.host = 'http://localhost'
+config.db.host = 'db.local'
+config.valid? # true
+config.errors # {}
+```
+
 #### Recursive struct definitions
 
 You can use `#defer`. See [recursive types](#recursive-types).
