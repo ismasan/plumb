@@ -18,21 +18,19 @@ module Plumb
     def call(result)
       return result.invalid(errors: 'must be a Hash') unless result.value.is_a?(::Hash)
 
-      failed = result.value.lazy.filter_map do |key, value|
+      errors = {}
+
+      parsed = result.value.each.with_object({}) do |(key, value), memo|
         key_r = @key_type.resolve(key)
         value_r = @value_type.resolve(value)
-        if !key_r.valid?
-          [:key, key, key_r]
-        elsif !value_r.valid?
-          [:value, value, value_r]
-        end
+        errs = []
+        errs << "key #{key_r.errors}" unless key_r.valid?
+        errs << "value #{value_r.value.inspect} #{value_r.errors}" unless value_r.valid?
+        errors[key] = errs unless errs.empty?
+        memo[key_r.value] = value_r.value
       end
-      if (first = failed.next)
-        field, val, halt = failed.first
-        result.invalid(errors: "#{field} #{val.inspect} #{halt.errors}")
-      end
-    rescue StopIteration
-      result
+
+      errors.empty? ? result.valid(parsed) : result.invalid(errors:)
     end
 
     def filtered

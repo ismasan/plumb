@@ -648,8 +648,7 @@ RSpec.describe Plumb::Types do
     end
 
     specify 'pattern matching' do
-      symbol = Types::Symbol
-      three_chars = Types::String.policy(size: 3)
+      Types::String.policy(size: 3)
       [:ok, 'sup'] => [symbol => sym, three_chars => chars]
 
       expect(sym).to eq(:ok)
@@ -1028,17 +1027,25 @@ RSpec.describe Plumb::Types do
     end
 
     describe '#[key_type, value_type] (Hash Map)' do
+      specify do
+        deep_hash = Types::Hash[
+          Types::String.transform(Symbol, &:to_sym),
+          Types::Any.defer { deep_hash } | Types::Any
+        ]
+        assert_result(deep_hash.resolve('a' => 1, 'b' => 2), { a: 1, b: 2 }, true)
+      end
+
       it 'validates keys and values' do
         s1 = Types::Hash[Types::String, Types::Integer]
         expect(s1.metadata).to eq(type: Hash)
         assert_result(s1.resolve('a' => 1, 'b' => 2), { 'a' => 1, 'b' => 2 }, true)
         s1.resolve(a: 1, 'b' => 2).tap do |result|
           assert_result(result, { a: 1, 'b' => 2 }, false)
-          expect(result.errors).to eq('key :a Must be a String')
+          expect(result.errors).to eq(a: ['key Must be a String'])
         end
         s1.resolve('a' => 1, 'b' => {}).tap do |result|
           assert_result(result, { 'a' => 1, 'b' => {} }, false)
-          expect(result.errors).to eq('value {} Must be a Integer')
+          expect(result.errors).to eq('b' => ['value {} Must be a Integer'])
         end
         assert_result(s1.present.resolve({}), {}, false)
       end
