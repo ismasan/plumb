@@ -1027,12 +1027,12 @@ RSpec.describe Plumb::Types do
     end
 
     describe '#[key_type, value_type] (Hash Map)' do
-      specify do
+      specify 'recursive' do
         deep_hash = Types::Hash[
-          Types::String.transform(Symbol, &:to_sym),
+          (Types::Symbol | Types::String.transform(Symbol, &:to_sym)),
           Types::Any.defer { deep_hash } | Types::Any
         ]
-        assert_result(deep_hash.resolve('a' => 1, 'b' => 2), { a: 1, b: 2 }, true)
+        assert_result(deep_hash.resolve('a' => 1, 'b' => 2, c: { 'd' => 3 }), { a: 1, b: 2, c: { d: 3 } }, true)
       end
 
       it 'validates keys and values' do
