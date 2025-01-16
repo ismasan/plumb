@@ -631,6 +631,7 @@ RSpec.describe Plumb::Types do
       assert_result(Types::Lax::Decimal.resolve('10'), BigDecimal('10'), true)
       assert_result(Types::Lax::Decimal.resolve(10.30), BigDecimal('10.30'), true)
       assert_result(Types::Lax::Decimal.resolve('10,222,333.30'), BigDecimal('10222333.30'), true)
+      assert_result(Types::Lax::Decimal.resolve('10222333.30'), BigDecimal('10222333.30'), true)
     end
 
     specify Types::Forms::Boolean do

@@ -181,7 +181,7 @@ module Plumb
     end
 
     module Lax
-      NUMBER_EXPR = /^\d{1,3}(?:,\d{3})*(?:\.\d+)?$/
+      NUMBER_EXPR = /^\d{1,3}(?:,?\d{3})*(?:\.\d+)?$/
 
       String = Types::String \
         | Types::Decimal.transform(::String) { |v| v.to_s('F') } \
