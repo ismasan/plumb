@@ -10,7 +10,7 @@ module Types
   include Plumb::Types
 
   # Open a File
-  # ex. file = FileStep.parse('./files/data.csv') # => File
+  # ex. file = OpenFile.parse('./files/data.csv') # => File
   OpenFile = String
              .check('no file for that path') { |s| ::File.exist?(s) }
              .build(::File)
