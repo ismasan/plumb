@@ -67,7 +67,7 @@ module Types
 end
 
 ###################################
-# Program 1: idempoent download of images from the internet
+# Program 1: idempotent download of images from the internet
 # If not present in the cache, images are downloaded and written to the cache.
 # Otherwise images are listed directly from the cache (files on disk).
 ###################################
