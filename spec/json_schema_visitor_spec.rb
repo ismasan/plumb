@@ -167,6 +167,9 @@ RSpec.describe Plumb::JSONSchemaVisitor do
 
     type = Types::Integer[..100]
     expect(described_class.visit(type)).to eq('type' => 'integer', 'maximum' => 100)
+
+    type = Types::Integer[...100]
+    expect(described_class.visit(type)).to eq('type' => 'integer', 'maximum' => 99)
   end
 
   specify 'type-less match with Integer Range' do
