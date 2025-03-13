@@ -138,13 +138,22 @@ module Plumb
       end
     end
 
+    on(:attribute_value_match) do |node, props|
+      method_name = :"visit_with_#{node.attr_name}_attribute"
+      if respond_to?(method_name)
+        send(method_name, node, props)
+      else
+        props
+      end
+    end
+
     on(:options_policy) do |node, props|
       props.merge(ENUM => node.arg)
     end
 
-    on(:with_size) do |node, props|
+    on(:with_size_attribute) do |node, props|
       opts = visit(node.type)
-      value = node.args[:size]
+      value = node.value
 
       case opts[TYPE]
       when 'array'

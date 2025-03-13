@@ -8,17 +8,6 @@ require 'time'
 module Plumb
   # Define core policies
   #
-  # Check attributes of an object against values, using #===
-  # @example
-  #   type = Types::String.with(size: 1..10)
-  policy :with, helper: true do |type, opts|
-    opts.reduce(type) do |t, (name, value)|
-      t.check("must have attribute #{name} === #{value.inspect}") do |v| 
-        value === v.public_send(name)
-      end.as_node(:"with_#{name}", name => value)
-    end
-  end
-
   # Allowed options for an array type.
   # It validates that each element is in the options array.
   # Usage:
