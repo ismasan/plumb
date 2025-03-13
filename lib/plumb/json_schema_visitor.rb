@@ -242,7 +242,11 @@ module Plumb
       opts = visit(element.class)
       if element.is_a?(::Numeric)
         opts[MINIMUM] = node.min if node.begin
-        opts[MAXIMUM] = node.max if node.end
+        if node.end
+          max = node.end
+          max -= 1 if node.exclude_end?
+          opts[MAXIMUM] = max
+        end
       end
       props.merge(opts)
     end
