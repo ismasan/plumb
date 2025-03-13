@@ -379,14 +379,8 @@ RSpec.describe Plumb::Types do
   end
 
   describe '#policy' do
-    specify ':size' do
-      assert_result(Types::Array.policy(size: 2).resolve([1]), [1], false)
-      assert_result(Types::Array.policy(size: 2).resolve([1, 2]), [1, 2], true)
-      assert_result(Types::String.policy(size: 2).resolve('ab'), 'ab', true)
-    end
-
     specify 'registering rule as :name, value' do
-      assert_result(Types::Array.policy(:size, 1).resolve([1]), [1], true)
+      assert_result(Types::Array.policy(:options, [1]).resolve([1]), [1], true)
     end
 
     specify ':options' do
@@ -659,7 +653,7 @@ RSpec.describe Plumb::Types do
     end
 
     specify 'pattern matching' do
-      Types::String.policy(size: 3)
+      Types::String.with(size: 3)
       [:ok, 'sup'] => [symbol => sym, three_chars => chars]
 
       expect(sym).to eq(:ok)

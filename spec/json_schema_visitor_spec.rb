@@ -74,14 +74,14 @@ RSpec.describe Plumb::JSONSchemaVisitor do
     expect(described_class.visit(type)).to eq('type' => 'string')
   end
 
-  specify 'Types::String with :size policy' do
-    type = Types::String.policy(size: (10..20))
+  specify 'Types::String with :size attribute check' do
+    type = Types::String.with(size: (10..20))
     expect(described_class.visit(type)).to eq('type' => 'string', 'minLength' => 10, 'maxLength' => 20)
 
-    type = Types::String.policy(size: (10..))
+    type = Types::String.with(size: (10..))
     expect(described_class.visit(type)).to eq('type' => 'string', 'minLength' => 10)
 
-    type = Types::String.policy(size: 20)
+    type = Types::String.with(size: 20)
     expect(described_class.visit(type)).to eq('type' => 'string', 'minLength' => 20, 'maxLength' => 20)
   end
 
@@ -244,7 +244,7 @@ RSpec.describe Plumb::JSONSchemaVisitor do
 
   describe 'Types::Array with :size policy' do
     it 'works with inclusive Ranges' do
-      type = Types::Array[Types::Integer].policy(size: (10..20))
+      type = Types::Array[Types::Integer].with(size: (10..20))
       expect(described_class.visit(type)).to eq(
         'type' => 'array',
         'items' => { 'type' => 'integer' },
@@ -254,7 +254,7 @@ RSpec.describe Plumb::JSONSchemaVisitor do
     end
 
     it 'works with exclusive Ranges' do
-      type = Types::Array[Types::Integer].policy(size: (10...20))
+      type = Types::Array[Types::Integer].with(size: (10...20))
       expect(described_class.visit(type)).to eq(
         'type' => 'array',
         'items' => { 'type' => 'integer' },
@@ -264,7 +264,7 @@ RSpec.describe Plumb::JSONSchemaVisitor do
     end
 
     it 'works with open Ranges' do
-      type = Types::Array[Types::Integer].policy(size: (10...))
+      type = Types::Array[Types::Integer].with(size: (10...))
       expect(described_class.visit(type)).to eq(
         'type' => 'array',
         'items' => { 'type' => 'integer' },

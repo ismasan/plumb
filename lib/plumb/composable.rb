@@ -273,15 +273,16 @@ module Plumb
     class Node
       include Composable
 
-      attr_reader :node_name, :type, :attributes
+      attr_reader :node_name, :type, :args
 
-      def initialize(node_name, type, attributes = BLANK_HASH)
+      def initialize(node_name, type, args = BLANK_HASH)
         @node_name = node_name
         @type = type
-        @attributes = attributes
+        @args = args
         freeze
       end
 
+      def metadata = type.metadata
       def call(result) = type.call(result)
     end
 
@@ -291,10 +292,10 @@ module Plumb
     # Ex. Types::Boolean is a compoition of Types::True | Types::False, but we want to treat it as a single node.
     #
     # @param node_name [Symbol]
-    # @param metadata [Hash]
+    # @param args [Hash]
     # @return [Node]
-    def as_node(node_name, metadata = BLANK_HASH)
-      Node.new(node_name, self, metadata)
+    def as_node(node_name, args = BLANK_HASH)
+      Node.new(node_name, self, args)
     end
 
     # Register a policy for this step.

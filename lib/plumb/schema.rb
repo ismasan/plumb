@@ -178,6 +178,11 @@ module Plumb
         self
       end
 
+      def with(...)
+        @_type = @_type.with(...)
+        self
+      end
+
       def inspect
         "#{self.class}[#{@_type.inspect}]"
       end

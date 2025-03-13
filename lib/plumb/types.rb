@@ -13,7 +13,9 @@ module Plumb
   #   type = Types::String.with(size: 1..10)
   policy :with, helper: true do |type, opts|
     opts.reduce(type) do |t, (name, value)|
-      t.check("must have attribute #{name} === #{value.inspect}") { |v| value === v.public_send(name) }
+      t.check("must have attribute #{name} === #{value.inspect}") do |v| 
+        value === v.public_send(name)
+      end.as_node(:"with_#{name}", name => value)
     end
   end
 
@@ -51,17 +53,6 @@ module Plumb
     type.check("must not be included in #{opts.inspect}") do |v|
       !opts.include?(v)
     end
-  end
-
-  # Validate #size against a number or any object that responds to #===.
-  # This works with any type that repsonds to #size.
-  # Usage:
-  #   type = Types::String.policy(size: 10)
-  #   type = Types::Integer.policy(size: 1..10)
-  #   type = Types::Array.policy(size: 1..)
-  #   type = Types::Any[Set].policy(size: 1..)
-  policy :size, for_type: :size do |type, size|
-    type.check("must be of size #{size}") { |v| size === v.size }
   end
 
   # Validate that an object is not #empty? nor #nil?
