@@ -368,6 +368,16 @@ RSpec.describe Plumb::Types do
     end
   end
 
+  describe '#with' do
+    it 'validates properties of the object' do
+      assert_result(Types::Array.with(size: 2).resolve([1]), [1], false)
+      assert_result(Types::Array.with(size: 2).resolve([1, 2]), [1, 2], true)
+      assert_result(Types::String.with(size: 2).resolve('ab'), 'ab', true)
+      assert_result(Types::Array.with(size: 1..2).resolve([1, 2]), [1, 2], true)
+      assert_result(Types::Array.with(size: 1..2).resolve([1, 2, 3]), [1, 2, 3], false)
+    end
+  end
+
   describe '#policy' do
     specify ':size' do
       assert_result(Types::Array.policy(size: 2).resolve([1]), [1], false)
