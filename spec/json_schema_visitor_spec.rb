@@ -83,6 +83,10 @@ RSpec.describe Plumb::JSONSchemaVisitor do
 
     type = Types::String.with(size: 20)
     expect(described_class.visit(type)).to eq('type' => 'string', 'minLength' => 20, 'maxLength' => 20)
+
+    # Ignores unregistered attribute matchers
+    type = Types::String.with(size: 20, bytesize: 10)
+    expect(described_class.visit(type)).to eq('type' => 'string', 'minLength' => 20, 'maxLength' => 20)
   end
 
   specify 'Types::String with :split policy' do

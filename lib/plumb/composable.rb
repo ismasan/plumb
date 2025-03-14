@@ -298,36 +298,15 @@ module Plumb
       Node.new(node_name, self, args)
     end
 
-    class AttributeValueMatch
-      include Composable
-
-      attr_reader :type, :attr_name, :value
-
-      def initialize(type, attr_name, value)
-        @type = type
-        @attr_name = attr_name
-        @value = value
-        @error = "must have attribute #{attr_name} === #{value.inspect}"
-        freeze
-      end
-
-      def metadata = type.metadata
-
-      def call(result)
-        return result if value === result.value.public_send(attr_name)
-
-        result.invalid(errors: @error)
-      end
-    end
-
     # Check attributes of an object against values, using #===
     # @example
-    #   type = Types::String.with(size: 1..10)
+    #   type = Types::Array.with(size: 1..10)
+    #   type = Types::String.with(bytesize: 1..10)
     #
     # @param attrs [Hash]
     def with(attrs)
       attrs.reduce(self) do |t, (name, value)|
-        AttributeValueMatch.new(t, name, value)
+        t >> AttributeValueMatch.new(t, name, value)
       end
     end
 
@@ -459,6 +438,7 @@ module Plumb
 end
 
 require 'plumb/deferred'
+require 'plumb/attribute_value_match'
 require 'plumb/transform'
 require 'plumb/policy'
 require 'plumb/build'
