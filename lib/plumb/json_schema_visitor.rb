@@ -138,30 +138,41 @@ module Plumb
       end
     end
 
+    on(:attribute_value_match) do |node, props|
+      method_name = :"visit_with_#{node.attr_name}_attribute"
+      if respond_to?(method_name)
+        send(method_name, node, props)
+      else
+        props
+      end
+    end
+
     on(:options_policy) do |node, props|
       props.merge(ENUM => node.arg)
     end
 
-    on(:size_policy) do |node, props|
-      opts = {}
-      case props[TYPE]
+    on(:with_size_attribute) do |node, props|
+      opts = visit(node.type)
+      value = node.value
+
+      case opts[TYPE]
       when 'array'
-        case node.arg
+        case value
         when Range
-          opts[MIN_ITEMS] = node.arg.min if node.arg.begin
-          opts[MAX_ITEMS] = node.arg.max if node.arg.end
+          opts[MIN_ITEMS] = value.min if value.begin
+          opts[MAX_ITEMS] = value.max if value.end
         when Numeric
-          opts[MIN_ITEMS] = node.arg
-          opts[MAX_ITEMS] = node.arg
+          opts[MIN_ITEMS] = value
+          opts[MAX_ITEMS] = value
         end
       when 'string'
-        case node.arg
+        case value
         when Range
-          opts[MIN_LENGTH] = node.arg.min if node.arg.begin
-          opts[MAX_LENGTH] = node.arg.max if node.arg.end
+          opts[MIN_LENGTH] = value.min if value.begin
+          opts[MAX_LENGTH] = value.max if value.end
         when Numeric
-          opts[MIN_LENGTH] = node.arg
-          opts[MAX_LENGTH] = node.arg
+          opts[MIN_LENGTH] = value
+          opts[MAX_LENGTH] = value
         end
       end
 

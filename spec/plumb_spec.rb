@@ -9,7 +9,7 @@ RSpec.describe Plumb do
 
   describe '.decorate' do
     it 'finds and replaces a step' do
-      name = Types::String.policy(size: 1..10)
+      name = Types::String.with(size: 1..10)
       type = Types::Array[name].default([].freeze)
       type2 = Plumb.decorate(type) do |node|
         if node.is_a?(Plumb::ArrayClass)

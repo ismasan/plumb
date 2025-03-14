@@ -7,6 +7,7 @@ require 'time'
 
 module Plumb
   # Define core policies
+  #
   # Allowed options for an array type.
   # It validates that each element is in the options array.
   # Usage:
@@ -41,17 +42,6 @@ module Plumb
     type.check("must not be included in #{opts.inspect}") do |v|
       !opts.include?(v)
     end
-  end
-
-  # Validate #size against a number or any object that responds to #===.
-  # This works with any type that repsonds to #size.
-  # Usage:
-  #   type = Types::String.policy(size: 10)
-  #   type = Types::Integer.policy(size: 1..10)
-  #   type = Types::Array.policy(size: 1..)
-  #   type = Types::Any[Set].policy(size: 1..)
-  policy :size, for_type: :size do |type, size|
-    type.check("must be of size #{size}") { |v| size === v.size }
   end
 
   # Validate that an object is not #empty? nor #nil?

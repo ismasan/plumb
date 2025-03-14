@@ -328,6 +328,28 @@ type.resolve(['a', 'a', 'b']) # Valid
 type.resolve(['a', 'x', 'b']) # Failure
 ```
 
+### `#with`
+
+The `#with` helper matches attributes of the object with values, using `#===`.
+
+```ruby
+LimitedArray = Types::Array[String].with(size: 10)
+LimitedString = Types::String.with(size: 10)
+LimitedSet = Types::Any[Set].with(size: 10)
+```
+
+The size is matched via `#===`, so ranges also work.
+
+```ruby
+Password = Types::String.with(bytesize: 10..20)
+```
+
+The helper accepts multiple attribute/valye pairs
+
+```ruby
+JoeBloggs = Types::Any[User].with(first_name: 'Joe', last_name: 'Bloggs')
+```
+
 #### `#transform`
 
 Transform value. Requires specifying the resulting type of the value after transformation.
@@ -588,23 +610,7 @@ The opposite of `#options`, this policy validates that the value _is not_ includ
 Name = Types::String.policy(excluded_from: ['Joe', 'Joan'])
 ```
 
-#### `:size`
-
-Works for any value that responds to `#size` and validates that the value's size matches the argument.
-
-```ruby
-LimitedArray = Types::Array[String].policy(size: 10)
-LimitedString = Types::String.policy(size: 10)
-LimitedSet = Types::Any[Set].policy(size: 10)
-```
-
-The size is matched via `#===`, so ranges also work.
-
-```ruby
-Password = Types::String.policy(size: 10..20)
-```
-
-#### `:split` (strings only)
+#### :split` (strings only)
 
 Splits string values by a separator (default: `,`).
 
