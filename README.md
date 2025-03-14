@@ -344,7 +344,7 @@ The size is matched via `#===`, so ranges also work.
 Password = Types::String.with(bytesize: 10..20)
 ```
 
-The helper accepts multiple attribute/valye pairs
+The helper accepts multiple attribute/value pairs
 
 ```ruby
 JoeBloggs = Types::Any[User].with(first_name: 'Joe', last_name: 'Bloggs')
