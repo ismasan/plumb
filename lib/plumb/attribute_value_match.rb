@@ -11,6 +11,7 @@ module Plumb
       @attr_name = attr_name
       @value = value
       @error = "must have attribute #{attr_name} === #{value.inspect}"
+      @inspect_line = %((#{attr_name} === #{value.inspect}))
       freeze
     end
 
@@ -21,5 +22,7 @@ module Plumb
 
       result.invalid(errors: @error)
     end
+
+    private def _inspect = @inspect_line
   end
 end
