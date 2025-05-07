@@ -101,6 +101,18 @@ RSpec.describe Types::Data do
     expect(nillable.new(foo: nil).to_h).to eq(foo: nil, count: nil)
   end
 
+  specify '#to_hash' do
+    user = Types::User.new(
+      name: 'Jane',
+      age: 20,
+      friend: { name: 'John', email: 'john@server.com' },
+      company: { name: 'Acme' },
+      books: [{ isbn: '123' }]
+    )
+
+    expect(user.to_hash).to eq(user.to_h)
+  end
+
   describe '#==' do
     specify 'nested structs' do
       user1 = Types::User.new(

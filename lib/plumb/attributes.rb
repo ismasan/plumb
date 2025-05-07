@@ -156,6 +156,8 @@ module Plumb
       end
     end
 
+    def to_hash = to_h
+
     def deconstruct(...) = to_h.values.deconstruct(...)
     def deconstruct_keys(...) = to_h.deconstruct_keys(...)
 
