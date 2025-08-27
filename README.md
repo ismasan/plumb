@@ -910,7 +910,7 @@ ImageDownload = Types::URL >> ->(result) {
   if (200...300).include?(resp.status)
     result.valid(resp.body)
   else
-    result.invalid(error: resp.status)
+    result.invalid(errors: resp.status)
   end
 }
 Images = Types::Array[ImageDownload].concurrent
