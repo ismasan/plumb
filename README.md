@@ -264,7 +264,7 @@ Checks that the value is not blank (`""` if string, `[]` if array, `{}` if Hash,
 
 ```ruby
 Types::String.present.resolve('') # Failure with errors
-Types::Array[Types::String].resolve([]) # Failure with errors
+Types::Array[Types::String].present.resolve([]) # Failure with errors
 ```
 
 #### `#nullable`
