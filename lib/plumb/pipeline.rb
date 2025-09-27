@@ -83,9 +83,7 @@ module Plumb
     end
 
     def is_a_step?(callable)
-      return false unless callable.respond_to?(:call)
-
-      true
+      callable.respond_to?(:call)
     end
 
     def prepare_step(callable) = callable
