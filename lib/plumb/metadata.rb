@@ -24,7 +24,7 @@ module Plumb
       end
     end
 
-    def call(result) = result
+    def call(result) = type.call(result)
 
     private def _inspect = "Metadata[#{type}, #{@metadata.inspect}]"
   end

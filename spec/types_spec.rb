@@ -800,6 +800,9 @@ RSpec.describe Plumb::Types do
     specify '#metadata' do
       type = Types::Array[Types::Boolean].metadata(foo: 1)
       expect(type.metadata).to eq(type: Array, foo: 1)
+
+      type = Types::Lax::Integer.metadata(foo: 1)
+      expect(type.resolve('10').value).to eq(10)
     end
 
     specify '#metadata compared with #==' do
