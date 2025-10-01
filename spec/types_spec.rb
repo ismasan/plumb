@@ -89,6 +89,14 @@ RSpec.describe Plumb::Types do
     end
   end
 
+  specify '#as_node' do
+    type = Types::String.as_node(:custom_node_name)
+    expect(type.node_name).to eq(:custom_node_name)
+    expect(type.metadata[:type]).to eq(String)
+    with_meta = type.metadata(foo: 1)
+    expect(with_meta.metadata[:foo]).to eq(1)
+  end
+
   describe '#invoke' do
     it 'invokes methods on values' do
       expect(Types::String.invoke(:to_i).parse('100')).to eq(100)

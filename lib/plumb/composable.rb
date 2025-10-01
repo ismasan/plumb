@@ -282,7 +282,7 @@ module Plumb
         freeze
       end
 
-      def metadata = type.metadata
+      def metadata(...) = type.metadata(...)
       def call(result) = type.call(result)
     end
 
