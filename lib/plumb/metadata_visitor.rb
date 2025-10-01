@@ -71,6 +71,7 @@ module Plumb
     end
 
     on(:metadata) do |node, props|
+      props = visit(node.type, props)
       props.merge(node.metadata)
     end
 

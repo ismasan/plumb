@@ -24,7 +24,7 @@ module Plumb
                       :"#{(node.is_a?(::Class) ? node : node.class)}_class"
                     end
 
-      visit_name(method_name, node, props)
+      clean_up_after_visit visit_name(method_name, node, props)
     end
 
     def visit_name(method_name, node, props = BLANK_HASH)
@@ -45,5 +45,7 @@ module Plumb
         visit(child, acc)
       end
     end
+
+    private def clean_up_after_visit(props) = props
   end
 end

@@ -132,6 +132,15 @@ RSpec.describe Plumb::JSONSchemaVisitor do
   specify 'Types::Email' do
     type = Types::Email
     expect(described_class.visit(type)).to eq('type' => 'string', 'format' => 'email')
+
+    # Adding metadata should preserve the node name
+    # relied upon by the visitor
+    type = Types::Email.metadata(description: 'an email address')
+    expect(described_class.visit(type)).to eq(
+      'type' => 'string', 
+      'format' => 'email', 
+      'description' => 'an email address'
+    )
   end
 
   specify 'Types::Time' do
@@ -345,6 +354,19 @@ RSpec.describe Plumb::JSONSchemaVisitor do
           }
         ]
       }
+    )
+  end
+
+  specify 'Types::Hash metadata' do
+    type = Types::Hash[
+      name: String
+    ].metadata(description: 'a person object')
+
+    expect(described_class.visit(type)).to eq(
+      'type' => 'object',
+      'properties' => { 'name' => { 'type' => 'string' } },
+      'description' => 'a person object',
+      'required' => ['name']
     )
   end
 

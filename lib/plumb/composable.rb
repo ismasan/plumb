@@ -218,7 +218,7 @@ module Plumb
       if data == Undefined
         MetadataVisitor.call(self)
       else
-        self >> Metadata.new(data)
+        Metadata.new(self, data)
       end
     end
 
@@ -282,7 +282,18 @@ module Plumb
         freeze
       end
 
-      def metadata(...) = type.metadata(...)
+      # When wrapping a node in Metadata
+      # we need to preserte the Node with cistom node_name.
+      # but when just querying metadata,
+      # we can delegate to the underlying type.
+      def metadata(data = Undefined)
+        if data == Undefined
+          type.metadata
+        else
+          Metadata.new(self, data)
+        end
+      end
+
       def call(result) = type.call(result)
     end
 

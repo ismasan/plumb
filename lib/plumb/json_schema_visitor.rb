@@ -36,6 +36,13 @@ module Plumb
       ENVELOPE.merge(data)
     end
 
+    # Some rules that are dependent on combinations of aggregates keys
+    # Ex. if `format` is set, `pattern` should be removed
+    private def clean_up_after_visit(props)
+      props.delete(PATTERN) if props.key?(FORMAT)
+      props
+    end
+
     private def stringify_keys(hash) = hash.transform_keys(&:to_s)
 
     on(:any) do |_node, props|
@@ -209,7 +216,7 @@ module Plumb
     end
 
     on(:email) do |_node, props|
-      props.merge(TYPE => 'string', FORMAT => 'email')
+      props.except(PATTERN).merge(TYPE => 'string', FORMAT => 'email')
     end
 
     on(::String) do |_node, props|
@@ -292,7 +299,8 @@ module Plumb
 
     on(:metadata) do |node, props|
       #  TODO: here we should filter out the metadata that is not relevant for JSON Schema
-      props.merge(stringify_keys(node.metadata))
+      props = props.merge(stringify_keys(node.metadata))
+      props.merge(visit(node.type, props))
     end
 
     on(:hash_map) do |node, _props|
