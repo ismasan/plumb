@@ -155,6 +155,22 @@ module Plumb
     Date = Any[::Date]
     Time = Any[::Time]
 
+    # A type that recursively converts string keys to symbols in nested hashes.
+    # This is commonly used for normalizing payload data in commands and events.
+    #
+    # @example Simple hash symbolization
+    #   SymbolizedHash.parse({ 'name' => 'John' })  # => { name: 'John' }
+    # @example Nested hash symbolization
+    #   SymbolizedHash.parse({ 'user' => { 'name' => 'John' } })  # => { user: { name: 'John' } }
+    # @example Mixed types preserved
+    #   SymbolizedHash.parse({ 'count' => 1, 'active' => true })  # => { count: 1, active: true }
+    SymbolizedHash = Hash[
+      # String keys are converted to symbols, existing symbols are preserved
+      (Symbol | String.transform(::Symbol, &:to_sym)),
+      # Hash values are recursively symbolized, other types pass through unchanged
+      Any.defer { SymbolizedHash } | Any
+    ]
+
     module UUID
       V4 = String[/\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/i].as_node(:uuid)
     end

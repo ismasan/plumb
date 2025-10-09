@@ -2,28 +2,30 @@
 
 module Plumb
   class Key
-    OPTIONAL_EXP = /(\w+)(\?)?$/
+    # OPTIONAL_EXP = /(\w+)(\?)?$/
+    OPTIONAL_EXP = /(?<word>[A-Za-z0-9_$]+)(?<qmark>\?)?/
 
-    def self.wrap(key)
-      key.is_a?(Key) ? key : new(key)
+    def self.wrap(key, symbolize: false)
+      key.is_a?(Key) ? key : new(key, symbolize:)
     end
 
-    attr_reader :to_sym, :node_name
+    attr_reader :to_key, :to_sym, :node_name
 
-    def initialize(key, optional: false)
-      key_s = key.to_s
-      match = OPTIONAL_EXP.match(key_s)
+    def initialize(key, optional: false, symbolize: false)
+      key_type = symbolize ? Symbol : key.class
+      match = OPTIONAL_EXP.match(key.to_s)
+      key = match[:word]
+      @to_key = key_type == Symbol ? key.to_sym : key
+      @to_sym = @to_key.to_sym
+      @optional = !match[:qmark].nil? ? true : optional
       @node_name = :key
-      @key = match[1]
-      @to_sym = @key.to_sym
-      @optional = !match[2].nil? ? true : optional
       freeze
     end
 
-    def to_s = @key
+    def to_s = @to_key.to_s
 
     def hash
-      @key.hash
+      @to_key.hash
     end
 
     def eql?(other)
@@ -35,7 +37,7 @@ module Plumb
     end
 
     def inspect
-      "#{@key}#{'?' if @optional}"
+      "#{@to_key}#{'?' if @optional}"
     end
   end
 end

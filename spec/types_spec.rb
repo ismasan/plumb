@@ -841,6 +841,12 @@ RSpec.describe Plumb::Types do
     end
   end
 
+  specify Types::SymbolizedHash do
+    input = {'name' => 'Joe', 'address' => {'street' => '123 St', number: 32}}
+    output = {name: 'Joe', address: {street: '123 St', number: 32}}
+    assert_result(Types::SymbolizedHash.resolve(input), output, true)
+  end
+
   describe Types::Hash do
     specify 'no schema' do
       assert_result(Types::Hash.resolve({ foo: 1 }), { foo: 1 }, true)
@@ -899,6 +905,21 @@ RSpec.describe Plumb::Types do
     specify 'schema with array value' do
       hash = Types::Hash[numbers: [Integer]]
       assert_result(hash.resolve(numbers: [1, 2, 3]), { numbers: [1, 2, 3] }, true)
+    end
+
+    specify 'string keys' do
+      hash = Types::Hash[
+        'name' => String, 
+        'numbers' => [Integer],
+        'age?' => Integer
+      ]
+
+      assert_result(hash.resolve('name' => 'joe', 'numbers' => [1, 2, 3]), { 'name' => 'joe', 'numbers' => [1, 2, 3] }, true)
+    end
+
+    specify 'string keys with special characters' do
+      hash = Types::Hash['$ref' => String]
+      assert_result(hash.resolve('$ref' => '#/components/schemas/Pet'), { '$ref' => '#/components/schemas/Pet' }, true)
     end
 
     specify '#|' do

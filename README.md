@@ -232,6 +232,7 @@ You can see more use cases in [the examples directory](https://github.com/ismasa
 * `Types::Numeric`
 * `Types::String`
 * `Types::Hash`
+* `Types::SymbolizedHash`
 * `Types::UUID::V4`
 * `Types::Email`
 * `Types::Date`
@@ -838,7 +839,19 @@ User.parse(name: 'Joe', age: 40) # => { name: 'Joe', age: 40 }
 User.parse(name: 'Joe', age: 'nope') # => { name: 'Joe' }
 ```
 
-### Hash maps
+### `Types::SymbolizedHash`
+
+This type turns a hash's keys into symbols by calling `#to_sym` on them, and returning a new Hash.
+
+```ruby
+# Make sure to symbolize keys first
+type = Types::SymbolizedHash > Types::Hash[name: String, age: Integer]
+type.parse('name' => 'Joe', 'age' => 20) # {name: 'Joe', age: 20}
+```
+
+
+
+###  maps
 
 You can also use Hash syntax to define a hash map with specific types for all keys and values:
 
@@ -1177,7 +1190,51 @@ Using `attribute?` allows for optional attributes. If the attribute is not prese
 attribute? :company, Company
 ```
 
+#### Before steps, symbolizing keys
+
+The optional `.step` helper adds arbitrary Plumb steps to a Data constructor's internal pipeline.
+
+This pipeline processes input data when initialising a Data instance.
+
+This example adds the built-in `Types::SymbolizedHash` type to make sure struct inputs are symbolised before processing.
+
+```ruby
+class Person < Types::Data
+  step Types::SymbolizedHash
+  
+  attribute :name, String
+  attribute :age, Integer
+end
+
+# Strign keys will be symbolised now
+person = Person.new('name' => 'Joe', 'age' => 40)
+person.name # 'Joe'
+person.to_h # => { name: 'Joe', age: 40 }
+```
+
+Inline blocks can be registered as steps
+
+```ruby
+class Person < Types::Data
+  # upcase all values
+  step do |r|
+    upcased = r.value.transform_values(&:upcase)
+    r.valid upcased
+  end
+  
+  attribute :name, String
+  attribute :last_name, String
+end
+
+person = Person.new(name: 'joe', last_name: 'bloggs')
+person.name # => 'JOE'
+person.last_name # => 'BLOGGS'
+```
+
+A Data class steps are inherited to its child classes.
+
 #### Inheritance
+
 Data structs can inherit from other structs. This is useful for defining a base struct with common attributes.
 
 ```ruby

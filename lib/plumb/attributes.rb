@@ -116,7 +116,7 @@ module Plumb
     attr_reader :errors, :attributes
 
     def initialize(attrs = {})
-      assign_attributes(attrs)
+      assign_attributes(self.class._pipeline.parse(attrs))
       freeze
     end
 
@@ -135,8 +135,8 @@ module Plumb
 
     def inspect
       %(#<#{self.class}:#{object_id} [#{valid? ? 'valid' : 'invalid'}] #{attributes.map do |k, v|
-                                                                           [k, v.inspect].join(':')
-                                                                         end.join(' ')}>)
+        [k, v.inspect].join(':')
+      end.join(' ')}>)
     end
 
     # @return [Hash]
@@ -175,11 +175,53 @@ module Plumb
     def prepare_attributes(attrs) = attrs
 
     module ClassMethods
+      def _set_pipeline(pl)
+        @_pipeline = pl
+      end
+
+      def _pipeline
+        @_pipeline || Plumb::Types::Any
+      end
+
+      # Add a step to the processing pipeline that runs before attribute validation.
+      # This allows you to transform or validate the input data before it's assigned to attributes.
+      #
+      # @param st [Plumb::Step, nil] A step object to add to the pipeline
+      # @param block [Proc, nil] A block to use as a step (if st is nil)
+      # @return [Class] Returns self for method chaining
+      #
+      # @example Transform input before validation
+      #   class Person
+      #     include Plumb::Attributes
+      #
+      #     step { |result| result.valid(result.value.transform_keys(&:to_sym)) }
+      #     attribute :name, Types::String
+      #   end
+      #
+      # @example Add custom validation
+      #   class Person
+      #     include Plumb::Attributes
+      #
+      #     step do |result|
+      #       if result.value[:name].nil?
+      #         result.invalid(errors: 'Name is required')
+      #       else
+      #         result
+      #       end
+      #     end
+      #     attribute :name, Types::String
+      #   end
+      def step(st = nil, &block)
+        @_pipeline = _pipeline >> (st || block)
+        self
+      end
+
       def _schema
         @_schema ||= HashClass.new
       end
 
       def inherited(subclass)
+        subclass._set_pipeline _pipeline
         _schema._schema.each do |key, type|
           subclass.attribute(key, type)
         end
@@ -220,7 +262,9 @@ module Plumb
       # attribute(:friends, [Person])
       #
       def attribute(name, type = Types::Any, writer: false, &block)
-        key = Key.wrap(name)
+        # Key accepts String or Symbol, with optional '?' suffix for optional keys
+        # for Data structs, we always convert to Symbol keys
+        key = Key.wrap(name, symbolize: true)
         name = key.to_sym
         type = Composable.wrap(type)
 
