@@ -64,11 +64,11 @@ RSpec.describe Plumb::Pipeline do
 
     assert_result(pipeline.resolve(1), '*-1-*', true)
     expect(list).to eq([
-                         'before: 1',
-                         'after: -1-',
-                         'before: -1-',
-                         'after: *-1-*'
-                       ])
+      'before: 1',
+      'after: -1-',
+      'before: -1-',
+      'after: *-1-*'
+    ])
     expect(counts).to eq(1)
   end
 
