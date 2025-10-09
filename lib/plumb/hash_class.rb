@@ -113,7 +113,7 @@ module Plumb
       initial = {}
       initial = initial.merge(input) if @inclusive
       output = _schema.each.with_object(initial) do |(key, field), ret|
-        key_s = key.to_sym
+        key_s = key.to_key
         if input.key?(key_s)
           r = field.call(field_result.reset(input[key_s]))
           errors[key_s] = r.errors unless r.valid?

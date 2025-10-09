@@ -55,6 +55,13 @@ RSpec.describe Types::Data do
     expect(friend.name).to eq 'John'
   end
 
+  specify 'string attributes' do
+    klass = Types::Data['brand' => String]
+    instance = klass.new(brand: 'Acme')
+    expect(instance.valid?).to be true
+    expect(instance.brand).to eq 'Acme'
+  end
+
   specify 'valid' do
     user = Types::User.new(
       name: 'Jane',

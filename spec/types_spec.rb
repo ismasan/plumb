@@ -907,6 +907,21 @@ RSpec.describe Plumb::Types do
       assert_result(hash.resolve(numbers: [1, 2, 3]), { numbers: [1, 2, 3] }, true)
     end
 
+    specify 'string keys' do
+      hash = Types::Hash[
+        'name' => String, 
+        'numbers' => [Integer],
+        'age?' => Integer
+      ]
+
+      assert_result(hash.resolve('name' => 'joe', 'numbers' => [1, 2, 3]), { 'name' => 'joe', 'numbers' => [1, 2, 3] }, true)
+    end
+
+    specify 'string keys with special characters' do
+      hash = Types::Hash['$ref' => String]
+      assert_result(hash.resolve('$ref' => '#/components/schemas/Pet'), { '$ref' => '#/components/schemas/Pet' }, true)
+    end
+
     specify '#|' do
       hash1 = Types::Hash.schema(foo: Types::String)
       hash2 = Types::Hash.schema(bar: Types::Integer)

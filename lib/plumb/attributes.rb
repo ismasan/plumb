@@ -135,8 +135,8 @@ module Plumb
 
     def inspect
       %(#<#{self.class}:#{object_id} [#{valid? ? 'valid' : 'invalid'}] #{attributes.map do |k, v|
-                                                                           [k, v.inspect].join(':')
-                                                                         end.join(' ')}>)
+        [k, v.inspect].join(':')
+      end.join(' ')}>)
     end
 
     # @return [Hash]
@@ -220,7 +220,9 @@ module Plumb
       # attribute(:friends, [Person])
       #
       def attribute(name, type = Types::Any, writer: false, &block)
-        key = Key.wrap(name)
+        # Key accepts String or Symbol, with optional '?' suffix for optional keys
+        # for Data structs, we always convert to Symbol keys
+        key = Key.wrap(name, symbolize: true)
         name = key.to_sym
         type = Composable.wrap(type)
 
