@@ -232,6 +232,7 @@ You can see more use cases in [the examples directory](https://github.com/ismasa
 * `Types::Numeric`
 * `Types::String`
 * `Types::Hash`
+* `Types::SymbolizedHash`
 * `Types::UUID::V4`
 * `Types::Email`
 * `Types::Date`
@@ -838,7 +839,19 @@ User.parse(name: 'Joe', age: 40) # => { name: 'Joe', age: 40 }
 User.parse(name: 'Joe', age: 'nope') # => { name: 'Joe' }
 ```
 
-### Hash maps
+### `Types::SymbolizedHash`
+
+This type turns a hash's keys into symbols by calling `#to_sym` on them, and returning a new Hash.
+
+```ruby
+# Make sure to symbolize keys first
+type = Types::SymbolizedHash > Types::Hash[name: String, age: Integer]
+type.parse('name' => 'Joe', 'age' => 20) # {name: 'Joe', age: 20}
+```
+
+
+
+###  maps
 
 You can also use Hash syntax to define a hash map with specific types for all keys and values:
 
