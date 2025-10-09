@@ -841,6 +841,12 @@ RSpec.describe Plumb::Types do
     end
   end
 
+  specify Types::SymbolizedHash do
+    input = {'name' => 'Joe', 'address' => {'street' => '123 St', number: 32}}
+    output = {name: 'Joe', address: {street: '123 St', number: 32}}
+    assert_result(Types::SymbolizedHash.resolve(input), output, true)
+  end
+
   describe Types::Hash do
     specify 'no schema' do
       assert_result(Types::Hash.resolve({ foo: 1 }), { foo: 1 }, true)
