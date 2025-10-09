@@ -41,9 +41,8 @@ module Plumb
       @type = type
       @children = [type].freeze
       @around_blocks = self.class.around_blocks.dup
-      return unless block_given?
 
-      configure(&setup)
+      configure(&setup) if block_given?
       freeze if freeze_after
     end
 
