@@ -62,6 +62,39 @@ RSpec.describe Types::Data do
     expect(instance.brand).to eq 'Acme'
   end
 
+  specify '.step' do
+    klass = Class.new(Types::Data) do
+      step Types::SymbolizedHash
+      attribute :name, String
+      attribute :age, Integer
+    end
+
+    person = klass.new('name' => 'Joe', 'age' => 20)
+    expect(person.valid?).to be true
+    expect(person.name).to eq 'Joe'
+    expect(person.age).to eq 20
+    expect(person.to_h).to eq(name: 'Joe', age: 20)
+  end
+
+  specify 'inheriting steps' do
+    parent = Class.new(Types::Data) do
+      step Types::SymbolizedHash
+      attribute :name, String
+    end
+    child = Class.new(parent) do
+      step do |r|
+        data = r.value.transform_values(&:upcase)
+        r.valid(data)
+      end
+      attribute :last_name, String
+    end
+
+    out = child.new('name' => 'Joe', 'last_name' => 'smith')
+    expect(out.valid?).to be true
+    expect(out.name).to eq 'JOE'
+    expect(out.last_name).to eq 'SMITH'
+  end
+
   specify 'valid' do
     user = Types::User.new(
       name: 'Jane',
