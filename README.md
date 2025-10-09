@@ -1206,7 +1206,7 @@ class Person < Types::Data
   attribute :age, Integer
 end
 
-# Strign keys will be symbolised now
+# String keys will be symbolised now
 person = Person.new('name' => 'Joe', 'age' => 40)
 person.name # 'Joe'
 person.to_h # => { name: 'Joe', age: 40 }
