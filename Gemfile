@@ -12,15 +12,11 @@ group :development do
   gem 'rake', '~> 13.0'
   gem 'rspec', '~> 3.0'
   gem 'rubocop', require: false
+  gem 'docco', github: 'ismasan/docco'
 end
 
 group :benchmark do
   gem 'benchmark-ips'
   gem 'monetize'
   gem 'parametric'
-end
-
-group :docs do
-  gem 'kramdown'
-  gem 'kramdown-parser-gfm'
 end
