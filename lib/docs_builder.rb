@@ -5,12 +5,12 @@ require 'kramdown'
 require 'fileutils'
 
 class DocsBuilder
-  GITHUB_URL = 'https://github.com/ismasan/steppe'
-
-  def initialize(readme_path:, output_dir:)
+  def initialize(readme_path:, output_dir:, gemspec_path: nil)
     @readme_path = readme_path
     @output_dir = output_dir
     @sections = []
+    @gemspec_path = gemspec_path || find_gemspec
+    load_gemspec_info
   end
 
   def build
@@ -34,6 +34,36 @@ class DocsBuilder
   end
 
   private
+
+  def find_gemspec
+    gemspecs = Dir.glob('*.gemspec')
+    if gemspecs.empty?
+      puts "Warning: No gemspec file found. Using default values."
+      nil
+    elsif gemspecs.size > 1
+      puts "Warning: Multiple gemspec files found. Using #{gemspecs.first}"
+      gemspecs.first
+    else
+      gemspecs.first
+    end
+  end
+
+  def load_gemspec_info
+    if @gemspec_path && File.exist?(@gemspec_path)
+      spec = Gem::Specification.load(@gemspec_path)
+      @gem_name = spec.name
+      @gem_summary = spec.summary
+      @gem_description = spec.description
+      # Prefer source_code_uri from metadata, fall back to homepage
+      @github_url = spec.metadata['source_code_uri'] || spec.homepage
+    else
+      # Fallback values if no gemspec found
+      @gem_name = 'Documentation'
+      @gem_summary = 'Project Documentation'
+      @gem_description = 'Project Documentation'
+      @github_url = ''
+    end
+  end
 
   def extract_structure(element, level = 0)
     element.children.each do |child|
@@ -100,7 +130,7 @@ class DocsBuilder
       <head>
           <meta charset="UTF-8">
           <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>Plumb - Composable types and pipelines for Ruby</title>
+          <title>#{@gem_name} - #{@gem_summary}</title>
           <link rel="stylesheet" href="styles.css">
           <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
       </head>
@@ -108,10 +138,10 @@ class DocsBuilder
           <nav class="top-menu">
               <div class="top-menu-content">
                   <div class="top-menu-brand">
-                      <span class="brand-name">Plumb</span>
-                      <span class="brand-tagline">Data structures, validation, coercion and processing toolkit for Ruby</span>
+                      <span class="brand-name">#{@gem_name}</span>
+                      <span class="brand-tagline">#{@gem_description}</span>
                   </div>
-                  <a href="#{GITHUB_URL}" target="_blank" class="github-link" aria-label="View on GitHub">
+                  <a href="#{@github_url}" target="_blank" class="github-link" aria-label="View on GitHub">
                       <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
                           <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
                       </svg>
@@ -122,8 +152,8 @@ class DocsBuilder
           <div class="container">
               <nav class="sidebar">
                   <div class="logo">
-                      <h2>Plumb</h2>
-                      <p class="tagline">Composable typs and pipelines for Ruby</p>
+                      <h2>#{@gem_name}</h2>
+                      <p class="tagline">#{@gem_summary}</p>
                   </div>
                   <ul class="nav-menu">
                       #{generate_navigation}
@@ -132,8 +162,8 @@ class DocsBuilder
 
               <main class="content">
                   <header class="page-header">
-                      <h1>Plumb</h1>
-                      <p class="subtitle">Composable types and pipelines for Ruby</p>
+                      <h1>#{@gem_name}</h1>
+                      <p class="subtitle">#{@gem_summary}</p>
                   </header>
 
                   #{content_html}
