@@ -2,9 +2,9 @@
 
 **This library is work in progress!**
 
-Composable data validation, coercion and processing in Ruby. Takes over from https://github.com/ismasan/parametric
+Composable data validation, coercion and processing in Ruby. Takes over from [https://github.com/ismasan/parametric](https://github.com/ismasan/parametric)
 
-This library takes ideas from the excellent https://dry-rb.org ecosystem, with some of the features offered by Dry-Types, Dry-Schema, Dry-Struct. However, I'm aiming at a subset of the functionality with a (hopefully) smaller API surface and fewer concepts, focusing on lessons learned after using Parametric in production for many years.
+This library takes ideas from the excellent [https://dry-rb.org](https://dry-rb.org) ecosystem, with some of the features offered by Dry-Types, Dry-Schema, Dry-Struct. However, I'm aiming at a subset of the functionality with a (hopefully) smaller API surface and fewer concepts, focusing on lessons learned after using Parametric in production for many years.
 
 If you're after raw performance and versatility I strongly recommend you use the Dry gems.
 

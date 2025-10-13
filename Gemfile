@@ -5,6 +5,8 @@ source 'https://rubygems.org'
 # Specify your gem's dependencies in plumb.gemspec
 gemspec
 
+gem 'money'
+
 group :development do
   gem 'debug'
   gem 'rake', '~> 13.0'
@@ -12,13 +14,13 @@ group :development do
   gem 'rubocop', require: false
 end
 
-group :examples do
-  gem 'money'
-end
-
 group :benchmark do
   gem 'benchmark-ips'
   gem 'monetize'
-  gem 'money'
   gem 'parametric'
+end
+
+group :docs do
+  gem 'kramdown'
+  gem 'kramdown-parser-gfm'
 end
