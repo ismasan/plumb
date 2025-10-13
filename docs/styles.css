@@ -247,6 +247,7 @@ body {
     margin-left: 280px;
     padding: 3rem;
     max-width: 1200px;
+    width: 79vw;
 }
 
 /* Page Header */
@@ -425,12 +426,17 @@ pre code::-webkit-scrollbar-thumb {
     }
 
     .content {
+      width: 76vw;
         margin-left: 240px;
         padding: 2rem;
     }
 }
 
 @media (max-width: 768px) {
+    /* Stack sidebar and content vertically on handhelds */
+    .container {
+        flex-direction: column;
+    }
     .top-menu-content {
         padding: 0 1rem;
     }
@@ -448,16 +454,19 @@ pre code::-webkit-scrollbar-thumb {
     }
 
     .sidebar {
-        position: relative;
-        top: 0;
-        width: 100%;
-        height: auto;
-        border-right: none;
-        border-bottom: 1px solid var(--sidebar-hover);
+      display:none;
+        /* position: relative; */
+        /* top: 0; */
+        /* width: 100%; */
+        /* height: auto; */
+        /* border-right: none; */
+        /* border-bottom: 1px solid var(--sidebar-hover); */
     }
 
     .content {
         margin-left: 0;
+        /* width: 100%; */
+        width: 100vw;
         padding: 1.5rem;
     }
 
