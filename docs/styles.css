@@ -419,6 +419,13 @@ pre code::-webkit-scrollbar-thumb {
     font-style: italic;
 }
 
+@media (max-width: 1248px) {
+  .content p img {
+    width: 64vw;
+    height: auto;
+  }
+}
+
 /* Responsive Design */
 @media (max-width: 1024px) {
     .sidebar {
@@ -455,21 +462,18 @@ pre code::-webkit-scrollbar-thumb {
 
     .sidebar {
       display:none;
-        /* position: relative; */
-        /* top: 0; */
-        /* width: 100%; */
-        /* height: auto; */
-        /* border-right: none; */
-        /* border-bottom: 1px solid var(--sidebar-hover); */
     }
 
     .content {
         margin-left: 0;
-        /* width: 100%; */
         width: 100vw;
         padding: 1.5rem;
     }
 
+    .content p img {
+      width: 78vw;
+      height: auto;
+    }
     .page-header h1 {
         font-size: 2rem;
     }
