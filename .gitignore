@@ -12,6 +12,7 @@ InstalledFiles
 _yardoc
 coverage
 doc/
+docs/index.html
 lib/bundler/man
 pkg
 rdoc
