@@ -22,7 +22,7 @@ module Types
               .transform(::Enumerator, &:each)
 
   # Turn a string file path into a CSV stream
-  # ex. csv_enum = StrinToCSV.parse('./files/data.csv') #=> Enumerator
+  # ex. csv_enum = StringToCSV.parse('./files/data.csv') #=> Enumerator
   StringToCSV = OpenFile >> FileToCSV
 end
 
