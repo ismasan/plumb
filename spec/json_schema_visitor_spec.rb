@@ -49,6 +49,20 @@ RSpec.describe Plumb::JSONSchemaVisitor do
     )
   end
 
+  specify '#defer' do
+    type = Types::Hash[
+      # String keys are converted to symbols, existing symbols are preserved
+      (Types::Symbol | Types::String.transform(::Symbol, &:to_sym)),
+      # Hash values are recursively symbolized, other types pass through unchanged
+      Types::Any.defer { type } | Types::Any
+    ]
+    schema = type.to_json_schema 
+    expect(schema).to eq({
+      'type' => 'object',
+      'patternProperties' => {'.*' => {'anyOf' => []}}
+    })
+  end
+
   specify 'Hash with key and value types (Hash Map)' do
     type = Types::Hash[
       Types::String,

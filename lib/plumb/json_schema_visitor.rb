@@ -61,6 +61,13 @@ module Plumb
       props
     end
 
+    # Trying to visit the deferred could go into infinite recursion
+    # if a type is deferring to itself
+    # Not clear what deferred types would mean for JSON Schema anyway.
+    on(:deferred) do |node, props|
+      props
+    end
+
     on(:hash) do |node, props|
       props.merge(
         TYPE => 'object',
