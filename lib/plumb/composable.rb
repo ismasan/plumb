@@ -321,6 +321,7 @@ module Plumb
       end
     end
 
+    # @deprecated User {#where} instead
     def with(...)
       warn 'Composable#with() is deprecated. Use #where() instead. #with is reserved to make copies of Data structs'
       where(...)
