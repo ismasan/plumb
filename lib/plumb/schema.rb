@@ -178,8 +178,8 @@ module Plumb
         self
       end
 
-      def with(...)
-        @_type = @_type.with(...)
+      def where(...)
+        @_type = @_type.where(...)
         self
       end
 

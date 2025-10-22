@@ -54,7 +54,7 @@ module Types
       image = result.value
       path = path_for(image.url)
       File.open(path, 'wb') { |f| f.write(image.io.read) }
-      result.valid image.with(url: path, io: File.new(path))
+      result.valid image.where(url: path, io: File.new(path))
     end
 
     def path_for(url)

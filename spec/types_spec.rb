@@ -376,13 +376,13 @@ RSpec.describe Plumb::Types do
     end
   end
 
-  describe '#with' do
+  describe '#where' do
     it 'validates properties of the object' do
-      assert_result(Types::Array.with(size: 2).resolve([1]), [1], false)
-      assert_result(Types::Array.with(size: 2).resolve([1, 2]), [1, 2], true)
-      assert_result(Types::String.with(size: 2).resolve('ab'), 'ab', true)
-      assert_result(Types::Array.with(size: 1..2).resolve([1, 2]), [1, 2], true)
-      assert_result(Types::Array.with(size: 1..2).resolve([1, 2, 3]), [1, 2, 3], false)
+      assert_result(Types::Array.where(size: 2).resolve([1]), [1], false)
+      assert_result(Types::Array.where(size: 2).resolve([1, 2]), [1, 2], true)
+      assert_result(Types::String.where(size: 2).resolve('ab'), 'ab', true)
+      assert_result(Types::Array.where(size: 1..2).resolve([1, 2]), [1, 2], true)
+      assert_result(Types::Array.where(size: 1..2).resolve([1, 2, 3]), [1, 2, 3], false)
     end
   end
 
@@ -661,7 +661,7 @@ RSpec.describe Plumb::Types do
     end
 
     specify 'pattern matching' do
-      Types::String.with(size: 3)
+      Types::String.where(size: 3)
       [:ok, 'sup'] => [symbol => sym, three_chars => chars]
 
       expect(sym).to eq(:ok)
