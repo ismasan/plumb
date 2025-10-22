@@ -1,5 +1,11 @@
 AllCops:
-  TargetRubyVersion: 3.2.2
+  TargetRubyVersion: 3.4
+inherit_from:
+  - ~/.rubocop.yml
+Style/StringLiterals:
+  Enabled: true
+Style/Documentation:
+  Enabled: false
 Style/CaseEquality:
   Enabled: false
 Style/LambdaCall:
