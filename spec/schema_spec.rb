@@ -169,7 +169,7 @@ RSpec.describe Plumb::Schema do
     s1 = described_class.new do |sc|
       sc.field(:friends, Types::Array) do |f|
         f.field(:name, Types::String)
-      end.with(size: (1..))
+      end.where(size: (1..))
     end
 
     result = s1.resolve(friends: [{ name: 'Joe' }])

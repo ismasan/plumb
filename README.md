@@ -329,26 +329,26 @@ type.resolve(['a', 'a', 'b']) # Valid
 type.resolve(['a', 'x', 'b']) # Failure
 ```
 
-### `#with`
+### `#where`
 
-The `#with` helper matches attributes of the object with values, using `#===`.
+The `#where` helper matches attributes of the object with values, using `#===`.
 
 ```ruby
-LimitedArray = Types::Array[String].with(size: 10)
-LimitedString = Types::String.with(size: 10)
-LimitedSet = Types::Any[Set].with(size: 10)
+LimitedArray = Types::Array[String].where(size: 10)
+LimitedString = Types::String.where(size: 10)
+LimitedSet = Types::Any[Set].where(size: 10)
 ```
 
 The size is matched via `#===`, so ranges also work.
 
 ```ruby
-Password = Types::String.with(bytesize: 10..20)
+Password = Types::String.where(bytesize: 10..20)
 ```
 
 The helper accepts multiple attribute/value pairs
 
 ```ruby
-JoeBloggs = Types::Any[User].with(first_name: 'Joe', last_name: 'Bloggs')
+JoeBloggs = Types::Any[User].where(first_name: 'Joe', last_name: 'Bloggs')
 ```
 
 #### `#transform`
@@ -1039,7 +1039,7 @@ end
 
 ### Types::Data
 
-`Types::Data` provides a superclass to define **inmutable** structs or value objects with typed / coercible attributes.
+`Types::Data` provides a superclass to define **immutable** structs or value objects with typed / coercible attributes.
 
 #### `[]` Syntax
 

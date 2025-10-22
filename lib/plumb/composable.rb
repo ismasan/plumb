@@ -311,14 +311,19 @@ module Plumb
 
     # Check attributes of an object against values, using #===
     # @example
-    #   type = Types::Array.with(size: 1..10)
-    #   type = Types::String.with(bytesize: 1..10)
+    #   type = Types::Array.where(size: 1..10)
+    #   type = Types::String.where(bytesize: 1..10)
     #
     # @param attrs [Hash]
-    def with(attrs)
+    def where(attrs)
       attrs.reduce(self) do |t, (name, value)|
         t >> AttributeValueMatch.new(t, name, value)
       end
+    end
+
+    def with(...)
+      warn 'Composable#with() is deprecated. Use #where() instead. #with is reserved to make copies of Data structs'
+      where(...)
     end
 
     # Register a policy for this step.
