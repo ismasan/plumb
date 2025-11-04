@@ -28,6 +28,12 @@ module Plumb
 
     alias [] of
 
+    def +(other)
+      raise ArgumentError, "expected another Types::Interface, but got #{other.inspect}" unless other.is_a?(self.class)
+
+      self.class.new((method_names + other.method_names).uniq)
+    end
+
     def call(result)
       obj = result.value
       missing_methods = @method_names.reject { |m| obj.respond_to?(m) }
