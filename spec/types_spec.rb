@@ -525,6 +525,16 @@ RSpec.describe Plumb::Types do
         assert_result(ifoobar.resolve(bar), bar, false)
         assert_result(ifoobar.resolve(foobar), foobar, true)
       end
+
+      specify '&' do
+        i1 = Types::Interface[:foo, :bar, :no, :yes]
+        i2 = Types::Interface[:lol, :bar, :yes]
+        i3 = i1 & i2
+        o1 = Data.define(:bar, :yes).new(1, 2)
+        o2 = Data.define(:bar, :lol).new(1, 2)
+        assert_result(i3.resolve(o1), o1, true)
+        assert_result(i3.resolve(o2), o2, false)
+      end
     end
 
     specify Types::UUID::V4 do

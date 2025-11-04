@@ -28,10 +28,32 @@ module Plumb
 
     alias [] of
 
+    # Merge two interfaces into a new one with the method names of both
+    # @example
+    #   i1 = Types::Interface[:foo]
+    #   i2 = Types::Interface[:bar, :lol]
+    #   i3 = i1 + i2 # expects objects with methods :foo, :bar, :lol
+    #
+    # @param other [InterfaceClass]
+    # @return [InterfaceClass]
     def +(other)
       raise ArgumentError, "expected another Types::Interface, but got #{other.inspect}" unless other.is_a?(self.class)
 
       self.class.new((method_names + other.method_names).uniq)
+    end
+
+    # Produce a new Interface with the intersection of two interfaces
+    # @example
+    #   i1 = Types::Interface[:foo, :bar]
+    #   i2 = Types::Interface[:bar, :lol]
+    #   i3 = i1 + i2 # expects objects with methods :bar
+    #
+    # @param other [InterfaceClass]
+    # @return [InterfaceClass]
+    def &(other)
+      raise ArgumentError, "expected another Types::Interface, but got #{other.inspect}" unless other.is_a?(self.class)
+
+      self.class.new(method_names & other.method_names)
     end
 
     def call(result)
