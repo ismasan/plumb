@@ -669,6 +669,40 @@ when Readable
 end
 ```
 
+Or pattern matching
+
+```ruby
+case args
+  in [Iterable => list, String => id]
+    # etc
+  in [Resolvable => r]
+    # etc
+end
+```
+
+#### Merging interfaces
+
+Use the `+` operator to merge two interfaces into a new one that must support both sets of method names.
+
+```ruby
+Iterable = Types::Interface[:each, :map]
+Countable = Types::Interface[:size]
+# This one expects objects with methods :each, :map and :size
+CountableIterable = Iterable + Countable
+```
+
+#### Intersecting interfaces
+
+Use the `&` operator to produce a new interface with the intersection of method names
+
+```ruby
+I1 = Types::Interface[:a, :b, :c]
+I2 = Types::Interface[:b, :c, :d]
+# This one expects methods :b and :c
+I3 = Types::Interface[:b, :c]
+```
+
+
 TODO: make this a bit more advanced. Check for method arity.
 
 ### `Types::Hash`
