@@ -491,26 +491,50 @@ RSpec.describe Plumb::Types do
       end
     end
 
-    specify Types::Interface do
-      obj = Data.define(:name, :age) do
-        def test(foo, bar = 1, opt: 2)
-          [foo, bar, opt]
-        end
-      end.new(name: 'Ismael', age: 42)
+    describe Types::Interface do
+      it 'checks supported method names' do
+        obj = Data.define(:name, :age) do
+          def test(foo, bar = 1, opt: 2)
+            [foo, bar, opt]
+          end
+        end.new(name: 'Ismael', age: 42)
 
-      assert_result(Types::Interface[:name, :age].resolve(obj), obj, true)
-      assert_result(Types::Interface[:name, :age, :test].resolve(obj), obj, true)
-      assert_result(Types::Interface[:name, :nope, :test].resolve(obj), obj, false)
+        assert_result(Types::Interface[:name, :age].resolve(obj), obj, true)
+        assert_result(Types::Interface[:name, :age, :test].resolve(obj), obj, true)
+        assert_result(Types::Interface[:name, :nope, :test].resolve(obj), obj, false)
 
-      expect(Types::Interface[:name, :age].method_names).to eq(%i[name age])
-    end
+        expect(Types::Interface[:name, :age].method_names).to eq(%i[name age])
+      end
 
-    specify 'Interface#==' do
-      t1 = Types::Interface[:name, :age]
-      t2 = Types::Interface[:name, :age]
-      t3 = Types::Interface[:name, :age, :foo]
-      expect(t1 == t2).to be(true)
-      expect(t1 == t3).to be(false)
+      specify 'Interface#==' do
+        t1 = Types::Interface[:name, :age]
+        t2 = Types::Interface[:name, :age]
+        t3 = Types::Interface[:name, :age, :foo]
+        expect(t1 == t2).to be(true)
+        expect(t1 == t3).to be(false)
+      end
+
+      specify '+' do
+        ifoo = Types::Interface[:foo]
+        ibar = Types::Interface[:bar]
+        ifoobar = ifoo + ibar
+        foo = Data.define(:foo).new(1)
+        bar = Data.define(:bar).new(1)
+        foobar = Data.define(:foo, :bar).new(1, 2)
+        assert_result(ifoobar.resolve(foo), foo, false)
+        assert_result(ifoobar.resolve(bar), bar, false)
+        assert_result(ifoobar.resolve(foobar), foobar, true)
+      end
+
+      specify '&' do
+        i1 = Types::Interface[:foo, :bar, :no, :yes]
+        i2 = Types::Interface[:lol, :bar, :yes]
+        i3 = i1 & i2
+        o1 = Data.define(:bar, :yes).new(1, 2)
+        o2 = Data.define(:bar, :lol).new(1, 2)
+        assert_result(i3.resolve(o1), o1, true)
+        assert_result(i3.resolve(o2), o2, false)
+      end
     end
 
     specify Types::UUID::V4 do
