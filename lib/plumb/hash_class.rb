@@ -110,8 +110,7 @@ module Plumb
       input = result.value
       errors = {}
       field_result = result.dup
-      initial = {}
-      initial = initial.merge(input) if @inclusive
+      initial = @inclusive ? input.dup : {}
       output = _schema.each.with_object(initial) do |(key, field), ret|
         key_s = key.to_key
         if input.key?(key_s)
