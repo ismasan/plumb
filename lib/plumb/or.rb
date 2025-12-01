@@ -27,8 +27,13 @@ module Plumb
       if right_result.valid?
         right_result
       else
-        right_result.invalid(errors: [left_result.errors,
-                                      right_result.errors].flatten)
+        # Decrease Array allocations slightly
+        # OR can be really expensive in composite ORed types
+        left_errors = left_result.errors.is_a?(Array) ? left_result.errors : [left_result.errors]
+        right_errors = right_result.errors.is_a?(Array) ? right_result.errors.first : right_result.errors
+        left_errors << right_errors
+
+        right_result.invalid(errors: left_errors)
       end
     end
   end
