@@ -228,12 +228,14 @@ module Plumb
         super
       end
 
+      MUST_BE_HASH = ['Must be a Hash of attributes'].freeze
+
       # The Plumb::Step interface
       # @param result [Plumb::Result::Valid]
       # @return [Plumb::Result::Valid, Plumb::Result::Invalid]
       def call(result)
         return result if result.value.is_a?(self)
-        return result.invalid(errors: ['Must be a Hash of attributes']) unless result.value.respond_to?(:to_h)
+        return result.invalid(errors: MUST_BE_HASH) unless result.value.respond_to?(:to_h)
 
         instance = new(result.value.to_h)
         instance.valid? ? result.valid(instance) : result.invalid(instance, errors: instance.errors.to_h)
