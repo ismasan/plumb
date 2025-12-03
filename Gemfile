@@ -16,6 +16,7 @@ group :development do
 end
 
 group :benchmark do
+  gem 'ruby-prof'
   gem 'benchmark-ips'
   gem 'monetize'
   gem 'parametric'

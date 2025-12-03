@@ -108,23 +108,30 @@ module Plumb
       return result unless _schema.any?
 
       input = result.value
-      errors = {}
-      field_result = result.dup
-      initial = @inclusive ? input.dup : {}
-      output = _schema.each.with_object(initial) do |(key, field), ret|
+      errors = nil # Do not allocate errors unless needed
+      output = @inclusive ? input.dup : {}
+      field_result = Result.valid(nil)
+
+      _schema.each do |key, field|
         key_s = key.to_key
         if input.key?(key_s)
           r = field.call(field_result.reset(input[key_s]))
-          errors[key_s] = r.errors unless r.valid?
-          ret[key_s] = r.value
+          output[key_s] = r.value
+          unless r.valid?
+            errors ||= {}
+            errors[key_s] = r.errors
+          end
         elsif !key.optional?
           r = field.call(BLANK_RESULT)
-          errors[key_s] = r.errors unless r.valid?
-          ret[key_s] = r.value unless r.value == Undefined
+          output[key_s] = r.value unless r.value == Undefined
+          unless r.valid?
+            errors ||= {}
+            errors[key_s] = r.errors
+          end
         end
       end
 
-      errors.any? ? result.invalid(output, errors:) : result.valid(output)
+      errors ? result.invalid(output, errors:) : result.valid(output)
     end
 
     def ==(other)
