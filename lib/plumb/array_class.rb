@@ -65,7 +65,7 @@ module Plumb
       # Steps might return the same result instance, so we map the values directly
       # separate from the errors.
       element_result = result.dup
-      errors = {}
+      errors = Hash.new(capacity: result.value.size)
       values = result.value.map.with_index do |e, idx|
         re = element_type.call(element_result.reset(e))
         errors[idx] = re.errors unless re.valid?
