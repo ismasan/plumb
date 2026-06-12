@@ -295,6 +295,18 @@ module Plumb
       end
 
       def call(result) = type.call(result)
+
+      # Two nodes are equal when they wrap the same type with the same
+      # node_name and args. The default Composable#== compares #children,
+      # but a Node holds its identity in @node_name/@type/@args, so without
+      # this every as_node-wrapped type (Email, Boolean, etc.) would compare
+      # equal to every other.
+      def ==(other)
+        other.is_a?(self.class) &&
+          other.node_name == node_name &&
+          other.type == type &&
+          other.args == args
+      end
     end
 
     #  Wrap a Step in a node with a custom #node_name

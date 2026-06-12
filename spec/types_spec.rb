@@ -289,6 +289,12 @@ RSpec.describe Plumb::Types do
     expect(Types::String.default('a') == Types::String.default('a')).to be(true)
     expect((Types::String | Types::Integer) == (Types::String | Types::Integer)).to be(true)
     expect(Types::String.default('a') == Types::String.default('b')).to be(false)
+
+    # #as_node-wrapped types (Node) must compare by their wrapped identity,
+    # not collapse to equal because they share empty #children.
+    expect(Types::Email == Types::Email).to be(true)
+    expect(Types::Boolean == Types::Boolean).to be(true)
+    expect(Types::Email == Types::Boolean).to be(false)
   end
 
   describe '#pipeline' do
