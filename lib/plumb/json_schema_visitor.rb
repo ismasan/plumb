@@ -210,6 +210,8 @@ module Plumb
       props = case matcher
               when ::String, ::Symbol, ::Numeric
                 props.merge(CONST => matcher)
+              when ::Date, ::Time # also covers ::DateTime
+                props.merge(CONST => matcher.iso8601)
               else
                 props
               end

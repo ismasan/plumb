@@ -138,6 +138,22 @@ RSpec.describe Plumb::JSONSchemaVisitor do
     expect(described_class.visit(type)).to eq('type' => 'string', 'format' => 'date')
   end
 
+  specify 'Date with const' do
+    type = Types::Any[Date.new(2026, 6, 1)]
+    expect(described_class.visit(type)).to eq(
+      'type' => 'string',
+      'format' => 'date',
+      'const' => '2026-06-01'
+    )
+
+    type = Types::Any[Time.utc(2026, 6, 1)]
+    expect(described_class.visit(type)).to eq(
+      'type' => 'string',
+      'format' => 'date-time',
+      'const' => '2026-06-01T00:00:00Z'
+    )
+  end
+
   specify 'Date with Range' do
     type = Types::Date[Date.new(2026, 6, 1)..Date.new(2026, 7, 1)]
     expect(described_class.visit(type)).to eq(
