@@ -138,6 +138,48 @@ RSpec.describe Plumb::JSONSchemaVisitor do
     expect(described_class.visit(type)).to eq('type' => 'string', 'format' => 'date')
   end
 
+  specify 'Date with Range' do
+    type = Types::Date[Date.new(2026, 6, 1)..Date.new(2026, 7, 1)]
+    expect(described_class.visit(type)).to eq(
+      'type' => 'string',
+      'format' => 'date',
+      'formatMinimum' => '2026-06-01',
+      'formatMaximum' => '2026-07-01'
+    )
+
+    type = Types::Date[Date.new(2026, 6, 1)...Date.new(2026, 7, 1)]
+    expect(described_class.visit(type)).to eq(
+      'type' => 'string',
+      'format' => 'date',
+      'formatMinimum' => '2026-06-01',
+      'formatExclusiveMaximum' => '2026-07-01'
+    )
+
+    type = Types::Date[Date.new(2026, 6, 1)..]
+    expect(described_class.visit(type)).to eq(
+      'type' => 'string',
+      'format' => 'date',
+      'formatMinimum' => '2026-06-01'
+    )
+
+    type = Types::Date[..Date.new(2026, 7, 1)]
+    expect(described_class.visit(type)).to eq(
+      'type' => 'string',
+      'format' => 'date',
+      'formatMaximum' => '2026-07-01'
+    )
+  end
+
+  specify 'Time with Range' do
+    type = Types::Time[Time.utc(2026, 6, 1)..Time.utc(2026, 7, 1)]
+    expect(described_class.visit(type)).to eq(
+      'type' => 'string',
+      'format' => 'date-time',
+      'formatMinimum' => '2026-06-01T00:00:00Z',
+      'formatMaximum' => '2026-07-01T00:00:00Z'
+    )
+  end
+
   specify 'Types::UUID::V4' do
     type = Types::UUID::V4
     expect(described_class.visit(type)).to eq('type' => 'string', 'format' => 'uuid')

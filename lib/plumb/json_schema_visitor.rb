@@ -25,6 +25,9 @@ module Plumb
     MIN_LENGTH = 'minLength'
     MAX_LENGTH = 'maxLength'
     FORMAT = 'format'
+    FORMAT_MINIMUM = 'formatMinimum'
+    FORMAT_MAXIMUM = 'formatMaximum'
+    FORMAT_EXCLUSIVE_MAXIMUM = 'formatExclusiveMaximum'
     ENVELOPE = {
       '$schema' => 'https://json-schema.org/draft-08/schema#'
     }.freeze
@@ -265,12 +268,21 @@ module Plumb
     on(::Range) do |node, props|
       element = node.begin || node.end
       opts = visit(element.class)
-      if element.is_a?(::Numeric)
+      case element
+      when ::Numeric
         opts[MINIMUM] = node.min if node.begin
+        opts[MAXIMUM] = node.max if node.end
+      when ::Date, ::Time # also covers ::DateTime
+        # JSON Schema has no native min/max for date/time strings, so use the
+        # `formatMinimum`/`formatMaximum` keywords (the format-assertion
+        # convention also supported by ajv) alongside `format`.
+        opts[FORMAT_MINIMUM] = node.begin.iso8601 if node.begin
         if node.end
-          max = node.end
-          max -= 1 if node.exclude_end?
-          opts[MAXIMUM] = max
+          if node.exclude_end?
+            opts[FORMAT_EXCLUSIVE_MAXIMUM] = node.end.iso8601
+          else
+            opts[FORMAT_MAXIMUM] = node.end.iso8601
+          end
         end
       end
       props.merge(opts)
