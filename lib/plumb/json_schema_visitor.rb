@@ -7,6 +7,11 @@ module Plumb
   class JSONSchemaVisitor
     include VisitorHandlers
 
+    # Raised when a value that has no JSON-native representation would end up in
+    # the generated schema. Register a handler (via `.on(...)`) that converts the
+    # offending type to a JSON-native value to resolve it.
+    InvalidJSONValueError = Class.new(StandardError)
+
     TYPE = 'type'
     PROPERTIES = 'properties'
     REQUIRED = 'required'
@@ -34,9 +39,31 @@ module Plumb
 
     def self.call(node, root: true)
       data = new.visit(node)
-      return data unless root
+      data = ENVELOPE.merge(data) if root
+      normalize_json(data)
+    end
 
-      ENVELOPE.merge(data)
+    # Recursively normalize the generated schema into JSON-native values and
+    # fail loudly on anything that has no JSON representation.
+    # Symbols are coerced to strings; everything that isn't a JSON-native value
+    # raises, so the user knows they need to register a custom visitor handler.
+    def self.normalize_json(value)
+      case value
+      when ::Hash
+        value.each_with_object({}) do |(key, val), hash|
+          hash[normalize_json(key)] = normalize_json(val)
+        end
+      when ::Array
+        value.map { |val| normalize_json(val) }
+      when ::Symbol
+        value.to_s
+      when ::String, ::Numeric, true, false, nil
+        value
+      else
+        raise InvalidJSONValueError,
+              "#{value.class} value #{value.inspect} cannot be serialized to JSON Schema. " \
+              'Register a Plumb::JSONSchemaVisitor.on(...) handler that converts it to a JSON-native value.'
+      end
     end
 
     # Some rules that are dependent on combinations of aggregates keys
@@ -165,7 +192,10 @@ module Plumb
     end
 
     on(:options_policy) do |node, props|
-      props.merge(ENUM => node.arg)
+      # Only an Array argument maps to `enum`. Any other argument was delegated
+      # to a Match constraint by the policy, so its schema (eg. `minimum`/
+      # `maximum` for a Range) has already been built by visiting the children.
+      node.arg.is_a?(::Array) ? props.merge(ENUM => node.arg) : props
     end
 
     on(:with_size_attribute) do |node, props|

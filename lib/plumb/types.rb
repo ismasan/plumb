@@ -19,11 +19,20 @@ module Plumb
   end
 
   # Generic options policy for all other types.
+  # An Array argument is treated as an enumeration of allowed values.
+  # Any other argument (Range, Regexp, Class, etc.) is delegated to a Match
+  # constraint, ie `type[opts]`, so it composes with the rest of the library
+  # (eg. a Range serializes to JSON Schema as `minimum`/`maximum`).
   # Usage:
   #   type = Types::String.options(['a', 'b'])
+  #   type = Types::Integer.options(10..20)
   policy :options do |type, opts|
-    type.check("must be included in #{opts.inspect}") do |v|
-      opts.include?(v)
+    if opts.is_a?(::Array)
+      type.check("must be included in #{opts.inspect}") do |v|
+        opts.include?(v)
+      end
+    else
+      type[opts]
     end
   end
 

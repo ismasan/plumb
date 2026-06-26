@@ -366,6 +366,55 @@ RSpec.describe Plumb::JSONSchemaVisitor do
     )
   end
 
+  describe ':options policy with a non-Array argument' do
+    specify 'a Range delegates to a Match constraint (minimum/maximum)' do
+      type = Types::Integer.options(10..20)
+      expect(described_class.call(type, root: false)).to eq(
+        'type' => 'integer',
+        'minimum' => 10,
+        'maximum' => 20
+      )
+    end
+
+    specify 'an open-ended Range yields an unbounded constraint' do
+      type = Types::Integer.options(20..)
+      expect(described_class.call(type, root: false)).to eq(
+        'type' => 'integer',
+        'minimum' => 20
+      )
+    end
+
+    specify 'an Array argument still maps to enum' do
+      type = Types::Integer.options([2, 4])
+      expect(described_class.call(type, root: false)).to eq(
+        'type' => 'integer',
+        'enum' => [2, 4]
+      )
+    end
+
+    specify 'runtime validation still applies' do
+      type = Types::Integer.options(10..20)
+      expect(type.resolve(15).valid?).to be(true)
+      expect(type.resolve(25).valid?).to be(false)
+    end
+  end
+
+  describe 'non-JSON values in the output' do
+    specify 'Symbols are normalized to strings' do
+      type = Types::String.options(%i[ok error])
+      expect(described_class.call(type, root: false)).to eq(
+        'type' => 'string',
+        'enum' => %w[ok error]
+      )
+    end
+
+    specify 'a value with no JSON representation raises' do
+      type = Types::String.metadata(example: Object.new)
+      expect { described_class.call(type) }
+        .to raise_error(Plumb::JSONSchemaVisitor::InvalidJSONValueError)
+    end
+  end
+
   specify 'Types::Stream' do
     type = Types::Stream[Types::String]
     expect(described_class.visit(type)).to eq(
