@@ -3,6 +3,10 @@
 require 'plumb/visitor_handlers'
 
 module Plumb
+  # Collects user-provided metadata for a type (via #metadata, custom step
+  # metadata, and policy arguments). Any type-bound information (the expected
+  # Ruby types, patterns, ranges, static values, etc.) is intentionally NOT
+  # collected here — it is described by #input_type / #output_type instead.
   class MetadataVisitor
     include VisitorHandlers
 
@@ -22,14 +26,6 @@ module Plumb
       props.merge(node._metadata)
     end
 
-    on(::Regexp) do |node, props|
-      props.merge(pattern: node)
-    end
-
-    on(::Range) do |node, props|
-      props.merge(match: node)
-    end
-
     on(:hash) do |_node, props|
       props
     end
@@ -43,10 +39,6 @@ module Plumb
       node.children
           .map { |child| visit(child) }
           .reduce(props) { |acc, child| acc.merge(child) }
-    end
-
-    on(:static) do |node, props|
-      props.merge(static: node.children[0])
     end
 
     on(:policy) do |node, props|
