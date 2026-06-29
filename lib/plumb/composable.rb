@@ -352,7 +352,7 @@ module Plumb
     def policy(*args, &blk)
       case args
       in [::Symbol => name, *rest] # #policy(:name, arg)
-        types = Array(metadata[:type]).uniq
+        types = Plumb.resolve_base_types(output_type).uniq
 
         bargs = [self]
         arg = Undefined
@@ -403,12 +403,6 @@ module Plumb
     # @param value [Object]
     # @return [And]
     def static(value)
-      my_type = Array(metadata[:type]).first
-      unless my_type.nil? || value.instance_of?(my_type)
-        raise ArgumentError,
-              "can't set a static #{value.class} value for a #{my_type} step"
-      end
-
       StaticClass.new(value) >> self
     end
 

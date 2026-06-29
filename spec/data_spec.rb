@@ -337,10 +337,6 @@ RSpec.describe Types::Data do
       )
     end
 
-    specify '.metadata[:type]' do
-      type = Types::StaffMember | Types::User
-      expect(type.metadata[:type]).to eq([Types::StaffMember, Types::User])
-    end
   end
 
   specify 'defining from Types::Hash' do
