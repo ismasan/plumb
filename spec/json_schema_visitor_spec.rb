@@ -104,8 +104,9 @@ RSpec.describe Plumb::JSONSchemaVisitor do
   end
 
   specify 'Types::String with :split policy' do
+    # The schema describes the input (a string), not the split output (an array).
     type = Types::String.policy(:split)
-    expect(described_class.visit(type)).to eq('type' => 'array', 'items' => { 'type' => 'string' })
+    expect(described_class.visit(type)).to eq('type' => 'string')
   end
 
   specify 'Types::Integer' do
@@ -296,8 +297,9 @@ RSpec.describe Plumb::JSONSchemaVisitor do
   end
 
   specify 'Types::String >> Types::Integer' do
+    # The schema describes the input type (String), not the output (Integer).
     type = Types::String >> Types::Integer
-    expect(described_class.visit(type)).to eq('type' => 'integer')
+    expect(described_class.visit(type)).to eq('type' => 'string')
   end
 
   specify 'Types::String | Types::Integer' do

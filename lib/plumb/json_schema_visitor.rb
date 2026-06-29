@@ -113,11 +113,20 @@ module Plumb
     end
 
     on(:and) do |node, props|
+      # A JSON Schema describes the *inputs* a type accepts, so the schema is
+      # built from the input side (left == #input_type). The output side (right)
+      # is only folded in when it refines the same value — ie. it shares the
+      # input's type (a constraint such as `pattern`/`minimum`/`format`) or the
+      # input is untyped. A genuine type change (transform/build, eg.
+      # `String >> Integer` or `String.split`) describes an output and is dropped.
       left, right = node.children.map { |c| visit(c) }
-      type = right[TYPE] || left[TYPE]
-      props = props.merge(left).merge(right)
-      props = props.merge(TYPE => type) if type
-      props
+      if !left.key?(TYPE) || left[TYPE] == right[TYPE]
+        type = left[TYPE] || right[TYPE]
+        merged = props.merge(left).merge(right)
+        type ? merged.merge(TYPE => type) : merged
+      else
+        props.merge(left)
+      end
     end
 
     # A "default" value is usually an "or" of expected_value | (undefined >> static_value)
