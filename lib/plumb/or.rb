@@ -11,7 +11,7 @@ module Plumb
     def initialize(left, right)
       @left = Composable.wrap(left)
       @right = Composable.wrap(right)
-      @children = [left, right].freeze
+      @children = [@left, @right].freeze
       freeze
     end
 

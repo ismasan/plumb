@@ -6,11 +6,9 @@ module Plumb
   class And
     include Composable
 
-    NOOP = ->(r) { r }
-
     attr_reader :children, :input_type, :output_type
 
-    def initialize(left, right, transform = NOOP)
+    def initialize(left, right, transform = Plumb::NOOP)
       @input_type = left
       @output_type = right
       @transform = transform
