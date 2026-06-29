@@ -389,7 +389,7 @@ UpcaseToSym = Types::String.invoke(%i[downcase to_sym])
 UpcaseToSym.parse('FOO_BAR') # :foo_bar
 ```
 
-Note, as opposed to `#transform`, this helper does not register a type in `#metadata[:type]`, which can be valuable for introspection or documentation (ex. JSON Schema).
+Note, as opposed to `#transform`, this helper does not declare a resulting output type (`#output_type`), which can be valuable for introspection or documentation (ex. JSON Schema).
 
 Also, there's no definition-time checks that the method names are actually supported by the input values.
 
@@ -504,7 +504,6 @@ ten.parse(10) # => 10
 ten.parse(100) # => 10
 ten.parse('hello') # => 10
 ten.parse() # => 10
-ten.metadata[:type] # => Integer
 ```
 
 Useful for data structures where some fields shouldn't change. Example:
@@ -515,12 +514,6 @@ CreateUserEvent = Types::Hash[
   name: String,
   age: Integer
 ]
-```
-
-Note that the value must be of the same type as the starting step's target type.
-
-```ruby
-Types::Integer.static('nope') # raises ArgumentError
 ```
 
 This usage is similar as using `Types::Static['hello']`directly.
@@ -578,16 +571,28 @@ type.metadata[:description] # 'A long text'
 type.metadata[:note] # 'An email address'
 ```
 
-`#metadata` also computes the target type.
-
-```ruby
-Types::String.metadata[:type] # String
-Types::String.transform(Integer, &:to_i).metadata[:type] # Integer
-# Multiple target types for unions
-(Types::String | Types::Integer).metadata[:type] # [String, Integer]
-```
+`#metadata` only carries user-provided annotations. The Ruby type(s) a composition accepts and produces are described by `#input_type` and `#output_type` instead (see below).
 
 TODO: document custom visitors.
+
+#### `#input_type` and `#output_type`
+
+Every type exposes the type it expects as input and the type it produces as output. For a sequence `A >> B`, the input type is `A` and the output type is `B`.
+
+```ruby
+StringToInt = Types::String.transform(Integer, &:to_i)
+StringToInt.input_type  # Types::String
+StringToInt.output_type # Integer
+```
+
+For a plain type, both are the type itself. Unions distribute over both sides:
+
+```ruby
+(Types::String | Types::Integer).input_type  # Types::String | Types::Integer
+(Types::String | Types::Integer).output_type # Types::String | Types::Integer
+```
+
+These power type introspection — for example, the JSON Schema visitor builds its schema from `#input_type`, since a schema describes the values a caller must send.
 
 ### Other policies
 
@@ -1709,7 +1714,7 @@ end
 
 # Usage: annotate fields in a schema
 AccountName = Types::String.admin
-AccountName.metadata # => { type: String, admin: true }
+AccountName.metadata # => { admin: true }
 ```
 
 #### Type-specific policies
@@ -1766,6 +1771,13 @@ Plumb.policy :split, SplitPolicy
 ### JSON Schema
 
 Plumb ships with a JSON schema visitor that compiles a type composition into a JSON Schema Hash. All Plumb types support a `#to_json_schema` method.
+
+The generated schema describes the **input** a type accepts (its `#input_type`), not what it produces. So a coercing type advertises the type a caller should send:
+
+```ruby
+# Accepts a String, coerces it to an Integer
+Types::String.transform(Integer, &:to_i).to_json_schema # => { "type" => "string" }
+```
 
 ```ruby
 Payload = Types::Hash[name: String]
