@@ -368,10 +368,6 @@ module Plumb
       }
     end
 
-    on(:build) do |node, props|
-      visit_children(node, props)
-    end
-
     on(:array) do |node, _props|
       items_props = visit_children(node)
       { TYPE => 'array', ITEMS => items_props }
