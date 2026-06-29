@@ -55,7 +55,8 @@ RSpec.describe Plumb::Schema do
                            'properties' => {
                              'title' => { 'type' => 'string', 'default' => 'Mr' },
                              'age' => { 'type' => 'integer' },
-                             'foo' => { 'type' => 'integer' }
+                             # foo's input is a String (it's transformed to Integer)
+                             'foo' => { 'type' => 'string' }
                            },
                            'required' => %w[title]
                          })
