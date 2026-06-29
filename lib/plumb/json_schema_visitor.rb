@@ -150,10 +150,6 @@ module Plumb
       visit(value, props)
     end
 
-    on(:transform) do |node, props|
-      visit_children(node, props)
-    end
-
     on(:undefined) do |_node, props|
       props
     end
