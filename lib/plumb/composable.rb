@@ -389,7 +389,8 @@ module Plumb
     # @param factory_method [Symbol] method to call on the class to instantiate it.
     # @return [And]
     def build(cns, factory_method = :new, &block)
-      self >> Build.new(cns, factory_method:, &block)
+      blk = block || ->(value) { cns.send(factory_method, value) }
+      And.new(self, Composable.wrap(cns), ->(result) { result.valid(blk.call(result.value)) })
     end
 
     # Always return a static value, regardless of the input.
@@ -473,5 +474,4 @@ end
 require 'plumb/deferred'
 require 'plumb/attribute_value_match'
 require 'plumb/policy'
-require 'plumb/build'
 require 'plumb/metadata'
