@@ -9,11 +9,19 @@ module Plumb
     attr_reader :children
 
     def initialize(left, right)
-      @left = left
-      @right = right
+      @left = Composable.wrap(left)
+      @right = Composable.wrap(right)
       @children = [left, right].freeze
       freeze
     end
+
+    # (A | B).input_type == A.input_type | B.input_type
+    # (A | B).output_type == A.output_type | B.output_type
+    # Computed lazily: building these eagerly in #initialize would recurse
+    # forever, since each Or.new would build its own input/output types.
+    # TODO: cache these?
+    def input_type = Or.new(@left.input_type, @right.input_type)
+    def output_type = Or.new(@left.output_type, @right.output_type)
 
     private def _inspect
       %((#{@left.inspect} | #{@right.inspect}))

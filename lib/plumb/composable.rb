@@ -165,6 +165,9 @@ module Plumb
       Deferred.new(definition || block)
     end
 
+    def input_type = self
+    def output_type = self
+
     # Chain two composable objects together.
     # A.K.A "and" or "sequence"
     # @example
@@ -193,7 +196,8 @@ module Plumb
     # @param block [Proc] a block that will be applied to the value, or nil if callable provided
     # @return [And]
     def transform(target_type, callable = nil, &block)
-      self >> Transform.new(target_type, callable || block)
+      cb = callable || block || Plumb::NOOP
+      And.new(self, Composable.wrap(target_type), ->(result) { result.valid(cb.call(result.value)) })
     end
 
     # Pass the value through an arbitrary validation
@@ -468,7 +472,6 @@ end
 
 require 'plumb/deferred'
 require 'plumb/attribute_value_match'
-require 'plumb/transform'
 require 'plumb/policy'
 require 'plumb/build'
 require 'plumb/metadata'
