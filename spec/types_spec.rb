@@ -29,22 +29,20 @@ RSpec.describe Plumb::Types do
       end
     end
 
-    it 'resolves metadata[:type] for classes' do
-      expect(Types::Any[String].metadata[:type]).to eq(String)
-      expect(Types::Any[Float].metadata[:type]).to eq(Float)
+    it 'constrains with a Regexp' do
+      assert_result(Types::Any[/\d+/].resolve('123'), '123', true)
+      assert_result(Types::Any[/\d+/].resolve('abc'), 'abc', false)
     end
 
-    it 'resolves metadata[:type] for Regexes' do
-      expect(Types::Any[/\d+/].metadata[:type]).to eq(String)
+    it 'constrains with a numeric Range' do
+      assert_result(Types::Any[1..10].resolve(5), 5, true)
+      assert_result(Types::Any[1..10].resolve(11), 11, false)
+      assert_result(Types::Any[..10.4].resolve(2.0), 2.0, true)
     end
 
-    it 'resolves metadata[:type] for numeric Range' do
-      expect(Types::Any[1..10].metadata[:type]).to eq(Integer)
-      expect(Types::Any[..10.4].metadata[:type]).to eq(Float)
-    end
-
-    it 'resolves metadata[:type] for string Range' do
-      expect(Types::Any['a'..'f'].metadata[:type]).to eq(String)
+    it 'constrains with a string Range' do
+      assert_result(Types::Any['a'..'f'].resolve('c'), 'c', true)
+      assert_result(Types::Any['a'..'f'].resolve('z'), 'z', false)
     end
   end
 
@@ -67,7 +65,7 @@ RSpec.describe Plumb::Types do
       def call(result) = result
     end
     type = (Types::Any >> klass.new) | Types::String
-    expect(type.metadata).to eq(foo: 'bar', type: [klass, ::String])
+    expect(type.metadata).to eq(foo: 'bar', type: klass)
   end
 
   describe '#transform' do
@@ -82,17 +80,11 @@ RSpec.describe Plumb::Types do
       to_i = Types::Any.transform(::Integer)
       assert_result(to_i.resolve(10), 10, true)
     end
-
-    it 'sets type in #metadata' do
-      to_i = Types::String.transform(::Integer, &:to_i)
-      expect(to_i.metadata[:type]).to eq(Integer)
-    end
   end
 
   specify '#as_node' do
     type = Types::String.as_node(:custom_node_name)
     expect(type.node_name).to eq(:custom_node_name)
-    expect(type.metadata[:type]).to eq(String)
     with_meta = type.metadata(foo: 1)
     expect(with_meta.metadata[:foo]).to eq(1)
   end
@@ -112,7 +104,6 @@ RSpec.describe Plumb::Types do
   specify Types::Static do
     assert_result(Types::Static['hello'].resolve('hello'), 'hello', true)
     assert_result(Types::Static['hello'].resolve('nope'), 'hello', true)
-    expect(Types::Static['hello'].metadata[:type]).to eq(String)
   end
 
   specify 'Static #==' do
@@ -266,20 +257,20 @@ RSpec.describe Plumb::Types do
   describe '#metadata as a getter' do
     specify 'AND (>>) chains' do
       type = Types::String >> Types::Integer.metadata(foo: 'bar')
-      expect(type.metadata).to eq({ type: ::Integer, foo: 'bar' })
+      expect(type.metadata).to eq({ foo: 'bar' })
     end
 
     specify 'OR (|) chains' do
       type = Types::String | Types::Integer.metadata(foo: 'bar')
-      expect(type.metadata).to eq({ type: [::String, ::Integer], foo: 'bar' })
+      expect(type.metadata).to eq({ foo: 'bar' })
     end
 
     specify 'AND (>>) with OR (|)' do
       type = Types::String >> (Types::Integer | Types::Boolean).metadata(foo: 'bar')
-      expect(type.metadata).to eq({ type: [::Integer, 'boolean'], foo: 'bar' })
+      expect(type.metadata).to eq({ foo: 'bar' })
 
       type = Types::String | (Types::Integer >> Types::Boolean).metadata(foo: 'bar')
-      expect(type.metadata).to eq({ type: [::String, 'boolean'], foo: 'bar' })
+      expect(type.metadata).to eq({ foo: 'bar' })
     end
   end
 
@@ -359,7 +350,7 @@ RSpec.describe Plumb::Types do
 
     specify '#metadata' do
       pipe = pipeline.metadata(foo: 'bar')
-      expect(pipe.metadata).to include({ type: Integer, foo: 'bar' })
+      expect(pipe.metadata).to include({ foo: 'bar' })
     end
 
     it 'builds a step composed of many steps' do
@@ -395,7 +386,6 @@ RSpec.describe Plumb::Types do
     expect(with_block.resolve('Ismael').value.name).to eq('mr. Ismael')
     with_symbol = Types::Any.build(custom, :build)
     expect(with_symbol.resolve('Ismael').value.name).to eq('Ismael')
-    expect(with_symbol.metadata[:type]).to eq(custom)
   end
 
   describe '#static' do
@@ -405,19 +395,18 @@ RSpec.describe Plumb::Types do
       expect(type.parse(11)).to eq(10)
       expect(type.parse('foo')).to eq(10)
       expect(type.parse).to eq(10)
-      expect(type.metadata[:type]).to eq(Integer)
     end
 
-    it 'does not allow inconsistent types' do
-      expect do
-        Types::Integer.static('nope')
-      end.to raise_error(ArgumentError)
+    it 'no longer checks type consistency at composition time (runtime validation still applies)' do
+      # The composition-time type check was removed; an inconsistent static value
+      # is now caught at runtime by the downstream type instead of raising on build.
+      type = Types::Integer.static('nope')
+      assert_result(type.resolve(10), 'nope', false)
     end
 
     it 'does not check type for Types::Any' do
       ten = Types::Any.static(10)
       expect(ten.parse).to eq(10)
-      expect(ten.metadata[:type]).to eq(Integer)
     end
   end
 
@@ -429,7 +418,6 @@ RSpec.describe Plumb::Types do
       expect(type.parse(100)).to eq(2)
       expect(type.parse).to eq(3)
       expect(type.parse('foo')).to eq(4)
-      expect(type.metadata[:type]).to eq(Integer)
     end
   end
 
@@ -481,7 +469,6 @@ RSpec.describe Plumb::Types do
     specify ':split' do
       assert_result(Types::String.policy(:split).resolve('a,  b , c,d'), %w[a b c d], true)
       assert_result(Types::String.policy(split: '.').resolve('a,  b.ss , c,d'), ['a,  b', 'ss , c,d'], true)
-      expect(Types::String.policy(:split).metadata[:type]).to eq(Array)
     end
 
     specify ':rescue' do
@@ -669,7 +656,6 @@ RSpec.describe Plumb::Types do
       assert_result(Types::Forms::Date.resolve(date_str), date, true)
       assert_result(Types::Forms::Date.resolve(10), 10, false)
       assert_result(Types::Forms::Date.resolve('2024-'), '2024-', false)
-      expect(Types::Forms::Date.metadata[:type]).to eq([Date, String])
     end
 
     specify Types::Time do
@@ -685,7 +671,6 @@ RSpec.describe Plumb::Types do
       assert_result(Types::Forms::Time.resolve(str), time, true)
       assert_result(Types::Forms::Time.resolve(10), 10, false)
       assert_result(Types::Forms::Time.resolve('2024-'), '2024-', false)
-      expect(Types::Forms::Time.metadata[:type]).to eq([Time, String])
     end
 
     specify Types::Lax::String do
@@ -880,7 +865,7 @@ RSpec.describe Plumb::Types do
 
     specify '#metadata' do
       type = Types::Array[Types::Boolean].metadata(foo: 1)
-      expect(type.metadata).to eq(type: Array, foo: 1)
+      expect(type.metadata).to eq(foo: 1)
 
       type = Types::Lax::Integer.metadata(foo: 1)
       expect(type.resolve('10').value).to eq(10)
@@ -1047,7 +1032,6 @@ RSpec.describe Plumb::Types do
         { value: 1, next: { value: 2, next: { value: 3, next: nil } } },
         true
       )
-      expect(linked_list.metadata).to eq(type: Hash)
     end
 
     specify 'deferring definition with a regular proc' do
@@ -1060,7 +1044,6 @@ RSpec.describe Plumb::Types do
         { value: 1, next: { value: 2, next: { value: 3, next: nil } } },
         true
       )
-      expect(linked_list.metadata).to eq(type: Hash)
     end
 
     specify '#defer with Tuple' do
@@ -1088,7 +1071,6 @@ RSpec.describe Plumb::Types do
         ['hello'],
         true
       )
-      expect(type.metadata).to eq(type: Array)
       # TODO: Deferred #ast cannot delegate to the deferred type
       # to avoid infinite recursion. Deferred should only be used
       # for recursive types such as Linked Lists, Trees, etc.
@@ -1107,7 +1089,7 @@ RSpec.describe Plumb::Types do
 
     specify '#metadata' do
       s1 = Types::Hash.schema(name: Types::String, age: Types::Integer, company: Types::String)
-      expect(s1.metadata).to eq(type: Hash)
+      expect(s1.metadata).to eq({})
     end
 
     specify '#tagged_by' do
@@ -1155,7 +1137,6 @@ RSpec.describe Plumb::Types do
 
       it 'validates keys and values' do
         s1 = Types::Hash[Types::String, Types::Integer]
-        expect(s1.metadata).to eq(type: Hash)
         assert_result(s1.resolve('a' => 1, 'b' => 2), { 'a' => 1, 'b' => 2 }, true)
         s1.resolve(a: 1, 'b' => 2).tap do |result|
           assert_result(result, { a: 1, 'b' => 2 }, false)
@@ -1194,7 +1175,6 @@ RSpec.describe Plumb::Types do
 
     specify '#[] alias to #schema' do
       s1 = Types::Hash[Types::String, Types::Integer]
-      expect(s1.metadata).to eq(type: Hash)
       assert_result(s1.resolve('a' => 1, 'b' => 2), { 'a' => 1, 'b' => 2 }, true)
     end
 

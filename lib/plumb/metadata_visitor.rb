@@ -11,8 +11,6 @@ module Plumb
     end
 
     def on_missing_handler(node, props, _method_name)
-      return props.merge(type: node) if node.instance_of?(Class)
-
       return props unless node.respond_to?(:children)
 
       node.children.reduce(props) do |acc, child|
@@ -25,39 +23,30 @@ module Plumb
     end
 
     on(::Regexp) do |node, props|
-      props.merge(pattern: node, type: props[:type] || String)
+      props.merge(pattern: node)
     end
 
     on(::Range) do |node, props|
-      type = props[:type] || (node.begin || node.end).class
-      props.merge(match: node, type:)
+      props.merge(match: node)
     end
 
     on(:hash) do |_node, props|
-      props.merge(type: Hash)
+      props
     end
 
     on(:and) do |node, props|
       left, right = node.children.map { |child| visit(child) }
-      type = right[:type] || left[:type]
-      props = props.merge(left).merge(right)
-      props = props.merge(type:) if type
-      props
+      props.merge(left).merge(right)
     end
 
     on(:or) do |node, props|
-      child_metas = node.children.map { |child| visit(child) }
-      types = child_metas.map { |child| child[:type] }.flatten.compact
-      types = types.first if types.size == 1
-      child_metas.reduce(props) do |acc, child|
-        acc.merge(child)
-      end.merge(type: types)
+      node.children
+          .map { |child| visit(child) }
+          .reduce(props) { |acc, child| acc.merge(child) }
     end
 
     on(:static) do |node, props|
-      value = node.children[0]
-      type = value.is_a?(Class) ? value : value.class
-      props.merge(static: value, type:)
+      props.merge(static: node.children[0])
     end
 
     on(:policy) do |node, props|
@@ -67,7 +56,7 @@ module Plumb
     end
 
     on(:boolean) do |_node, props|
-      props.merge(type: 'boolean')
+      props
     end
 
     on(:metadata) do |node, props|
@@ -76,23 +65,23 @@ module Plumb
     end
 
     on(:hash_map) do |_node, props|
-      props.merge(type: Hash)
+      props
     end
 
     on(:array) do |_node, props|
-      props.merge(type: Array)
+      props
     end
 
     on(:stream) do |_node, props|
-      props.merge(type: Enumerator)
+      props
     end
 
     on(:tuple) do |_node, props|
-      props.merge(type: Array)
+      props
     end
 
     on(:tagged_hash) do |_node, props|
-      props.merge(type: Hash)
+      props
     end
 
     on(Proc) do |_node, props|

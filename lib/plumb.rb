@@ -57,6 +57,44 @@ module Plumb
   def self.decorate(type, &block)
     Decorator.call(type, &block)
   end
+
+  # Recursively resolve the underlying Ruby classes ("base types") of a node.
+  #   Types::String             => [String]
+  #   Types::String | Integer   => [String, Integer]
+  #
+  # This is a temporary helper to preserve type-specific policy resolution
+  # (see Composable#policy) until proper subtyping checks are implemented.
+  def self.resolve_base_types(node)
+    return [node] if node.is_a?(::Class)
+    return [] unless node.respond_to?(:node_name)
+
+    case node.node_name
+    when :or
+      node.children.flat_map { |child| resolve_base_types(child) }
+    when :and
+      resolve_base_types(node.output_type)
+    when :match
+      matcher = node.children.first
+      case matcher
+      when ::Class then [matcher]
+      when ::Regexp then [::String]
+      when ::Range then [(matcher.begin || matcher.end).class]
+      else [matcher.class]
+      end
+    when :array, :tuple then [::Array]
+    when :hash, :hash_map, :tagged_hash then [::Hash]
+    when :stream then [::Enumerator]
+    when :static
+      value = node.children.first
+      [value.is_a?(::Class) ? value : value.class]
+    when :policy
+      resolve_base_types(node.children.first)
+    when :metadata
+      resolve_base_types(node.type)
+    else
+      node.respond_to?(:children) ? node.children.flat_map { |child| resolve_base_types(child) } : []
+    end
+  end
 end
 
 require 'plumb/result'
