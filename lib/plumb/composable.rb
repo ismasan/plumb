@@ -196,8 +196,7 @@ module Plumb
     # @param block [Proc] a block that will be applied to the value, or nil if callable provided
     # @return [And]
     def transform(target_type, callable = nil, &block)
-      cb = callable || block || Plumb::NOOP
-      And.new(self, Composable.wrap(target_type), ->(result) { result.valid(cb.call(result.value)) })
+      transform_step(target_type, callable || block || Plumb::NOOP)
     end
 
     # Pass the value through an arbitrary validation
@@ -389,8 +388,13 @@ module Plumb
     # @param factory_method [Symbol] method to call on the class to instantiate it.
     # @return [And]
     def build(cns, factory_method = :new, &block)
-      blk = block || ->(value) { cns.send(factory_method, value) }
-      And.new(self, Composable.wrap(cns), ->(result) { result.valid(blk.call(result.value)) })
+      transform_step(cns, block || ->(value) { cns.send(factory_method, value) })
+    end
+
+    # Build an And that validates the input (self), applies a value-level
+    # callable, and declares `target_type` as the (validated) output type.
+    private def transform_step(target_type, callable)
+      And.new(self, Composable.wrap(target_type), ->(result) { result.valid(callable.call(result.value)) })
     end
 
     # Always return a static value, regardless of the input.
