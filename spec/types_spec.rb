@@ -209,12 +209,11 @@ RSpec.describe Plumb::Types do
     end
 
     it 'is shallow for longer chains: input_type is everything but the last step' do
-      # (A >> B >> C) == ((A >> B) >> C)
-      # The input type is the whole left-hand sub-chain, not just the leftmost leaf,
-      # because the chain only accepts values that satisfy every step up to the last.
-      a = Types::String
-      b = Types::String[/\d+/]
-      c = Types::String[/\A\d+\z/]
+      # (A >> B >> C) == ((A >> B) >> C). Each step's output must be a subtype of
+      # the next step's input, so the chain widens left-to-right.
+      a = Types::Integer[1..5]
+      b = Types::Integer
+      c = Types::Numeric
       chain = a >> b >> c
       expect(chain.input_type).to eq(a >> b)
       expect(chain.output_type).to eq(c)

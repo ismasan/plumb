@@ -1,9 +1,9 @@
 # frozen_string_literal: true
 
 module Plumb
-  # The structural subtype/subset relation over types, the value-set
-  # disjointness relation, and the `#>>` composition type-check that builds on
-  # them. Methods are module functions: call them as `Plumb::Subtyping.foo`.
+  # The structural subtype/subset relation over types, and the `#>>`
+  # composition type-check (subsumption) that builds on it. Methods are module
+  # functions: call them as `Plumb::Subtyping.foo`.
   module Subtyping
     module_function
 
@@ -108,34 +108,34 @@ module Plumb
       a.is_a?(::Regexp) && b.is_a?(::Regexp) && a.source == b.source
     end
 
-    # Validate that two steps can be composed sequentially (`left >> right`):
-    # the values `left` produces must be able to flow into `right`. We raise only
-    # when the two are *provably disjoint* — ie. nothing `left` produces could
-    # ever be accepted by `right` (a dead composition). This permits legitimate
-    # narrowing (`String >> String[/d/]`, `transform(Integer) >> Integer[1..10]`)
-    # while rejecting dead ends (`String >> Integer`, `String[/nope/] >>
-    # String["yes"]`).
+    # Validate that two steps can be composed sequentially (`left >> right`).
+    # Composition is typed by subsumption, like function application in any
+    # statically-typed language: everything `left` produces must be acceptable
+    # to `right`, i.e. `produced(left) <: accepted(right)`. Otherwise the chain
+    # would reject some of `left`'s output and we raise.
     #
-    # Permissive by design — when either side reports Any (the top / unknown
-    # type) it opts out entirely. Opaque steps (plain procs/Steps), value-level
-    # transforms (built directly via #transform/#build) and constraints report
-    # Any on the relevant side, so only genuine type clashes raise.
+    # To *narrow* a value (where only some of it flows through), use `#[]` /
+    # `#transform(...)[...]` — a refinement is a runtime-checked cast, built
+    # directly and not subject to this check.
     #
-    # @raise [Plumb::TypeError] when the chain is provably dead.
+    # Permissive only where types are genuinely unknown: when either side
+    # reports Any (opaque steps/procs, value-level transforms, narrowing
+    # matchers), it opts out.
+    #
+    # @raise [Plumb::TypeError] when `left`'s output is not a subtype of what
+    #   `right` accepts.
     def check_composable!(left, right)
       produced = resolved_output(left)
       # opaque left (unknown output) or opaque right (accepts anything) -> opt out
       return if produced.is_a?(AnyClass) || resolved_input(right).is_a?(AnyClass)
 
       accepted = accepted_type(right)
-      return if accepted.is_a?(AnyClass)
+      return if accepted.is_a?(AnyClass) || subtype?(produced, accepted)
 
-      # Each type owns the reason (if any) it can't feed `accepted` — see
-      # Composable#composition_error.
-      reason = produced.composition_error(accepted)
-      return unless reason
-
-      raise Plumb::TypeError, "cannot compose #{left.inspect} >> #{right.inspect}: #{reason}"
+      raise Plumb::TypeError,
+            "cannot compose #{left.inspect} >> #{right.inspect}: " \
+            "#{produced.inspect} (produced) is not a subtype of #{accepted.inspect} (accepted); " \
+            'narrow with #[] if this is intentional'
     end
 
     # What `type` will accept without rejecting it outright. A conversion
@@ -173,79 +173,6 @@ module Plumb
       return type if depth >= 50 || nxt.equal?(type) || nxt == type
 
       resolved_input(nxt, depth + 1)
-    end
-
-    # Are the value sets described by `a` and `b` provably disjoint (no value
-    # belongs to both)? Conservative: returns false whenever we cannot prove
-    # disjointness, so the composition check only raises when it is certain.
-    #
-    # Like #subtype?, this handles the composition algebra (Top/Transform/Or/
-    # And) and delegates the leaf case to the type's own #disjoint_from? hook
-    # (see Composable).
-    def disjoint?(a, b)
-      a = Composable.wrap(a)
-      b = Composable.wrap(b)
-      return false if a.is_a?(AnyClass) || b.is_a?(AnyClass)
-
-      # A Transform's value identity is what it produces.
-      return disjoint?(a.output_type, b) if a.is_a?(Transform)
-      return disjoint?(a, b.output_type) if b.is_a?(Transform)
-
-      # Union: disjoint from `b` only if EVERY member is.
-      return a.children.all? { |m| disjoint?(m, b) } if a.is_a?(Or)
-      return b.children.all? { |m| disjoint?(a, m) } if b.is_a?(Or)
-
-      # Intersection/refinement: `a1 ∧ a2` is disjoint from `b` if EITHER factor is.
-      return a.children.any? { |m| disjoint?(m, b) } if a.is_a?(And)
-      return b.children.any? { |m| disjoint?(a, m) } if b.is_a?(And)
-
-      a.disjoint_from?(b)
-    end
-
-    # Disjointness over two raw matchers (Class/Module, Range, Regexp, literal).
-    def atomic_disjoint?(am, bm)
-      return false if am == bm
-      return true if literal?(am) && literal?(bm)        # distinct literal singletons
-      return !(bm === am) if literal?(am)                # is the literal a member of bm?
-      return !(am === bm) if literal?(bm)
-      return range_disjoint?(am, bm) if am.is_a?(::Range) && bm.is_a?(::Range)
-      return false if am.is_a?(::Regexp) && bm.is_a?(::Regexp) # can't prove
-
-      ca = domain_class(am)
-      cb = domain_class(bm)
-      return false if ca.nil? || cb.nil?
-
-      class_disjoint?(ca, cb)
-    end
-
-    # A raw matcher that denotes a single value rather than a type/pattern/range.
-    def literal?(matcher)
-      !matcher.is_a?(::Module) && !matcher.is_a?(::Range) && !matcher.is_a?(::Regexp)
-    end
-
-    # The Ruby class a matcher's values belong to.
-    def domain_class(matcher)
-      case matcher
-      when ::Module then matcher
-      when ::Regexp then ::String
-      when ::Range then (matcher.begin || matcher.end)&.class
-      else matcher.class
-      end
-    end
-
-    def range_disjoint?(r1, r2)
-      return false unless r1.begin && r1.end && r2.begin && r2.end
-
-      r1.end < r2.begin || r2.end < r1.begin
-    end
-
-    # Two *classes* (not modules) with no subclass relationship share no
-    # instances. Modules can be mixed into anything, so we never claim them
-    # disjoint.
-    def class_disjoint?(a, b)
-      return false unless a.is_a?(::Class) && b.is_a?(::Class)
-
-      !(a <= b || b <= a)
     end
   end
 end

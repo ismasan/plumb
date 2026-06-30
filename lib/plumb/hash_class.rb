@@ -75,10 +75,6 @@ module Plumb
       self.class.new(schema: _schema, inclusive: true)
     end
 
-    # Whether this Hash passes through keys outside its schema. An inclusive
-    # Hash may emit arbitrary extra keys, so its produced key set is open.
-    def inclusive? = @inclusive
-
     def at_key(a_key)
       _schema[Key.wrap(a_key)]
     end
@@ -139,66 +135,39 @@ module Plumb
     end
 
     def ==(other)
-      other.is_a?(self.class) && other._schema == _schema
+      return false unless other.is_a?(self.class) && _schema.size == other._schema.size
+
+      # `Key#eql?`/`#hash` compare names only, so a raw `_schema == _schema`
+      # would treat `name?:` and `name:` as equal. Two Hash types that differ in
+      # a key's optionality are different types, so compare that too.
+      _schema.all? do |key, value|
+        other_key, other_value = other._schema.find { |k, _| k.eql?(key) }
+        other_key && key.optional? == other_key.optional? && value == other_value
+      end
     end
 
-    # Width + depth subtyping over Hash schemas. `self <= other` when `self`
-    # provides at least every key `other` requires (width — `self` may add
-    # keys), and each shared key's type is a subtype (depth). An empty schema
+    # Width + depth subtyping over Hash schemas. `self <= other` when, for every
+    # key `other` requires, `self` provides it as a *required* key whose type is
+    # a subtype (depth) — `self` may add keys (width), and a key `other` makes
+    # optional need not be present. A key `other` requires but `self` only holds
+    # optionally is NOT enough: `self` could omit it. An empty schema
     # (`Types::Hash`) is the "any Hash" top within the Hash family.
     def subtype_of?(other)
       return true if self == other
       return false unless other.is_a?(HashClass)
 
-      other._schema.all? do |key, other_field|
-        mine = _schema[key]
-        mine ? Plumb::Subtyping.subtype?(mine, other_field) : key.optional?
-      end
-    end
-
-    # Two Hash schemas are disjoint when they share a key that is required in at
-    # least one of them and whose value types are disjoint — no hash value could
-    # satisfy both. A key absent from one side, or optional in both, never
-    # forces a conflict (the value can just omit it). (Symmetric.) Against a
-    # non-Hash type, defer to the default base-class comparison (eg. Hash vs
-    # Array are disjoint).
-    def disjoint_from?(other)
-      return super unless other.is_a?(HashClass)
-
-      _schema.any? do |key, field|
-        other_key, other_field = other._schema.find { |k, _| k.eql?(key) }
-        other_key &&
-          (!key.optional? || !other_key.optional?) &&
-          Plumb::Subtyping.disjoint?(field, other_field)
-      end
-    end
-
-    # Beyond value-set disjointness, a producer Hash must be able to emit every
-    # key the consumer requires; otherwise the consumer always rejects its
-    # output (`self >> consumer`). See Composable#composition_error.
-    def composition_error(consumer)
-      super || begin
-        missing = missing_required_keys_of(consumer)
-        unless missing.empty?
-          "the produced Hash never provides required key(s) " \
-            "#{missing.map(&:to_sym).join(', ')} expected by #{consumer.inspect}"
+      other._schema.all? do |other_key, other_field|
+        mine_key, mine_field = _schema.find { |k, _| k.eql?(other_key) }
+        if mine_field
+          Plumb::Subtyping.subtype?(mine_field, other_field) &&
+            (other_key.optional? || !mine_key.optional?)
+        else
+          other_key.optional?
         end
       end
     end
 
     private
-
-    # The keys `other` requires that this Hash can never emit — so a consumer
-    # expecting them would always reject this Hash's output (`self >> other`).
-    # An inclusive Hash may pass arbitrary extra keys through, so it lacks
-    # nothing; a key this Hash holds optionally counts as provided (it is
-    # sometimes emitted, so some inputs do flow through).
-    def missing_required_keys_of(other)
-      return [] unless other.is_a?(HashClass)
-      return [] if inclusive?
-
-      other._schema.keys.reject(&:optional?).reject { |k| _schema.key?(k) }
-    end
 
     def _inspect
       %(Hash[#{_schema.map { |(k, v)| [k.inspect, v.inspect].join(': ') }.join(', ')}])

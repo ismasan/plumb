@@ -153,53 +153,6 @@ module Plumb
 
       children.zip(other.children).all? { |c, o| Plumb::Subtyping.subtype?(c, o) }
     end
-
-    # Leaf hook for Plumb::Subtyping.disjoint?, called once the algebra (And/Or/
-    # Transform/top) has been peeled away. Returns true only when the value sets
-    # of `self` and `other` are provably disjoint. It recurses only through
-    # Plumb::Subtyping.disjoint? (never back through the algebra).
-    #
-    # Default behaviour:
-    #   1. atomic leaves (a single raw matcher/value) compared via Ruby
-    #      semantics (Plumb::Subtyping.atomic_disjoint?);
-    #   2. same-class covariant containers — disjoint if any element position is,
-    #      covering Array/Tuple/HashMap/Stream and custom containers for free;
-    #   3. otherwise the underlying Ruby base classes (so eg. String vs Array are
-    #      disjoint). Unknown -> not provably disjoint (false).
-    #
-    # Override for bespoke leaf relations (see HashClass schema disjointness).
-    # @param other [Composable]
-    # @return [Boolean]
-    def disjoint_from?(other)
-      if Plumb::Subtyping.atomic?(self) && Plumb::Subtyping.atomic?(other)
-        return Plumb::Subtyping.atomic_disjoint?(children.first, other.children.first)
-      end
-
-      if other.instance_of?(self.class) && !children.empty? && children.size == other.children.size
-        return children.zip(other.children).any? { |a, b| Plumb::Subtyping.disjoint?(a, b) }
-      end
-
-      self_classes = Plumb.resolve_base_types(self)
-      other_classes = Plumb.resolve_base_types(other)
-      return false if self_classes.empty? || other_classes.empty?
-
-      self_classes.all? { |sc| other_classes.all? { |oc| Plumb::Subtyping.class_disjoint?(sc, oc) } }
-    end
-
-    # Directional composition compatibility, used by `#>>` (see
-    # Plumb::Subtyping.check_composable!). Returns the reason — a human-readable
-    # string — that values produced by `self` could never be accepted by
-    # `consumer` (making `self >> consumer` a dead chain), or nil when they can
-    # compose. By default the only obstruction is value-set disjointness; types
-    # with structural requirements override this (see HashClass, which also
-    # checks that it provides every key the consumer requires).
-    # @param consumer [Composable]
-    # @return [String, nil]
-    def composition_error(consumer)
-      return nil unless Plumb::Subtyping.disjoint?(self, consumer)
-
-      "#{inspect} (produced) is disjoint from #{consumer.inspect} (accepted)"
-    end
   end
 
   #  Composable mixes in composition methods to classes.
@@ -271,17 +224,17 @@ module Plumb
     # @example
     #   Step1 >> Step2 >> Step3
     #
-    # Raises Plumb::TypeError when the two steps form a dead composition — ie.
-    # what `self` produces is provably disjoint from what `other` accepts, so no
-    # value could ever flow through (eg. `String >> Integer`, or
-    # `String[/nope/] >> String["yes"]`). Legitimate narrowing is allowed
-    # (`String >> String[/d/]`, `transform(Integer) >> Integer[1..10]`), since
-    # those value sets overlap. The check is permissive: opaque/untyped steps
-    # (plain procs, value-level transforms, constraints) opt out. Use
-    # #transform/#build for an intentional value conversion.
+    # Type-checks the composition by subsumption: everything `self` produces
+    # must be acceptable to `other` (`self`'s output a subtype of `other`'s
+    # input), else it raises Plumb::TypeError — eg. `String >> Integer`, or
+    # `Integer[0..40] >> Integer[2..10]` (the left can emit values the right
+    # rejects). To narrow a value, use `#[]` / `#transform(...)[...]` (a
+    # refinement is a runtime-checked cast, built directly and not subtype-
+    # checked). The check is permissive only where types are unknown: opaque
+    # steps (plain procs, transforms, narrowing matchers) report Any and opt out.
     #
     # @param other [Composable]
-    # @raise [Plumb::TypeError] when the types are provably disjoint.
+    # @raise [Plumb::TypeError] when `self`'s output is not a subtype of `other`'s input.
     # @return [And]
     def >>(other)
       other = Composable.wrap(other)

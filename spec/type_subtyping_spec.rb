@@ -126,55 +126,70 @@ RSpec.describe 'subtyping: Plumb::Subtyping.subtype? and #<=' do
   end
 
   describe 'composition type-checking (#>>)' do
-    it 'raises when what the left produces is disjoint from what the right accepts' do
-      expect { STypes::String >> STypes::Integer }.to raise_error(Plumb::TypeError)
+    # `>>` is typed by subsumption: everything the left produces must be
+    # acceptable to the right (produced <: accepted). Narrow with `#[]` instead.
+    it 'raises when the left output is not a subtype of the right input' do
+      expect { STypes::String >> STypes::Integer }.to raise_error(Plumb::TypeError)        # disjoint
+      expect { STypes::Numeric >> STypes::Integer }.to raise_error(Plumb::TypeError)       # too broad
+      expect { STypes::Integer[0..10] >> STypes::Integer[11..20] }.to raise_error(Plumb::TypeError) # disjoint ranges
+      expect { STypes::Integer[0..40] >> STypes::Integer[2..10] }.to raise_error(Plumb::TypeError)  # left wider than right
       expect { STypes::String[/nope/] >> STypes::String['yes'] }.to raise_error(Plumb::TypeError)
       expect { STypes::String.transform(::Integer, &:to_i) >> STypes::String }.to raise_error(Plumb::TypeError)
+      expect { STypes::String >> STypes::String[/d/] }.to raise_error(Plumb::TypeError)    # narrowing — use []
       expect { STypes::Array[STypes::Integer] >> STypes::Array[STypes::String] }.to raise_error(Plumb::TypeError)
     end
 
-    it 'allows narrowing and overlapping chains (disjointness, not strict subset)' do
-      # legitimate narrowing-after-produce: the value sets overlap
-      expect { STypes::String >> STypes::String[/d/] }.not_to raise_error
-      expect { STypes::String.transform(::Integer, &:to_i) >> STypes::Integer[1..10] }.not_to raise_error
+    it 'allows a chain when the left output is a subtype of the right input' do
       expect { STypes::Integer >> STypes::Numeric }.not_to raise_error
-      # Numeric >> Integer is a live narrowing (some numerics are integers), so
-      # it is allowed — disjointness, not strict subset.
-      expect { STypes::Numeric >> STypes::Integer }.not_to raise_error
+      expect { STypes::Integer[2..10] >> STypes::Integer[0..40] }.not_to raise_error
+      expect { STypes::String[/d/] >> STypes::String }.not_to raise_error
     end
 
-    it 'raises on Hash schemas that clash on a required shared key' do
-      expect { STypes::Hash[name: STypes::String] >> STypes::Hash[name: STypes::Integer] }
+    it 'narrowing is done with #[] (a runtime-checked cast), not #>>' do
+      # the same narrowings that #>> rejects are fine as constraints:
+      expect { STypes::Integer[0..40][2..10] }.not_to raise_error
+      expect { STypes::String.transform(::Integer, &:to_i)[1..10] }.not_to raise_error
+    end
+
+    it 'compares #where attribute constraints by value' do
+      # an attribute-constrained type is a subtype of its base
+      expect { STypes::Array.where(size: 10) >> STypes::Array }.not_to raise_error
+      # the produced constraint is within the accepted one
+      expect { STypes::Array.where(size: 10) >> STypes::Array.where(size: 8..100) }.not_to raise_error
+      expect { STypes::Array.where(size: 11..14) >> STypes::Array.where(size: 10..15) }.not_to raise_error
+      # the produced range is wider than the accepted one -> left can emit values the right rejects
+      expect { STypes::Array.where(size: 10..15) >> STypes::Array.where(size: 11..14) }
         .to raise_error(Plumb::TypeError)
-      # a clashing required key makes it dead even alongside other keys
-      expect { STypes::Hash[name: STypes::String] >> STypes::Hash[name: STypes::Integer, age: STypes::Integer] }
+      # narrowing the other direction (any array -> sized) must go through #where, not #>>
+      expect { STypes::Array >> STypes::Array.where(size: 10) }.to raise_error(Plumb::TypeError)
+    end
+
+    it 'raises on Hash schemas whose shared key value types are not subtypes' do
+      expect { STypes::Hash[name: STypes::String] >> STypes::Hash[name: STypes::Integer] }
         .to raise_error(Plumb::TypeError)
     end
 
     it 'raises when the produced Hash lacks a key the consumer requires (width)' do
-      # left produces {name:}, right requires :age -> right always rejects
       expect { STypes::Hash[name: STypes::String] >> STypes::Hash[name: STypes::String, age: STypes::Integer] }
-        .to raise_error(Plumb::TypeError, /age/)
+        .to raise_error(Plumb::TypeError)
       # no shared key at all: right requires :age, left never emits it
       expect { STypes::Hash[name: STypes::String] >> STypes::Hash[age: STypes::Integer] }
         .to raise_error(Plumb::TypeError)
+      # producer only holds the required key optionally -> it may omit it
+      expect { STypes::Hash[name?: STypes::String] >> STypes::Hash[name: STypes::String] }
+        .to raise_error(Plumb::TypeError)
     end
 
-    it 'allows Hash schemas where the producer supplies what the consumer needs' do
+    it 'allows Hash schemas where the producer is a subtype of the consumer' do
       # same value type
       expect { STypes::Hash[name: STypes::String] >> STypes::Hash[name: STypes::String] }.not_to raise_error
-      # overlapping value types (Integer <= Numeric)
+      # producer's value type is a subtype (Integer <= Numeric)
       expect { STypes::Hash[name: STypes::Integer] >> STypes::Hash[name: STypes::Numeric] }.not_to raise_error
-      # left is wider (extra keys are fine)
+      # producer is wider (extra keys are fine)
       expect { STypes::Hash[name: STypes::String, age: STypes::Integer] >> STypes::Hash[name: STypes::String] }
         .not_to raise_error
       # the key the producer lacks is optional for the consumer
       expect { STypes::Hash[name: STypes::String] >> STypes::Hash[name: STypes::String, age?: STypes::Integer] }
-        .not_to raise_error
-      # the clashing key is optional in both -> a value can omit it
-      expect { STypes::Hash[name?: STypes::String] >> STypes::Hash[name?: STypes::Integer] }.not_to raise_error
-      # an inclusive producer may pass extra keys through
-      expect { STypes::Hash[name: STypes::String].inclusive >> STypes::Hash[name: STypes::String, age: STypes::Integer] }
         .not_to raise_error
     end
 

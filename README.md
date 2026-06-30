@@ -353,6 +353,14 @@ The helper accepts multiple attribute/value pairs
 JoeBloggs = Types::Any[User].where(first_name: 'Joe', last_name: 'Bloggs')
 ```
 
+Attribute constraints take part in [composition type-checks](#composition-type-checks): a constrained type is a subtype of its base, and a constraint on the same attribute is a subtype when its value is contained in the other's (compared like ranges/literals).
+
+```ruby
+Types::Array.where(size: 10) >> Types::Array                     # ok: constrained Array is still an Array
+Types::Array.where(size: 10) >> Types::Array.where(size: 8..100) # ok: 10 is within 8..100
+Types::Array.where(size: 10..15) >> Types::Array.where(size: 11..14) # raises: 10..15 isn't within 11..14
+```
+
 #### `#transform`
 
 Transform value. Requires specifying the resulting type of the value after transformation.
@@ -598,36 +606,47 @@ These power type introspection — for example, the JSON Schema visitor builds i
 
 #### Composition type-checks
 
-When you build a chain with `#>>`, Plumb checks that the steps can actually fit together. If what the left side *produces* (its `#output_type`) could never be accepted by the right side, the composition is a dead end and `#>>` raises `Plumb::TypeError` at build time — so broken data pipelines fail loudly when you define them, not silently at runtime.
+`#>>` is typed by **subsumption**, like function composition in a statically-typed language: everything the left step *produces* must be acceptable to the right step — i.e. the left's output type must be a **subtype** of the right's input type. If not, `#>>` raises `Plumb::TypeError` at build time, so broken data pipelines fail loudly when you define them, not silently at runtime.
 
 ```ruby
-Types::String >> Types::Integer
-# => Plumb::TypeError: cannot compose ... String (produced) is disjoint from Integer (accepted)
+Types::String  >> Types::Integer           # raises: String is not a subtype of Integer
+Types::Numeric >> Types::Integer           # raises: Numeric is broader than Integer
+Types::Integer[0..40] >> Types::Integer[2..10]   # raises: the left can emit values (0,1,11..40) the right rejects
+
+Types::Integer >> Types::Numeric           # ok: every Integer is a Numeric
+Types::Integer[2..10] >> Types::Integer[0..40]   # ok: 2..10 is within 0..40
 ```
 
-The check is **permissive**: it only raises when the chain is *provably* dead. Legitimate narrowing — where the left's output overlaps what the right accepts — is allowed:
+To **narrow** a value — where only some of what the left produces should pass — use `#[]` (or `#transform(...)[...]`). A refinement is a runtime-checked cast, built directly, and is *not* subject to the composition check:
 
 ```ruby
-Types::String >> Types::String[/@/]                                # ok: some strings match /@/
-Types::String.transform(Integer, &:to_i) >> Types::Integer[1..10]  # ok: some integers are in 1..10
-Types::Numeric >> Types::Integer                                   # ok: some numerics are integers
+Types::Integer[0..40][2..10]                       # narrow to 2..10 (runtime-checked)
+Types::String.transform(Integer, &:to_i)[1..10]    # convert, then bound the result
 ```
 
-Opaque steps (plain procs/lambdas, `#invoke`, `#generate`) and value conversions built with `#transform`/`#build` opt out of the check — their input/output types are unknown or intentionally changed, so there's nothing to clash. (`#static` ignores its input, so it never blocks a chain feeding *into* it, but it does declare the value it produces — so `Types::Static['foo'] >> Types::Integer` is flagged.)
+The check is permissive only where types are genuinely unknown: opaque steps (plain procs/lambdas, `#invoke`, `#generate`) and value-level transforms (`#transform`/`#build`) report `Any` on the relevant side and opt out. (`#static` ignores its input, so it never blocks a chain feeding *into* it, but it does declare the value it produces — so `Types::Static['foo'] >> Types::Integer` is flagged.)
 
-For `Types::Hash` schemas the check also catches two common pipeline mistakes — a required key the producer never emits, and a shared key whose value types can't agree:
+For `Types::Hash` schemas, subsumption is record subtyping — the producer must provide every key the consumer requires (as a required key, with a subtype value); it may add extra keys:
 
 ```ruby
-# The right side requires :age, but the left never produces it:
+# the consumer requires :age, but the producer never provides it:
 Types::Hash[name: Types::String] >> Types::Hash[name: Types::String, age: Types::Integer]
-# => Plumb::TypeError: the produced Hash never provides required key(s) age ...
+# => Plumb::TypeError
 
-# A shared required key whose value types are disjoint:
+# a shared key whose value type isn't a subtype:
 Types::Hash[name: Types::String] >> Types::Hash[name: Types::Integer]
-# => Plumb::TypeError: ... is disjoint from ...
+# => Plumb::TypeError
+
+# ok — producer is a subtype of consumer (wider, with subtype values):
+Types::Hash[name: Types::Integer, age: Types::Integer] >> Types::Hash[name: Types::Numeric]
 ```
 
-Optional keys, a wider left-hand hash (extra keys are fine), and [`#inclusive`](#typeshashinclusive) hashes are all allowed.
+[`#where`](#where) attribute constraints subtype the same way — a constrained type is a subtype of its base, and a constraint is a subtype of a looser one on the same attribute:
+
+```ruby
+Types::Array.where(size: 10) >> Types::Array.where(size: 8..100)     # ok: 10 is within 8..100
+Types::Array.where(size: 10..15) >> Types::Array.where(size: 11..14) # raises: 10..15 isn't within 11..14
+```
 
 #### Subtype checks: `#<=` and `Plumb::Subtyping`
 
@@ -1717,26 +1736,20 @@ This is how [Plumb::Types::Data](#typesdata) is implemented.
 
 #### Participating in subtype & composition checks
 
-The subtype (`#<=`) and [`#>>` composition](#composition-type-checks) checks are built on three hooks that every `Plumb::Composable` already implements with sensible defaults. A custom type participates **without changing any core library code** — it either relies on the defaults or overrides a hook. `Plumb::Subtyping` itself only knows the composition algebra (the top type `Types::Any`, union `#|`, intersection `#>>`, and conversion `#transform`); everything else is delegated to the type.
+The subtype (`#<=`) and [`#>>` composition](#composition-type-checks) checks are built on a single hook that every `Plumb::Composable` already implements with a sensible default — `#>>` is just `subtype?(produced, accepted)`, so there's nothing extra to implement for composition. A custom type participates **without changing any core library code**: it either relies on the default or overrides the hook. `Plumb::Subtyping` itself only knows the composition algebra (the top type `Types::Any`, union `#|`, intersection `#>>`, and conversion `#transform`); everything else is delegated to the type.
 
-The defaults lean on two methods your type already has:
+The default leans on two methods your type already has:
 
 - `#children` — the sub-types this type is built from, as an array. A type whose single child is a **raw Ruby matcher** (a Class, Range, Regexp or literal — as `Plumb::MatchClass` wraps) is treated as *atomic* and compared with Ruby semantics. A type whose children are themselves Plumb types (like `Array`, `Tuple`, `HashMap`) is treated as a **covariant container** — so exposing `#children` is all a custom container needs to compare covariantly.
 - `#==` — structural equality (provided by `Plumb::Composable`).
 
-##### The three hooks
-
-Override any of these for bespoke behaviour. **Recurse through `Plumb::Subtyping`, never through `#<=`** (which would loop back into the algebra).
+##### The hook
 
 | Hook | Returns | Used by | Default |
 | --- | --- | --- | --- |
-| `#subtype_of?(other)` | `Boolean` | `#<=`, `Plumb::Subtyping.subtype?` | reflexive · atomic · same-class covariant `#children` |
-| `#disjoint_from?(other)` | `Boolean` | `Plumb::Subtyping.disjoint?` (and so `#>>`) | atomic · same-class covariant `#children` · Ruby base-class comparison |
-| `#composition_error(consumer)` | `String` or `nil` | `#>>` | a message when `self` is disjoint from `consumer`, else `nil` |
+| `#subtype_of?(other)` | `Boolean` | `#<=`, `Plumb::Subtyping.subtype?`, and so `#>>` | reflexive · atomic · same-class covariant `#children` |
 
-- `#subtype_of?` answers "is every value I describe also described by `other`?". It's the leaf step of `subtype?`, reached after the algebra has been peeled away.
-- `#disjoint_from?` answers "do my values and `other`'s never overlap?". Be conservative — only return `true` when you can *prove* disjointness, since `#>>` raises on it.
-- `#composition_error` is the reason `self >> consumer` is a dead chain (or `nil`). Override it — calling `super` to keep the disjointness check — to add structural requirements; this is how `HashClass` flags a consumer that requires a key the producer never emits.
+`#subtype_of?` answers "is every value I describe also described by `other`?". It's the leaf step of `subtype?`, reached after the algebra (`Any`/`|`/`>>`/`#transform`) has been peeled away. Override it for bespoke behaviour — **recurse through `Plumb::Subtyping.subtype?`, never through `#<=`** (which would loop back into the algebra). `HashClass` overrides it for record (width + depth + optionality) subtyping.
 
 ```ruby
 # An "even integer" refinement that knows it is a subtype of Integer (and
