@@ -3,6 +3,7 @@
 require 'plumb/composable'
 require 'plumb/key'
 require 'plumb/static_class'
+require 'plumb/transform'
 require 'plumb/hash_map'
 require 'plumb/tagged_hash'
 
@@ -81,6 +82,11 @@ module Plumb
 
     def to_h = _schema
 
+    # A lenient version of this Hash: it accepts any Hash and emits one with only
+    # the valid schema fields, dropping invalid/missing/extra ones. As a type it
+    # declares `#input_type` as this schema and `#output_type` as this schema
+    # with every key relaxed to optional (any field may be dropped), so it
+    # participates in subtyping (see FilteredHash).
     def filtered
       op = lambda do |result|
         return result.invalid(errors: 'must be a Hash') unless result.value.is_a?(::Hash)
@@ -100,7 +106,7 @@ module Plumb
         end
         result.valid(output)
       end
-      Step.new(op, [_inspect, 'filtered'].join('.'))
+      FilteredHash.new(self, relaxed_to_optional, op)
     end
 
     def call(result)
@@ -154,6 +160,7 @@ module Plumb
     # (`Types::Hash`) is the "any Hash" top within the Hash family.
     def subtype_of?(other)
       return true if self == other
+      return hashmap_subtype?(other) if other.is_a?(HashMap)
       return false unless other.is_a?(HashClass)
 
       other._schema.all? do |other_key, other_field|
@@ -168,6 +175,29 @@ module Plumb
     end
 
     private
+
+    # A non-inclusive structured Hash emits exactly its declared keys, so it is
+    # a subtype of a `key_type => value_type` map when every key fits `key_type`
+    # and every value type is a subtype of `value_type`. An inclusive or empty
+    # (any-Hash) schema may carry arbitrary entries that don't fit the map.
+    def hashmap_subtype?(other)
+      return false if @inclusive || _schema.empty?
+
+      key_type, value_type = other.children
+      _schema.all? do |key, field|
+        Plumb::Subtyping.subtype?(Composable.wrap(key.to_key), key_type) &&
+          Plumb::Subtyping.subtype?(field, value_type)
+      end
+    end
+
+    # This schema with every key relaxed to optional (same value types). Used as
+    # the output type of #filtered, which may drop any field.
+    def relaxed_to_optional
+      relaxed = _schema.each_with_object({}) do |(key, type), h|
+        h[Key.new(key.to_key, optional: true)] = type
+      end
+      self.class.new(schema: relaxed)
+    end
 
     def _inspect
       %(Hash[#{_schema.map { |(k, v)| [k.inspect, v.inspect].join(': ') }.join(', ')}])
@@ -188,5 +218,22 @@ module Plumb
         memo[k] = v
       end
     end
+  end
+
+  # The typed node returned by HashClass#filtered. It is a Transform — so #>>
+  # treats it as a conversion (subtype by its output, accepted by its input) and
+  # it bypasses the strict composition check — declaring `input_type` as the
+  # filtered schema and `output_type` as that schema with all keys optional. But
+  # unlike a plain Transform it does NOT strict-validate its input: #call runs
+  # the lenient filter, which accepts any Hash and drops invalid/missing/extra
+  # fields.
+  class FilteredHash < Transform
+    # Naming derives #node_name when Composable is *included* (on Transform), so
+    # the subclass would otherwise inherit :transform.
+    def node_name = :filtered_hash
+
+    def call(result) = transform_proc.call(result)
+
+    private def _inspect = "#{input_type.inspect}.filtered"
   end
 end

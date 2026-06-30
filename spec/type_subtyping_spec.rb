@@ -206,6 +206,55 @@ RSpec.describe 'subtyping: Plumb::Subtyping.subtype? and #<=' do
         .to raise_error(Plumb::TypeError)
     end
 
+    it 'relates HashMap to the Hash family' do
+      # a HashMap is a Hash -> subtype of the any-Hash top
+      expect { STypes::Hash[STypes::Symbol, STypes::Integer] >> STypes::Hash }.not_to raise_error
+      # covariant in key/value
+      expect { STypes::Hash[STypes::Symbol, STypes::Integer] >> STypes::Hash[STypes::Symbol, STypes::Numeric] }
+        .not_to raise_error
+      expect { STypes::Hash[STypes::Symbol, STypes::Numeric] >> STypes::Hash[STypes::Symbol, STypes::Integer] }
+        .to raise_error(Plumb::TypeError)
+      # any-Hash is not a subtype of a specific map; a map doesn't guarantee a structured Hash's keys
+      expect { STypes::Hash >> STypes::Hash[STypes::Symbol, STypes::Integer] }.to raise_error(Plumb::TypeError)
+      expect { STypes::Hash[STypes::Symbol, STypes::Integer] >> STypes::Hash[name: STypes::Integer] }
+        .to raise_error(Plumb::TypeError)
+    end
+
+    it 'subtypes a structured Hash to a HashMap when its keys and values fit' do
+      # a non-inclusive {name: Integer} emits exactly {name: <int>}, a Symbol => Integer map
+      expect { STypes::Hash[name: STypes::Integer] >> STypes::Hash[STypes::Symbol, STypes::Integer] }
+        .not_to raise_error
+      expect { STypes::Hash[name: STypes::Integer] >> STypes::Hash[STypes::Symbol, STypes::Numeric] }
+        .not_to raise_error
+      # value type clash
+      expect { STypes::Hash[name: STypes::String] >> STypes::Hash[STypes::Symbol, STypes::Integer] }
+        .to raise_error(Plumb::TypeError)
+      # key type clash (symbol key vs String-keyed map)
+      expect { STypes::Hash[name: STypes::Integer] >> STypes::Hash[STypes::String, STypes::Integer] }
+        .to raise_error(Plumb::TypeError)
+      # inclusive may carry entries that don't fit
+      expect { STypes::Hash[name: STypes::Integer].inclusive >> STypes::Hash[STypes::Symbol, STypes::Integer] }
+        .to raise_error(Plumb::TypeError)
+    end
+
+    it 'types HashClass#filtered (input is the schema, output is it relaxed)' do
+      filtered = STypes::Hash[name: STypes::String, age: STypes::Integer].filtered
+      # produces a relaxed Hash -> subtype of any-Hash, but not of the strict schema
+      expect { filtered >> STypes::Hash }.not_to raise_error
+      expect { filtered >> STypes::Hash[name: STypes::Integer] }.to raise_error(Plumb::TypeError)
+      # accepts (consumer side) the schema it filters; a non-Hash producer clashes
+      expect { STypes::Hash[name: STypes::String, age: STypes::Integer] >> filtered }.not_to raise_error
+      expect { STypes::Integer >> filtered }.to raise_error(Plumb::TypeError)
+    end
+
+    it 'treats a FilteredHashMap like a HashMap for subtyping' do
+      filtered = STypes::Hash[STypes::Symbol, STypes::Integer].filtered
+      expect(filtered.node_name).to eq(:filtered_hash_map)
+      expect { filtered >> STypes::Hash }.not_to raise_error
+      expect { STypes::Hash[name: STypes::Integer] >> filtered }.not_to raise_error
+      expect { filtered >> STypes::Hash[STypes::Symbol, STypes::Numeric].filtered }.not_to raise_error
+    end
+
     it 'allows Hash schemas where the producer is a subtype of the consumer' do
       # same value type
       expect { STypes::Hash[name: STypes::String] >> STypes::Hash[name: STypes::String] }.not_to raise_error

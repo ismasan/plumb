@@ -140,6 +140,12 @@ module Plumb
       props.merge(left).merge(visit(node.output_type))
     end
 
+    # A filtered Hash may drop any field, so its schema is its relaxed
+    # (all-optional) output.
+    on(:filtered_hash) do |node, props|
+      props.merge(visit(node.output_type))
+    end
+
     # A "default" value is usually an "or" of expected_value | (undefined >> static_value)
     on(:or) do |node, props|
       left, right = node.children.map { |c| visit(c) }

@@ -1023,6 +1023,19 @@ RSpec.describe Plumb::Types do
         .to eq(name: 'Ismael')
     end
 
+    specify '#filtered is typed: input is the schema, output is it relaxed to optional' do
+      schema = Types::Hash[name: Types::String, age: Types::Integer]
+      filtered = schema.filtered
+      expect(filtered.node_name).to eq(:filtered_hash)
+      expect(filtered.input_type).to eq(schema)
+      expect(filtered.output_type).to eq(Types::Hash[name?: Types::String, age?: Types::Integer])
+      expect(filtered.to_json_schema).to eq(
+        'type' => 'object',
+        'properties' => { 'name' => { 'type' => 'string' }, 'age' => { 'type' => 'integer' } },
+        'required' => []
+      )
+    end
+
     specify '#defer' do
       linked_list = Types::Hash[
         value: Types::Any,
