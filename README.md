@@ -534,11 +534,11 @@ This helper is shorthand for the following composition:
 Types::Static[value] >> step
 ```
 
-This means that validations and coercions in the original step are still applied to the static value.
+Because the static value flows through the original step's type, an inconsistent value is caught at build time by the [composition check](#composition-type-checks):
 
 ```ruby
-ten = Types::Integer[100..].static(10)
-ten.parse # => Plumb::ParseError "Must be within 100..."
+Types::Integer[100..].static(10) # raises Plumb::TypeError (10 is not within 100..)
+type = Types::Integer[100..].static(150) # ok
 ```
 
 So, normally you'd only use this attached to primitive types without further processing (but your use case may vary).
@@ -576,7 +576,7 @@ type.metadata[:description] # 'A long text'
 `#metadata` combines keys from type compositions.
 
 ```ruby
-type = Types::String.metadata(description: 'A long text') >> Types::String.match(/@/).metadata(note: 'An email address')
+type = Types::String[/@/].metadata(note: 'An email address') >> Types::String.metadata(description: 'A long text')
 type.metadata[:description] # 'A long text'
 type.metadata[:note] # 'An email address'
 ```
