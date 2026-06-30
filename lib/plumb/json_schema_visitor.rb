@@ -112,13 +112,11 @@ module Plumb
       visit_name :hash, node._schema, props
     end
 
+    # A refinement (`And`): both sides describe the SAME value. Build from the
+    # input side and fold in the output side when it shares the input's type (a
+    # constraint such as `pattern`/`minimum`/`format`), or when the input is
+    # untyped. Both sides are validators over one value, so both are visited.
     on(:and) do |node, props|
-      # A JSON Schema describes the *inputs* a type accepts, so the schema is
-      # built from the input side (left == #input_type). The output side (right)
-      # is only folded in when it refines the same value — ie. it shares the
-      # input's type (a constraint such as `pattern`/`minimum`/`format`) or the
-      # input is untyped. A genuine type change (transform/build, eg.
-      # `String >> Integer` or `String.split`) describes an output and is dropped.
       left, right = node.children.map { |c| visit(c) }
       if !left.key?(TYPE) || left[TYPE] == right[TYPE]
         type = left[TYPE] || right[TYPE]
@@ -127,6 +125,19 @@ module Plumb
       else
         props.merge(left)
       end
+    end
+
+    # A conversion (`Transform`) produces a genuinely different value. A JSON
+    # Schema describes accepted *inputs*, so it is built from the input side and
+    # the output is dropped — and crucially NOT visited, so a transform whose
+    # output type has no schema handler (eg. a custom class via #build) is fine.
+    # Only when the input is untyped (eg. `Any.transform(::Integer)`) do we fall
+    # back to the output type, since that is then all we know.
+    on(:transform) do |node, props|
+      left = visit(node.input_type)
+      return props.merge(left) if left.key?(TYPE)
+
+      props.merge(left).merge(visit(node.output_type))
     end
 
     # A "default" value is usually an "or" of expected_value | (undefined >> static_value)
@@ -418,5 +429,6 @@ module Plumb
 
       result.merge(REQUIRED => required.to_a)
     end
+
   end
 end

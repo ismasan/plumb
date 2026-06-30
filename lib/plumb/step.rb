@@ -20,6 +20,11 @@ module Plumb
       @callable.call(result)
     end
 
+    # A raw Step wraps an arbitrary callable, so its input and output types are
+    # unknown — Any (top). This opts it out of #>> composition type-checks.
+    def input_type = Types::Any
+    def output_type = Types::Any
+
     private
 
     def _inspect = "Step[#{@inspect}]"

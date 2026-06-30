@@ -71,7 +71,7 @@ module Plumb
     case node.node_name
     when :or
       node.children.flat_map { |child| resolve_base_types(child) }
-    when :and
+    when :and, :transform
       resolve_base_types(node.output_type)
     when :match
       matcher = node.children.first
@@ -103,6 +103,7 @@ require 'plumb/composable'
 require 'plumb/any_class'
 require 'plumb/step'
 require 'plumb/and'
+require 'plumb/transform'
 require 'plumb/pipeline'
 require 'plumb/static_class'
 require 'plumb/value_class'
@@ -115,6 +116,7 @@ require 'plumb/stream_class'
 require 'plumb/hash_class'
 require 'plumb/interface_class'
 require 'plumb/attributes'
+require 'plumb/subtyping'
 require 'plumb/types'
 require 'plumb/json_schema_visitor'
 require 'plumb/schema'

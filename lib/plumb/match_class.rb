@@ -18,6 +18,12 @@ module Plumb
       freeze
     end
 
+    # A Class/Module matcher is a nominal type gate, so it defines the input
+    # type (itself). Any other matcher (regex/range/literal/proc) accepts any
+    # input and merely narrows it, so it reports Any — opting out of #>>
+    # composition type-checks (eg. so `String >> Match(/@/)` is allowed).
+    def input_type = @matcher.is_a?(::Module) ? self : Types::Any
+
     def call(result)
       @matcher === result.value ? result : result.invalid(errors: @error)
     end

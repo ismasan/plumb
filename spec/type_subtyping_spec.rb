@@ -1,0 +1,215 @@
+# frozen_string_literal: true
+
+require 'spec_helper'
+
+RSpec.describe 'subtyping: Plumb::Subtyping.subtype? and #<=' do
+  module STypes
+    include Plumb::Types
+  end
+
+  describe '#<= over atomic types' do
+    it 'follows the Ruby class hierarchy' do
+      expect(STypes::Integer <= STypes::Numeric).to be(true)
+      expect(STypes::Numeric <= STypes::Integer).to be(false)
+      expect(STypes::String <= STypes::Integer).to be(false) # disjoint
+    end
+
+    it 'treats Any as the top type' do
+      expect(STypes::Integer <= STypes::Any).to be(true)
+      expect(STypes::Any <= STypes::Integer).to be(false)
+      expect(STypes::Any <= STypes::Any).to be(true)
+    end
+
+    it 'compares against raw Ruby classes (both are types)' do
+      expect(STypes::String <= ::String).to be(true)
+      expect(STypes::Integer <= ::Integer).to be(true)
+      expect(STypes::Integer <= ::Numeric).to be(true)
+      expect(STypes::String <= ::Integer).to be(false)
+    end
+  end
+
+  describe '#<= over refinements (intersection)' do
+    it 'treats a longer And chain as a subset of the bare type' do
+      expect(STypes::String[/@/] <= STypes::String).to be(true)
+      expect(STypes::String <= STypes::String[/@/]).to be(false)
+    end
+
+    it 'is reflexive on equal refinements' do
+      expect(STypes::String[/@/] <= STypes::String[/@/]).to be(true)
+    end
+  end
+
+  describe '#<= over ranges and literals' do
+    it 'covers ranges' do
+      expect(STypes::Integer[1..10] <= STypes::Integer[0..20]).to be(true)
+      expect(STypes::Integer[0..20] <= STypes::Integer[1..10]).to be(false)
+    end
+
+    it 'places literals within ranges and classes' do
+      expect(STypes::Any[5] <= STypes::Integer[1..10]).to be(true)
+      expect(STypes::Any[5] <= STypes::Integer).to be(true)
+      expect(STypes::Any[50] <= STypes::Integer[1..10]).to be(false)
+    end
+  end
+
+  describe '#<= over unions' do
+    it 'requires every left member to be covered (left union)' do
+      expect((STypes::Integer | STypes::Any[Float]) <= STypes::Numeric).to be(true)
+      expect((STypes::Integer | STypes::String) <= STypes::Numeric).to be(false)
+    end
+
+    it 'requires some right member to cover (right union)' do
+      expect(STypes::Integer <= (STypes::String | STypes::Integer)).to be(true)
+      expect(STypes::Any[Float] <= (STypes::String | STypes::Integer)).to be(false)
+    end
+  end
+
+  describe '#<= over containers' do
+    it 'is covariant in Array elements' do
+      expect(STypes::Array[STypes::Integer] <= STypes::Array[STypes::Numeric]).to be(true)
+      expect(STypes::Array[STypes::Numeric] <= STypes::Array[STypes::Integer]).to be(false)
+    end
+
+    it 'is covariant per Tuple position, with matching arity' do
+      expect(STypes::Tuple[STypes::Integer, STypes::String] <= STypes::Tuple[STypes::Numeric, STypes::String]).to be(true)
+      expect(STypes::Tuple[STypes::Integer] <= STypes::Tuple[STypes::Integer, STypes::String]).to be(false)
+    end
+
+    it 'is covariant over HashMap key/value types' do
+      expect(STypes::Hash[STypes::String, STypes::Integer] <= STypes::Hash[STypes::String, STypes::Numeric]).to be(true)
+      expect(STypes::Hash[STypes::String, STypes::Numeric] <= STypes::Hash[STypes::String, STypes::Integer]).to be(false)
+    end
+
+    it 'does width + depth subtyping over Hash schemas' do
+      big = STypes::Hash[name: STypes::String, age: STypes::Integer]
+      small = STypes::Hash[name: STypes::String]
+      expect(big <= small).to be(true)  # big has an extra key (width)
+      expect(small <= big).to be(false) # small is missing required age
+    end
+
+    it 'does depth subtyping over shared Hash keys' do
+      narrow = STypes::Hash[age: STypes::Integer]
+      wide = STypes::Hash[age: STypes::Numeric]
+      expect(narrow <= wide).to be(true)
+      expect(wide <= narrow).to be(false)
+    end
+
+    it 'treats Types::Hash (empty schema) as any-Hash within the family' do
+      expect(STypes::Hash[name: STypes::String] <= STypes::Hash).to be(true)
+      expect(STypes::Hash <= STypes::Hash[name: STypes::String]).to be(false)
+    end
+  end
+
+  describe '#<= over conversions (Transform)' do
+    it 'identifies a Transform by the value it produces (output_type)' do
+      string_to_int = STypes::String.transform(::Integer, &:to_i)
+      expect(string_to_int <= STypes::Integer).to be(true)
+      expect(string_to_int <= STypes::String).to be(false)
+    end
+  end
+
+  describe '#<= equality fallback for regexes' do
+    it 'compares regex sources rather than identity' do
+      expect(STypes::Any[/foo/] <= STypes::Any[/foo/]).to be(true)
+      expect(STypes::Any[/foo/] <= STypes::Any[/bar/]).to be(false)
+    end
+  end
+
+  describe 'derived comparison operators' do
+    it 'derives >=, <, >' do
+      expect(STypes::Integer >= STypes::Numeric).to be(false)
+      expect(STypes::Numeric >= STypes::Integer).to be(true)
+      expect(STypes::Integer < STypes::Numeric).to be(true)
+      expect(STypes::Integer < STypes::Integer).to be(false)
+      expect(STypes::Numeric > STypes::Integer).to be(true)
+    end
+  end
+
+  describe 'composition type-checking (#>>)' do
+    it 'raises when what the left produces is disjoint from what the right accepts' do
+      expect { STypes::String >> STypes::Integer }.to raise_error(Plumb::TypeError)
+      expect { STypes::String[/nope/] >> STypes::String['yes'] }.to raise_error(Plumb::TypeError)
+      expect { STypes::String.transform(::Integer, &:to_i) >> STypes::String }.to raise_error(Plumb::TypeError)
+      expect { STypes::Array[STypes::Integer] >> STypes::Array[STypes::String] }.to raise_error(Plumb::TypeError)
+    end
+
+    it 'allows narrowing and overlapping chains (disjointness, not strict subset)' do
+      # legitimate narrowing-after-produce: the value sets overlap
+      expect { STypes::String >> STypes::String[/d/] }.not_to raise_error
+      expect { STypes::String.transform(::Integer, &:to_i) >> STypes::Integer[1..10] }.not_to raise_error
+      expect { STypes::Integer >> STypes::Numeric }.not_to raise_error
+      # Numeric >> Integer is a live narrowing (some numerics are integers), so
+      # it is allowed — disjointness, not strict subset.
+      expect { STypes::Numeric >> STypes::Integer }.not_to raise_error
+    end
+
+    it 'raises on Hash schemas that clash on a required shared key' do
+      expect { STypes::Hash[name: STypes::String] >> STypes::Hash[name: STypes::Integer] }
+        .to raise_error(Plumb::TypeError)
+      # a clashing required key makes it dead even alongside other keys
+      expect { STypes::Hash[name: STypes::String] >> STypes::Hash[name: STypes::Integer, age: STypes::Integer] }
+        .to raise_error(Plumb::TypeError)
+    end
+
+    it 'raises when the produced Hash lacks a key the consumer requires (width)' do
+      # left produces {name:}, right requires :age -> right always rejects
+      expect { STypes::Hash[name: STypes::String] >> STypes::Hash[name: STypes::String, age: STypes::Integer] }
+        .to raise_error(Plumb::TypeError, /age/)
+      # no shared key at all: right requires :age, left never emits it
+      expect { STypes::Hash[name: STypes::String] >> STypes::Hash[age: STypes::Integer] }
+        .to raise_error(Plumb::TypeError)
+    end
+
+    it 'allows Hash schemas where the producer supplies what the consumer needs' do
+      # same value type
+      expect { STypes::Hash[name: STypes::String] >> STypes::Hash[name: STypes::String] }.not_to raise_error
+      # overlapping value types (Integer <= Numeric)
+      expect { STypes::Hash[name: STypes::Integer] >> STypes::Hash[name: STypes::Numeric] }.not_to raise_error
+      # left is wider (extra keys are fine)
+      expect { STypes::Hash[name: STypes::String, age: STypes::Integer] >> STypes::Hash[name: STypes::String] }
+        .not_to raise_error
+      # the key the producer lacks is optional for the consumer
+      expect { STypes::Hash[name: STypes::String] >> STypes::Hash[name: STypes::String, age?: STypes::Integer] }
+        .not_to raise_error
+      # the clashing key is optional in both -> a value can omit it
+      expect { STypes::Hash[name?: STypes::String] >> STypes::Hash[name?: STypes::Integer] }.not_to raise_error
+      # an inclusive producer may pass extra keys through
+      expect { STypes::Hash[name: STypes::String].inclusive >> STypes::Hash[name: STypes::String, age: STypes::Integer] }
+        .not_to raise_error
+    end
+
+    it 'does not check value-converting steps (transform/build bypass the check)' do
+      expect { STypes::String.transform(::Integer, &:to_i) }.not_to raise_error
+      expect { STypes::String.build(::Integer) { |v| Integer(v) } }.not_to raise_error
+    end
+
+    it 'does not check narrowing constraints built via #[] / #value / #check' do
+      expect { STypes::String[/@/] }.not_to raise_error
+      expect { STypes::Any.value(5) }.not_to raise_error
+      expect { STypes::Integer.check('big') { |v| v > 100 } }.not_to raise_error
+    end
+
+    it 'does not check opaque steps (generate, invoke, plain procs)' do
+      expect { STypes::Integer.generate { 1 } }.not_to raise_error
+      expect { STypes::String.invoke(:upcase) }.not_to raise_error
+      expect { STypes::Integer >> ->(r) { r.valid(r.value.to_s) } }.not_to raise_error
+    end
+
+    it 'checks a static step against what it produces (its value)' do
+      expect { STypes::Static['foo'.freeze] >> STypes::Integer }.to raise_error(Plumb::TypeError)
+      expect { STypes::Integer.static('nope') }.to raise_error(Plumb::TypeError)
+      expect { STypes::Integer.static(10) }.not_to raise_error
+      # static ignores its input, so it never blocks a chain feeding into it
+      expect { STypes::Undefined >> STypes::Static['x'.freeze] }.not_to raise_error
+    end
+  end
+
+  describe 'Plumb::Subtyping.subtype?' do
+    it 'normalizes raw classes/values on either side' do
+      expect(Plumb::Subtyping.subtype?(STypes::Integer, ::Numeric)).to be(true)
+      expect(Plumb::Subtyping.subtype?(::Integer, STypes::Numeric)).to be(true)
+      expect(Plumb::Subtyping.subtype?(5, STypes::Integer)).to be(true)
+      expect(Plumb::Subtyping.subtype?(5, STypes::String)).to be(false)
+    end
+  end
+end

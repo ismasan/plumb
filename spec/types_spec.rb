@@ -201,9 +201,11 @@ RSpec.describe Plumb::Types do
     end
 
     it 'exposes the two sides of a chain (A >> B)' do
-      chain = Types::String >> Types::Integer
-      expect(chain.input_type).to eq(Types::String)
-      expect(chain.output_type).to eq(Types::Integer)
+      # A >> B requires B to accept A's output; Integer's output is a subtype of
+      # Numeric's input, so the chain is well-typed.
+      chain = Types::Integer >> Types::Numeric
+      expect(chain.input_type).to eq(Types::Integer)
+      expect(chain.output_type).to eq(Types::Numeric)
     end
 
     it 'is shallow for longer chains: input_type is everything but the last step' do
@@ -212,7 +214,7 @@ RSpec.describe Plumb::Types do
       # because the chain only accepts values that satisfy every step up to the last.
       a = Types::String
       b = Types::String[/\d+/]
-      c = Types::Integer
+      c = Types::String[/\A\d+\z/]
       chain = a >> b >> c
       expect(chain.input_type).to eq(a >> b)
       expect(chain.output_type).to eq(c)
@@ -235,13 +237,13 @@ RSpec.describe Plumb::Types do
     end
 
     it 'combines the input/output types of each branch of a union of chains' do
-      # ((A >> B) | (C >> D)).input_type  == (A | C)
-      # ((A >> B) | (C >> D)).output_type == (B | D)
-      left = Types::String >> Types::Integer
-      right = Types::Integer >> Types::String
+      # (A.transform(B) | C.transform(D)).input_type  == (A | C)
+      # (A.transform(B) | C.transform(D)).output_type == (B | D)
+      left = Types::String.transform(::Integer, &:to_i)
+      right = Types::Integer.transform(::String, &:to_s)
       union = left | right
       expect(union.input_type).to eq(Types::String | Types::Integer)
-      expect(union.output_type).to eq(Types::Integer | Types::String)
+      expect(union.output_type).to eq(Plumb::Composable.wrap(::Integer) | Plumb::Composable.wrap(::String))
     end
   end
 
@@ -256,7 +258,7 @@ RSpec.describe Plumb::Types do
 
   describe '#metadata as a getter' do
     specify 'AND (>>) chains' do
-      type = Types::String >> Types::Integer.metadata(foo: 'bar')
+      type = Types::Integer >> Types::Numeric.metadata(foo: 'bar')
       expect(type.metadata).to eq({ foo: 'bar' })
     end
 
@@ -266,10 +268,10 @@ RSpec.describe Plumb::Types do
     end
 
     specify 'AND (>>) with OR (|)' do
-      type = Types::String >> (Types::Integer | Types::Boolean).metadata(foo: 'bar')
+      type = Types::Integer >> (Types::Integer | Types::Boolean).metadata(foo: 'bar')
       expect(type.metadata).to eq({ foo: 'bar' })
 
-      type = Types::String | (Types::Integer >> Types::Boolean).metadata(foo: 'bar')
+      type = Types::String | (Types::Integer >> Types::Numeric).metadata(foo: 'bar')
       expect(type.metadata).to eq({ foo: 'bar' })
     end
   end
@@ -397,11 +399,11 @@ RSpec.describe Plumb::Types do
       expect(type.parse).to eq(10)
     end
 
-    it 'no longer checks type consistency at composition time (runtime validation still applies)' do
-      # The composition-time type check was removed; an inconsistent static value
-      # is now caught at runtime by the downstream type instead of raising on build.
-      type = Types::Integer.static('nope')
-      assert_result(type.resolve(10), 'nope', false)
+    it 'checks type consistency at composition time' do
+      # The static value flows into the downstream type, so an inconsistent
+      # value (a String where an Integer is expected) is a dead chain.
+      expect { Types::Integer.static('nope') }.to raise_error(Plumb::TypeError)
+      expect { Types::Integer.static(10) }.not_to raise_error
     end
 
     it 'does not check type for Types::Any' do

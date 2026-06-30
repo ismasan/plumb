@@ -14,6 +14,10 @@ module Plumb
   end
 
   ParseError = Class.new(::TypeError)
+  # Raised by Composable#>> when chaining two steps whose types are provably
+  # incompatible (the left's #output_type is not a subtype of the right's
+  # #input_type).
+  TypeError = Class.new(::TypeError)
   Undefined = UndefinedClass.new.freeze
 
   BLANK_STRING = ''
@@ -102,6 +106,100 @@ module Plumb
     def ==(other)
       other.is_a?(self.class) && other.respond_to?(:children) && other.children == children
     end
+
+    # Subtype/subset operator. `a <= b` is true when every value described by
+    # `self` is also described by `other` (`other` may be a raw Ruby class or
+    # value; it is normalized). Delegates to the generic Plumb::Subtyping engine.
+    # @param other [Composable, Class, Object]
+    # @return [Boolean]
+    def <=(other)
+      Plumb::Subtyping.subtype?(self, other)
+    end
+
+    # `self` is a supertype of `other`: every value of `other` is a value of
+    # `self`.
+    def >=(other)
+      Plumb::Subtyping.subtype?(Composable.wrap(other), self)
+    end
+
+    # Strict subtype / supertype.
+    def <(other) = (self <= other) && !(self >= other)
+    def >(other) = (self >= other) && !(self <= other)
+
+    # Leaf hook for Plumb::Subtyping.subtype?, called once the algebra (And/Or/
+    # Transform/top) has been peeled away. It must NOT delegate back to #<= (that
+    # would recurse); it recurses only through Plumb::Subtyping.subtype?.
+    #
+    # Default behaviour:
+    #   1. reflexive structural equality;
+    #   2. atomic leaves (a single raw matcher/value) compared via Ruby
+    #      semantics (Plumb::Subtyping.atomic_subtype?);
+    #   3. covariant containers — same class with pairwise-subtype children,
+    #      which covers Array/Tuple/HashMap/Stream and any custom container that
+    #      exposes #children, for free.
+    #
+    # Override for bespoke leaf relations (see HashClass width/depth subtyping).
+    # @param other [Composable]
+    # @return [Boolean]
+    def subtype_of?(other)
+      return true if self == other
+
+      if Plumb::Subtyping.atomic?(self) && Plumb::Subtyping.atomic?(other)
+        return Plumb::Subtyping.atomic_subtype?(children.first, other.children.first)
+      end
+
+      return false unless other.instance_of?(self.class)
+      return false if children.empty? || children.size != other.children.size
+
+      children.zip(other.children).all? { |c, o| Plumb::Subtyping.subtype?(c, o) }
+    end
+
+    # Leaf hook for Plumb::Subtyping.disjoint?, called once the algebra (And/Or/
+    # Transform/top) has been peeled away. Returns true only when the value sets
+    # of `self` and `other` are provably disjoint. It recurses only through
+    # Plumb::Subtyping.disjoint? (never back through the algebra).
+    #
+    # Default behaviour:
+    #   1. atomic leaves (a single raw matcher/value) compared via Ruby
+    #      semantics (Plumb::Subtyping.atomic_disjoint?);
+    #   2. same-class covariant containers — disjoint if any element position is,
+    #      covering Array/Tuple/HashMap/Stream and custom containers for free;
+    #   3. otherwise the underlying Ruby base classes (so eg. String vs Array are
+    #      disjoint). Unknown -> not provably disjoint (false).
+    #
+    # Override for bespoke leaf relations (see HashClass schema disjointness).
+    # @param other [Composable]
+    # @return [Boolean]
+    def disjoint_from?(other)
+      if Plumb::Subtyping.atomic?(self) && Plumb::Subtyping.atomic?(other)
+        return Plumb::Subtyping.atomic_disjoint?(children.first, other.children.first)
+      end
+
+      if other.instance_of?(self.class) && !children.empty? && children.size == other.children.size
+        return children.zip(other.children).any? { |a, b| Plumb::Subtyping.disjoint?(a, b) }
+      end
+
+      self_classes = Plumb.resolve_base_types(self)
+      other_classes = Plumb.resolve_base_types(other)
+      return false if self_classes.empty? || other_classes.empty?
+
+      self_classes.all? { |sc| other_classes.all? { |oc| Plumb::Subtyping.class_disjoint?(sc, oc) } }
+    end
+
+    # Directional composition compatibility, used by `#>>` (see
+    # Plumb::Subtyping.check_composable!). Returns the reason — a human-readable
+    # string — that values produced by `self` could never be accepted by
+    # `consumer` (making `self >> consumer` a dead chain), or nil when they can
+    # compose. By default the only obstruction is value-set disjointness; types
+    # with structural requirements override this (see HashClass, which also
+    # checks that it provides every key the consumer requires).
+    # @param consumer [Composable]
+    # @return [String, nil]
+    def composition_error(consumer)
+      return nil unless Plumb::Subtyping.disjoint?(self, consumer)
+
+      "#{inspect} (produced) is disjoint from #{consumer.inspect} (accepted)"
+    end
   end
 
   #  Composable mixes in composition methods to classes.
@@ -173,10 +271,22 @@ module Plumb
     # @example
     #   Step1 >> Step2 >> Step3
     #
+    # Raises Plumb::TypeError when the two steps form a dead composition — ie.
+    # what `self` produces is provably disjoint from what `other` accepts, so no
+    # value could ever flow through (eg. `String >> Integer`, or
+    # `String[/nope/] >> String["yes"]`). Legitimate narrowing is allowed
+    # (`String >> String[/d/]`, `transform(Integer) >> Integer[1..10]`), since
+    # those value sets overlap. The check is permissive: opaque/untyped steps
+    # (plain procs, value-level transforms, constraints) opt out. Use
+    # #transform/#build for an intentional value conversion.
+    #
     # @param other [Composable]
+    # @raise [Plumb::TypeError] when the types are provably disjoint.
     # @return [And]
     def >>(other)
-      And.new(self, Composable.wrap(other))
+      other = Composable.wrap(other)
+      Plumb::Subtyping.check_composable!(self, other)
+      And.new(self, other)
     end
 
     # Chain two composable objects together as a disjunction ("or").
@@ -256,7 +366,7 @@ module Plumb
     # @param value [Object]
     # @rerurn [And]
     def value(val)
-      self >> ValueClass.new(val)
+      constrain(ValueClass.new(val))
     end
 
     # Alias of `#[]`
@@ -267,10 +377,21 @@ module Plumb
     # @param args [Array<Object>]
     # @return [And]
     def match(*args)
-      self >> MatchClass.new(*args)
+      constrain(MatchClass.new(*args))
     end
 
     def [](val) = match(val)
+
+    # Narrow `self` with a constraint. A constraint refines rather than
+    # sequences a new type, so this bypasses the #>> composition type-check
+    # (eg. `Generic[::URI::HTTP]` narrows a URI to an HTTP URI). When `self` is
+    # the Any top type the constraint stands alone (`Any[::String]` == the
+    # String matcher), preserving the collapsing that `AnyClass#>>` provides.
+    # @param constraint [Composable]
+    # @return [Composable]
+    private def constrain(constraint)
+      is_a?(AnyClass) ? constraint : And.new(self, constraint)
+    end
 
     #  Support #as_node.
     class Node
@@ -298,6 +419,11 @@ module Plumb
       end
 
       def call(result) = type.call(result)
+
+      # A Node is a transparent wrapper (it only re-labels its node_name): it
+      # delegates type-flow to the wrapped type.
+      def input_type = type.input_type
+      def output_type = type.output_type
 
       # Two nodes are equal when they wrap the same type with the same
       # node_name and args. The default Composable#== compares #children,
@@ -391,10 +517,10 @@ module Plumb
       transform_step(cns, block || ->(value) { cns.send(factory_method, value) })
     end
 
-    # Build an And that validates the input (self), applies a value-level
+    # Build a Transform that validates the input (self), applies a value-level
     # callable, and declares `target_type` as the (validated) output type.
     private def transform_step(target_type, callable)
-      And.new(self, Composable.wrap(target_type), ->(result) { result.valid(callable.call(result.value)) })
+      Transform.new(self, Composable.wrap(target_type), ->(result) { result.valid(callable.call(result.value)) })
     end
 
     # Always return a static value, regardless of the input.

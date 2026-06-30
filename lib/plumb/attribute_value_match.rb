@@ -17,6 +17,10 @@ module Plumb
 
     def metadata = type.metadata
 
+    # An attribute-value constraint narrows by value, so it accepts any input
+    # (opts out of #>> composition type-checks).
+    def input_type = Types::Any
+
     def call(result)
       return result if value === result.value.public_send(attr_name)
 

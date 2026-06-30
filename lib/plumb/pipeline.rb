@@ -17,6 +17,11 @@ module Plumb
       def call(result)
         @block.call(@step, result)
       end
+
+      # Opaque middleware wrapper (its wrapped step may be a plain proc), so its
+      # input/output types are unknown — Any (top). Opts out of #>> checks.
+      def input_type = Types::Any
+      def output_type = Types::Any
     end
 
     class << self
@@ -49,6 +54,12 @@ module Plumb
     def call(result)
       @type.call(result)
     end
+
+    # A Pipeline is a runtime flow container that may wrap arbitrary opaque
+    # steps, so its input/output types are unknown — Any (top). This opts it
+    # out of #>> composition type-checks.
+    def input_type = Types::Any
+    def output_type = Types::Any
 
     def step(callable = nil, &block)
       callable ||= block

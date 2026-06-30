@@ -28,6 +28,9 @@ module Plumb
              when And
                left, right = visit_children(type)
                And.new(left, right)
+             when Transform
+               left, right = visit_children(type)
+               Transform.new(left, right, type.transform_proc)
              when Or
                left, right = visit_children(type)
                Or.new(left, right)

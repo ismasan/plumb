@@ -296,10 +296,17 @@ RSpec.describe Plumb::JSONSchemaVisitor do
     expect(described_class.visit(type)).to eq('type' => 'string')
   end
 
-  specify 'Types::String >> Types::Integer' do
+  specify 'Types::String.transform(::Integer)' do
     # The schema describes the input type (String), not the output (Integer).
-    type = Types::String >> Types::Integer
+    type = Types::String.transform(::Integer, &:to_i)
     expect(described_class.visit(type)).to eq('type' => 'string')
+  end
+
+  specify '#build with a custom output class describes the input and does not visit the output' do
+    klass = Data.define(:name)
+    type = Types::String[/^Is/].build(klass)
+    # The output (a custom class with no schema handler) must NOT be visited.
+    expect(described_class.visit(type)).to eq('type' => 'string', 'pattern' => '^Is')
   end
 
   specify 'Types::String | Types::Integer' do

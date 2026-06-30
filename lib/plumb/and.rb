@@ -8,10 +8,14 @@ module Plumb
 
     attr_reader :children, :input_type, :output_type
 
-    def initialize(left, right, transform = Plumb::NOOP)
+    # A refinement/sequencing join, built by `Composable#>>`. Both sides
+    # validate the *same* value (no conversion), so an `And` is the
+    # intersection of its children: the longer the chain, the narrower the
+    # type. A value-converting step is a `Transform` instead (see
+    # lib/plumb/transform.rb).
+    def initialize(left, right)
       @input_type = left
       @output_type = right
-      @transform = transform
       @children = [left, right].freeze
       freeze
     end
@@ -21,7 +25,7 @@ module Plumb
     end
 
     def call(result)
-      result.map(@input_type).map(@transform).map(@output_type)
+      result.map(@input_type).map(@output_type)
     end
   end
 end
