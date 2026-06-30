@@ -219,6 +219,13 @@ module Plumb
     def input_type = self
     def output_type = self
 
+    # Whether running this step twice in a row is the same as running it once,
+    # i.e. it validates without changing the value. Lets `#>>` drop a redundant
+    # `X >> X`. Default false; only types that never transform the value opt in
+    # (see MatchClass). A transform must NOT be idempotent — `X >> X` would
+    # apply it twice.
+    def idempotent? = false
+
     # Chain two composable objects together.
     # A.K.A "and" or "sequence"
     # @example
@@ -238,6 +245,11 @@ module Plumb
     # @return [And]
     def >>(other)
       other = Composable.wrap(other)
+      # `X >> X` is redundant for a value-preserving validator (eg. Types::String):
+      # validating the same value twice is the same as once. Gated on #idempotent?
+      # so transforms — where `X >> X` would apply the change twice — never collapse.
+      return self if idempotent? && self == other
+
       Plumb::Subtyping.check_composable!(self, other)
       And.new(self, other)
     end

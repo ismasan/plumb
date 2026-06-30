@@ -145,6 +145,17 @@ RSpec.describe 'subtyping: Plumb::Subtyping.subtype? and #<=' do
       expect { STypes::String[/d/] >> STypes::String }.not_to raise_error
     end
 
+    it 'collapses a redundant `X >> X` for value validators (idempotent)' do
+      expect(STypes::String >> STypes::String).to eq(STypes::String)
+      expect(STypes::Integer >> STypes::Integer).to eq(STypes::Integer)
+      # equal matcher built separately still collapses
+      expect(STypes::String >> STypes::Any[::String]).to eq(STypes::String)
+      # but a transform is NOT idempotent — `X >> X` must apply it twice
+      plus5 = STypes::Any.transform(::Integer) { |v| v + 5 }
+      expect(plus5 >> plus5).to be_a(Plumb::And)
+      expect((plus5 >> plus5).resolve(10).value).to eq(20)
+    end
+
     it 'narrowing is done with #[] (a runtime-checked cast), not #>>' do
       # the same narrowings that #>> rejects are fine as constraints:
       expect { STypes::Integer[0..40][2..10] }.not_to raise_error

@@ -24,6 +24,10 @@ module Plumb
     # composition type-checks (eg. so `String >> Match(/@/)` is allowed).
     def input_type = @matcher.is_a?(::Module) ? self : Types::Any
 
+    # A matcher validates without changing the value, so `Match >> Match` (of
+    # the same matcher) is redundant and `#>>` collapses it.
+    def idempotent? = true
+
     def call(result)
       @matcher === result.value ? result : result.invalid(errors: @error)
     end
