@@ -171,6 +171,14 @@ RSpec.describe 'subtyping: Plumb::Subtyping.subtype? and #<=' do
       expect { STypes::String >> STypes::Not[String] }.to raise_error(Plumb::TypeError)
     end
 
+    it 'cancels double negation: Not(Not(X)) == X' do
+      expect(STypes::String.not.not).to eq(STypes::String)
+      expect(STypes::Not[STypes::String.not]).to eq(STypes::String)
+      expect(STypes::String.not.not.not).to eq(STypes::String.not) # odd count stays negated
+      # so feeding a String into Not[String.not] (== "can be a String") is valid
+      expect { STypes::String >> STypes::Not[STypes::String.not] }.not_to raise_error
+    end
+
     it 'raises on Hash schemas whose shared key value types are not subtypes' do
       expect { STypes::Hash[name: STypes::String] >> STypes::Hash[name: STypes::Integer] }
         .to raise_error(Plumb::TypeError)
