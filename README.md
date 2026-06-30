@@ -952,9 +952,11 @@ User.parse(name: 'Joe', age: 'nope') # => { name: 'Joe' }
 
 This type turns a hash's keys into symbols by calling `#to_sym` on them, and returning a new Hash.
 
+`SymbolizedHash` is a `Symbol => Any` map, so it can't be chained into a structured Hash with `#>>` — a map doesn't *guarantee* the schema's keys, so the [composition check](#composition-type-checks) rejects it. Declare the step as a conversion with [`#transform`](#transform) instead:
+
 ```ruby
-# Make sure to symbolize keys first
-type = Types::SymbolizedHash > Types::Hash[name: String, age: Integer]
+# Symbolize keys, then coerce into a typed Hash.
+type = Types::SymbolizedHash.transform(Types::Hash[name: String, age: Integer], &:to_h)
 type.parse('name' => 'Joe', 'age' => 20) # {name: 'Joe', age: 20}
 ```
 
