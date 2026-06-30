@@ -164,6 +164,13 @@ RSpec.describe 'subtyping: Plumb::Subtyping.subtype? and #<=' do
       expect { STypes::Array >> STypes::Array.where(size: 10) }.to raise_error(Plumb::TypeError)
     end
 
+    it 'treats Not[raw class] the same as Not[wrapped type]' do
+      # a raw Ruby class and its wrapped form must build the same Not node
+      expect(STypes::Not[String]).to eq(STypes::Not[STypes::String])
+      expect { STypes::String >> STypes::Not[STypes::String] }.to raise_error(Plumb::TypeError)
+      expect { STypes::String >> STypes::Not[String] }.to raise_error(Plumb::TypeError)
+    end
+
     it 'raises on Hash schemas whose shared key value types are not subtypes' do
       expect { STypes::Hash[name: STypes::String] >> STypes::Hash[name: STypes::Integer] }
         .to raise_error(Plumb::TypeError)

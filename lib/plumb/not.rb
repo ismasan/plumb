@@ -11,7 +11,10 @@ module Plumb
     def initialize(step = nil, errors: nil)
       @step = Composable.wrap(step)
       @errors = errors || "must not be #{step.inspect}"
-      @children = [step].freeze
+      # Store the *wrapped* step (as every container does), so `Not[String]` and
+      # `Not[Types::String]` are the same node — and so the subtype engine isn't
+      # fooled into treating a raw-class child as an atomic leaf.
+      @children = [@step].freeze
       freeze
     end
 
