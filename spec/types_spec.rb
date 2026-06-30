@@ -1023,6 +1023,17 @@ RSpec.describe Plumb::Types do
         .to eq(name: 'Ismael')
     end
 
+    specify '#symbolized symbolizes keys, then validates against the schema' do
+      schema = Types::Hash[name: Types::String, age: Types::Integer]
+      sym = schema.symbolized
+      expect(sym.input_type).to eq(Types::SymbolizedHash)
+      expect(sym.output_type).to eq(schema)
+      expect(sym.parse('name' => 'Joe', 'age' => 20)).to eq(name: 'Joe', age: 20)
+      expect(Types::Hash[user: Types::Hash[name: Types::String]].symbolized.parse('user' => { 'name' => 'Jane' }))
+        .to eq(user: { name: 'Jane' })
+      assert_result(sym.resolve('name' => 'Joe', 'age' => 'nope'), { name: 'Joe', age: 'nope' }, false)
+    end
+
     specify '#filtered is typed: input is the schema, output is it relaxed to optional' do
       schema = Types::Hash[name: Types::String, age: Types::Integer]
       filtered = schema.filtered

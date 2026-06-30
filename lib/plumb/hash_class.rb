@@ -109,6 +109,15 @@ module Plumb
       FilteredHash.new(self, relaxed_to_optional, op)
     end
 
+    # A version of this Hash that first symbolizes string keys (via
+    # Types::SymbolizedHash) and then validates against this schema. Use it
+    # instead of `Types::SymbolizedHash >> self`, which the strict composition
+    # check rejects — a Symbol-keyed map doesn't guarantee this schema's keys, so
+    # this declares the step as a #transform (conversion) instead.
+    def symbolized
+      Types::SymbolizedHash.transform(self)
+    end
+
     def call(result)
       return result.invalid(errors: NOT_A_HASH) unless result.value.is_a?(::Hash)
       return result unless _schema.any?
