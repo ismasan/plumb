@@ -373,6 +373,22 @@ StringToInt = Types::String.transform(Integer, &:to_i)
 StringToInteger.parse('10') # => 10
 ```
 
+As a shorthand, `#transform` also accepts a single Ruby conversion symbol — `:to_s`, `:to_sym`, `:to_i`, `:to_f`, `:to_r`, `:to_c`, `:to_a`, `:to_h`, `:to_proc` — and infers the output type from it:
+
+```ruby
+Types::String.transform(:to_i)  # transform to Integer, via #to_i
+Types::Integer.transform(:to_s) # transform to String
+# equivalent to
+Types::String.transform(Integer, &:to_i)
+```
+
+When the input's base Ruby type is known, it validates that the type actually responds to the method, so mistakes fail at build time:
+
+```ruby
+Types::Integer.transform(:to_sym) # raises Plumb::TypeError (Integer has no #to_sym)
+Types::Any.transform(:to_i)       # ok — unknown input type, no check
+```
+
 #### `#invoke`
 
 `#invoke` builds a Step that will invoke one or more methods on the value.
