@@ -43,6 +43,21 @@ module Tests
 end
 
 RSpec.describe Plumb::Pipeline do
+  specify '#step(output_type, &block) adds a Transform step' do
+    user = Data.define(:name)
+    pipeline = Types::Any.pipeline do |pl|
+      pl.step Types::Hash[name: Types::String]
+      pl.step(user) { |r| r.valid(user.new(r.value[:name])) }
+    end
+
+    expect(pipeline.output_type).to eq(Plumb::Composable.wrap(user))
+    result = pipeline.resolve({ name: 'Joe' })
+    expect(result.valid?).to be(true)
+    expect(result.value).to eq(user.new('Joe'))
+    # the declared output type lets the chain keep type-checking from `user`
+    expect { pipeline.output_type >> Types::String }.to raise_error(Plumb::TypeError)
+  end
+
   specify '#around' do
     list = []
     counts = 0
@@ -80,8 +95,10 @@ RSpec.describe Plumb::Pipeline do
           currency: Types::String.options(%w[USD EUR]).default('USD')
         )
 
+        # Optional: a required key here would be a dead chain under strict steps
+        # (step 1 produces {q, currency}, which can't provide a required :country).
         pl.step(Tests::CustomPipeline.new do |pl2|
-          pl2.input(country: String)
+          pl2.input(country?: String)
         end)
       end
 

@@ -55,13 +55,31 @@ module Plumb
       @type.call(result)
     end
 
-    # A Pipeline is a runtime flow container that may wrap arbitrary opaque
-    # steps, so its input/output types are unknown — Any (top). This opts it
-    # out of #>> composition type-checks.
-    def input_type = Types::Any
-    def output_type = Types::Any
+    # A Pipeline is a transparent wrapper around its accumulated composition, so
+    # it delegates its type-flow to that inner type. When the inner steps are
+    # opaque (plain procs/around-wrapped steps) those resolve to Any and the
+    # Pipeline still opts out of #>> composition type-checks; when they carry
+    # real types, the Pipeline participates accurately.
+    def input_type = @type.input_type
+    def output_type = @type.output_type
 
+    # Add a step. Two forms:
+    #
+    #   pl.step(type_or_callable)        # strict #>> chain: type's output must
+    #                                    # be acceptable to the next step
+    #   pl.step(output_type) { |r| ... } # a Transform: validates the current
+    #                                    # output, runs the block, and declares
+    #                                    # `output_type` as the produced type
+    #
+    # The block form builds `Transform(@type, output_type, block)`, so it
+    # bypasses the strict composition check (a transform is a trusted, declared
+    # conversion) and the rest of the pipeline chains from `output_type`.
     def step(callable = nil, &block)
+      if !callable.nil? && block
+        @type = Transform.new(@type, Composable.wrap(callable), block)
+        return self
+      end
+
       callable ||= block
       unless is_a_step?(callable)
         raise ArgumentError,

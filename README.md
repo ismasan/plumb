@@ -1477,6 +1477,25 @@ result = CreateUser.resolve(name: 'Joe', age: 40)
 # result.value => User
 ```
 
+##### Steps are type-checked
+
+Each `#step` is chained with the same strict [`#>>` composition check](#composition-type-checks): a step whose input can't accept the previous step's output raises `Plumb::TypeError` when the pipeline is defined, not at runtime. Opaque steps — plain procs and `#call(Result) => Result` objects — report `Any`, so they opt out (that's why the procs and `ValidateUser.new` above chain freely).
+
+To add a step that **transforms** the value into a new type, pass the output type followed by a block. This builds a [`#transform`](#transform) — a trusted, declared conversion — so it bypasses the check, and the rest of the pipeline keeps type-checking from the new type:
+
+```ruby
+User = Data.define(:name)
+
+pipeline = Types::Any.pipeline do |pl|
+  pl.step Types::Hash[name: Types::String]
+  # output type + a block that produces it (the block takes and returns a Result)
+  pl.step(User) { |result| result.valid(User.new(result.value[:name])) }
+end
+
+pipeline.output_type == Plumb::Composable.wrap(User) # true
+pipeline.parse(name: 'Joe') # => #<data User name="Joe">
+```
+
 Pipelines are Plumb steps, so they can be composed further.
 
 ```ruby
