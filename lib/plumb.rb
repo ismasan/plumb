@@ -86,7 +86,7 @@ module Plumb
       else [matcher.class]
       end
     when :array, :tuple then [::Array]
-    when :hash, :hash_map, :tagged_hash then [::Hash]
+    when :hash, :hash_map, :tagged_hash, :filtered_hash, :filtered_hash_map then [::Hash]
     when :stream then [::Enumerator]
     when :static
       value = node.children.first

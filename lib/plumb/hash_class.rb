@@ -254,6 +254,11 @@ module Plumb
     # the subclass would otherwise inherit :transform.
     def node_name = :filtered_hash
 
+    # A filtered Hash is lenient: it accepts ANY hash and drops invalid/missing/
+    # extra fields (it never rejects a Hash), so as a #>> consumer it accepts any
+    # hash-like value. (Its #input_type still declares the schema it relaxes.)
+    def accepted_type = Types::Interface[:each_pair]
+
     def call(result) = transform_proc.call(result)
 
     private def _inspect = "#{input_type.inspect}.filtered"

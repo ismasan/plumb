@@ -59,6 +59,12 @@ module Plumb
       # visitors still dispatch to their :filtered_hash_map handlers.
       def node_name = :filtered_hash_map
 
+      # A filtered map is lenient: it accepts ANY hash and drops non-matching
+      # entries (it never rejects a Hash), so as a #>> consumer it accepts any
+      # hash-like value — not itself. Without this, `Hash >> Hash[K, V].filtered`
+      # would be flagged as an illegal narrowing.
+      def accepted_type = Types::Interface[:each_pair]
+
       def call(result)
         result.invalid(errors: 'must be a Hash') unless result.value.is_a?(::Hash)
 
