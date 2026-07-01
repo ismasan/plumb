@@ -254,6 +254,22 @@ module Plumb
       # node name for visitors
       def node_name = :data
 
+      # A Data type joins Composable via `extend`, so it doesn't pick up the
+      # Equality hooks the subtype engine calls. Structural subtyping delegates
+      # to the underlying schema (a HashClass): a Data type is a subtype of
+      # `other` exactly when its schema is. `other` may be another Data type
+      # (compared schema-to-schema), a HashClass, or any Plumb type. Recurse via
+      # Plumb::Subtyping.subtype?, never #<= (which on a Class is Ruby's own
+      # class-hierarchy operator).
+      def subtype_of?(other)
+        other = other._schema if other.respond_to?(:node_name) && other.node_name == :data
+        Plumb::Subtyping.subtype?(_schema, other)
+      end
+
+      # Mirror hook (see Composable#supertype_of?). A Data type claims a subtype
+      # only where its schema does — which by default is nothing.
+      def supertype_of?(other) = _schema.supertype_of?(other)
+
       # attribute(:friend) { attribute(:name, String) }
       # attribute(:friend, MyStruct) { attribute(:name, String) }
       # attribute(:name, String)

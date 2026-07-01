@@ -46,14 +46,8 @@ module Plumb
 
       # `a` decides via its #subtype_of? leaf; if it can't (it doesn't know about
       # `b`), `b` may claim `a` via #supertype_of? — the mirror hook for
-      # supertype-driven relations like Interface duck-typing. Both are guarded:
-      # some Composable participants join via `extend` (Data classes) and never
-      # mix in the Equality hooks, so a missing hook means "can't decide" (fall
-      # through to no), not a crash. Reflexive/identity cases are handled above,
-      # so a bare Data type still compares equal to itself.
-      return true if a.respond_to?(:subtype_of?) && a.subtype_of?(b)
-
-      b.respond_to?(:supertype_of?) && b.supertype_of?(a)
+      # supertype-driven relations like Interface duck-typing.
+      a.subtype_of?(b) || b.supertype_of?(a)
     end
 
     # A leaf type whose single child is a raw (non-Composable) Ruby matcher or

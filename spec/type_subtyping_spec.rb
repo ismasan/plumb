@@ -147,6 +147,28 @@ RSpec.describe 'subtyping: Plumb::Subtyping.subtype? and #<=' do
     end
   end
 
+  describe '#<= over Data types (delegates to the schema)' do
+    # NB: use Plumb::Subtyping.subtype? (or #>>), not `big <= small` — on a Data
+    # *class* `<=` is Ruby's own Module#<= (class-hierarchy), not Plumb subtyping.
+    it 'compares Data types by their schema (width + depth)' do
+      big = STypes::Data[name: STypes::String, age: STypes::Integer]
+      small = STypes::Data[name: STypes::String]
+      expect(Plumb::Subtyping.subtype?(big, small)).to be(true)  # width: has small's keys
+      expect(Plumb::Subtyping.subtype?(small, big)).to be(false)
+      expect(Plumb::Subtyping.subtype?(big, big)).to be(true)    # reflexive
+      # against a structurally-compatible Hash type, and a disjoint one
+      expect(Plumb::Subtyping.subtype?(big, STypes::Hash[name: STypes::String])).to be(true)
+      expect(Plumb::Subtyping.subtype?(big, STypes::Integer)).to be(false)
+    end
+
+    it 'composes Data types with #>> by schema subtyping' do
+      big = STypes::Data[name: STypes::String, age: STypes::Integer]
+      small = STypes::Data[name: STypes::String]
+      expect { big >> small }.not_to raise_error
+      expect { small >> big }.to raise_error(Plumb::TypeError)
+    end
+  end
+
   describe '#accepted_type (what a #>> consumer accepts)' do
     it 'defaults to the input type; refinements accept their output constraint' do
       money = Class.new
