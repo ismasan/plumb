@@ -32,7 +32,7 @@ module Plumb
 
     # A refinement matcher carries its base; any user metadata lives on the base
     # (the matcher itself is type-bound info we don't collect), so follow it.
-    on(:match) do |node, props|
+    on(:constraint) do |node, props|
       node.base ? visit(node.base, props) : props
     end
 

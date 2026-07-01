@@ -221,7 +221,7 @@ RSpec.describe Plumb::Types do
 
     it 'preserves the constrained input type of a transform' do
       # Types::String[/\d+/].transform(Integer, &:to_i)
-      #   == ((Types::String >> Match(/\d+/)) >> Integer)
+      #   == ((Types::String >> Constraint(/\d+/)) >> Integer)
       # so it only accepts digit strings, not any String.
       constrained = Types::String[/\d+/]
       type = constrained.transform(::Integer, &:to_i)

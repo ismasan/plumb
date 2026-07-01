@@ -231,7 +231,7 @@ RSpec.describe Plumb::JSONSchemaVisitor do
     expect(described_class.visit(type)).to eq('not' => { 'type' => 'number' })
   end
 
-  specify 'Types::Match with RegExp' do
+  specify 'Types::Constraint with RegExp' do
     type = Types::String[/[a-z]+/]
     expect(described_class.visit(type)).to eq('type' => 'string', 'pattern' => '[a-z]+')
   end
@@ -241,7 +241,7 @@ RSpec.describe Plumb::JSONSchemaVisitor do
     expect(described_class.visit(type)).to eq('type' => 'string', 'pattern' => '[a-z]+')
   end
 
-  specify 'Types::Match with Range' do
+  specify 'Types::Constraint with Range' do
     type = Types::Integer[10..100]
     expect(described_class.visit(type)).to eq('type' => 'integer', 'minimum' => 10, 'maximum' => 100)
 
@@ -376,7 +376,7 @@ RSpec.describe Plumb::JSONSchemaVisitor do
   end
 
   describe ':options policy with a non-Array argument' do
-    specify 'a Range delegates to a Match constraint (minimum/maximum)' do
+    specify 'a Range delegates to a Constraint (minimum/maximum)' do
       type = Types::Integer.options(10..20)
       expect(described_class.call(type, root: false)).to eq(
         'type' => 'integer',

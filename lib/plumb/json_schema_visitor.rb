@@ -215,7 +215,7 @@ module Plumb
 
     on(:options_policy) do |node, props|
       # Only an Array argument maps to `enum`. Any other argument was delegated
-      # to a Match constraint by the policy, so its schema (eg. `minimum`/
+      # to a Constraint by the policy, so its schema (eg. `minimum`/
       # `maximum` for a Range) has already been built by visiting the children.
       node.arg.is_a?(::Array) ? props.merge(ENUM => node.arg) : props
     end
@@ -256,7 +256,7 @@ module Plumb
       props
     end
 
-    on(:match) do |node, props|
+    on(:constraint) do |node, props|
       # A refinement matcher describes its base first (eg. `Integer[1..10]` gets
       # `type: integer` from the base Integer), then folds in the matcher's own
       # constraint (`minimum`/`maximum`/`pattern`/`const`).

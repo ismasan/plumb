@@ -3,16 +3,16 @@
 require 'plumb/composable'
 
 module Plumb
-  class MatchClass
+  class Constraint
     include Composable
 
     attr_reader :children, :base, :matcher
 
     # @param matcher [#===] the value/type/predicate to match against
     # @param base [Composable, nil] the type this matcher *refines*. `nil` for a
-    #   root type matcher (eg. `Types::Integer` is `Match(::Integer)`); set for a
+    #   root type matcher (eg. `Types::Integer` is `Constraint(::Integer)`); set for a
     #   refinement built via `#[]`/`#match`/`#check` (eg. `Integer[1..10]` is
-    #   `Match(1..10, base: Types::Integer)`). Carrying the base lets a matcher
+    #   `Constraint(1..10, base: Types::Integer)`). Carrying the base lets a matcher
     #   answer subtyping locally — it is a subtype of whatever its base is — so no
     #   `And` wrapper (or transparency flag) is needed to preserve the base type.
     def initialize(matcher = Undefined, base: nil, error: nil, label: nil)
@@ -23,7 +23,7 @@ module Plumb
       @matcher = matcher
       @base = base
       @error = error.nil? ? build_error(matcher) : (error % matcher)
-      @label = matcher.is_a?(Class) ? matcher.inspect : "Match(#{label || @matcher.inspect})"
+      @label = matcher.is_a?(Class) ? matcher.inspect : "Constraint(#{label || @matcher.inspect})"
       @children = [matcher].freeze
       freeze
     end
@@ -49,7 +49,7 @@ module Plumb
     def subtype_of?(other)
       return true if self == other
 
-      if other.is_a?(MatchClass)
+      if other.is_a?(Constraint)
         within_base = other.base.nil? || Plumb::Subtyping.subtype?(self, other.base)
         within_base && within_matcher?(other.matcher)
       elsif base
@@ -65,7 +65,7 @@ module Plumb
     # tells us nothing).
     protected def within_matcher?(m)
       Plumb::Subtyping.atomic_subtype?(matcher, m) ||
-        (base.is_a?(MatchClass) && base.within_matcher?(m))
+        (base.is_a?(Constraint) && base.within_matcher?(m))
     end
 
     # Two matchers are equal when they match the same thing over the same base.

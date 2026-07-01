@@ -211,7 +211,7 @@ module Plumb
       elsif callable.respond_to?(:call)
         Step.new(callable)
       else
-        MatchClass.new(callable)
+        Constraint.new(callable)
       end
     end
 
@@ -243,7 +243,7 @@ module Plumb
     # Whether running this step twice in a row is the same as running it once,
     # i.e. it validates without changing the value. Lets `#>>` drop a redundant
     # `X >> X`. Default false; only types that never transform the value opt in
-    # (see MatchClass). A transform must NOT be idempotent — `X >> X` would
+    # (see Constraint). A transform must NOT be idempotent — `X >> X` would
     # apply it twice.
     def idempotent? = false
 
@@ -317,11 +317,11 @@ module Plumb
     #
     # @param errors [String] error message to use when validation fails
     # @param block [Proc] a block that will be applied to the value
-    # @return [MatchClass]
+    # @return [Constraint]
     def check(errors = 'did not pass the check', &block)
       # A refinement, not a sequence: build the matcher over `self` as its base so
       # the checked value keeps `self`'s type (`User.check { … }` is still a User).
-      MatchClass.new(block, base: self, error: errors, label: errors)
+      Constraint.new(block, base: self, error: errors, label: errors)
     end
 
     # Return a new Step with added metadata, or build step metadata if no argument is provided.
@@ -379,14 +379,14 @@ module Plumb
     #   email = Types::String['@']
     #
     # @param args [Array<Object>]
-    # @return [MatchClass]
+    # @return [Constraint]
     def match(*args)
-      # A refinement returns a base-carrying MatchClass directly (not an
+      # A refinement returns a base-carrying Constraint directly (not an
       # `And(self, matcher)`): the matcher records `self` as its base, so it
       # subtypes and composes as "a `self` narrowed by the matcher". When `self`
       # is the Any top the matcher stands alone (`Any[String]` == the String
       # matcher), preserving the old collapsing behaviour.
-      MatchClass.new(*args, base: (is_a?(AnyClass) ? nil : self))
+      Constraint.new(*args, base: (is_a?(AnyClass) ? nil : self))
     end
 
     def [](val) = match(val)

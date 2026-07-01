@@ -11,7 +11,7 @@ module Plumb
     #
     # `subtype?(a, b)` answers "is every value described by `a` also described
     # by `b`?", i.e. `a <= b`. Both `a` and `b` are normalized to Composables
-    # (raw Ruby classes/values become a MatchClass), so `Types::String` and
+    # (raw Ruby classes/values become a Constraint), so `Types::String` and
     # `String` compare the same way.
     #
     # This engine knows ONLY the composition algebra — refinement (And), union
@@ -51,7 +51,7 @@ module Plumb
     end
 
     # A leaf type whose single child is a raw (non-Composable) Ruby matcher or
-    # value — eg. MatchClass, ValueClass, StaticClass. These bottom out in
+    # value — eg. Constraint, ValueClass, StaticClass. These bottom out in
     # #atomic_subtype? rather than recursing.
     def atomic?(type)
       type.respond_to?(:children) &&

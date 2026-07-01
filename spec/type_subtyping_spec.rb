@@ -7,12 +7,12 @@ RSpec.describe 'subtyping: Plumb::Subtyping.subtype? and #<=' do
     include Plumb::Types
   end
 
-  describe 'refinements are base-carrying MatchClass leaves' do
-    it 'builds a MatchClass with a base (not an And) for #[] and #check' do
+  describe 'refinements are base-carrying Constraint leaves' do
+    it 'builds a Constraint with a base (not an And) for #[] and #check' do
       refined = STypes::Integer[1..10]
-      expect(refined).to be_a(Plumb::MatchClass)
+      expect(refined).to be_a(Plumb::Constraint)
       expect(refined.base).to eq(STypes::Integer)
-      expect(STypes::Integer.check('pos') { |v| v.positive? }).to be_a(Plumb::MatchClass)
+      expect(STypes::Integer.check('pos') { |v| v.positive? }).to be_a(Plumb::Constraint)
       # Any collapses: a matcher over the top type stands alone (no base)
       expect(STypes::Any[::String]).to eq(STypes::String)
     end

@@ -73,7 +73,7 @@ module Plumb
       node.children.flat_map { |child| resolve_base_types(child) }
     when :and, :transform
       resolve_base_types(node.output_type)
-    when :match
+    when :constraint
       # A refinement matcher carries its base type — resolve that (eg.
       # `Integer[1..10]` => [Integer], `User.check {}` => the User's base types).
       return resolve_base_types(node.base) if node.base
@@ -111,7 +111,7 @@ require 'plumb/transform'
 require 'plumb/pipeline'
 require 'plumb/static_class'
 require 'plumb/value_class'
-require 'plumb/match_class'
+require 'plumb/constraint'
 require 'plumb/not'
 require 'plumb/or'
 require 'plumb/tuple_class'

@@ -33,7 +33,7 @@ module Plumb
     end
 
     def filtered
-      MatchClass.new(::Array) >> Step.new(nil, "Array[#{element_type}].filtered") do |result|
+      Constraint.new(::Array) >> Step.new(nil, "Array[#{element_type}].filtered") do |result|
         arr = result.value.each.with_object([]) do |e, memo|
           r = element_type.resolve(e)
           memo << r.value if r.valid?
