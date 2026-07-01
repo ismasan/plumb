@@ -58,6 +58,24 @@ RSpec.describe Plumb::Pipeline do
     expect { pipeline.output_type >> Types::String }.to raise_error(Plumb::TypeError)
   end
 
+  specify '#step is non-strict; #step! type-checks the composition' do
+    # #step allows a narrowing — a later step may narrow what an earlier one produced
+    expect do
+      Types::Any.pipeline do |pl|
+        pl.step Types::Hash                       # any hash
+        pl.step Types::Hash[name: Types::String]  # narrower — fine, non-strict
+      end
+    end.not_to raise_error
+
+    # #step! enforces the strict #>> check at build time
+    expect do
+      Types::Any.pipeline do |pl|
+        pl.step! Types::String
+        pl.step! Types::Integer                   # a String can never feed an Integer
+      end
+    end.to raise_error(Plumb::TypeError)
+  end
+
   specify '#around' do
     list = []
     counts = 0
@@ -95,8 +113,8 @@ RSpec.describe Plumb::Pipeline do
           currency: Types::String.options(%w[USD EUR]).default('USD')
         )
 
-        # Optional: a required key here would be a dead chain under strict steps
-        # (step 1 produces {q, currency}, which can't provide a required :country).
+        # #step is non-strict, so this composes even though step 1's output
+        # ({q, currency}) doesn't provide :country — a later step may narrow.
         pl.step(Tests::CustomPipeline.new do |pl2|
           pl2.input(country?: String)
         end)

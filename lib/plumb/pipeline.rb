@@ -63,18 +63,40 @@ module Plumb
     def input_type = @type.input_type
     def output_type = @type.output_type
 
-    # Add a step. Two forms:
+    # Add a step. A pipeline is a sequence of validators/coercions that
+    # progressively narrows its data, so steps are **non-strict** by default:
+    # `#step` chains with `#/`, skipping the composition type-check (a later step
+    # may legitimately narrow what an earlier one produced). Use `#step!` when you
+    # want the strict `#>>` check — a build-time error if a step could never
+    # accept the previous step's output.
     #
-    #   pl.step(type_or_callable)        # strict #>> chain: type's output must
-    #                                    # be acceptable to the next step
+    #   pl.step(type_or_callable)        # non-strict chain (via #/)
+    #   pl.step!(type_or_callable)       # strict #>> chain (type-checked)
     #   pl.step(output_type) { |r| ... } # a Transform: validates the current
     #                                    # output, runs the block, and declares
     #                                    # `output_type` as the produced type
-    #
-    # The block form builds `Transform(@type, output_type, block)`, so it
-    # bypasses the strict composition check (a transform is a trusted, declared
-    # conversion) and the rest of the pipeline chains from `output_type`.
     def step(callable = nil, &block)
+      add_step(callable, strict: false, &block)
+    end
+
+    # Strict counterpart of `#step`: chains with `#>>`, so it raises
+    # `Plumb::TypeError` at build time if the step can't accept what the pipeline
+    # currently produces. See #step.
+    def step!(callable = nil, &block)
+      add_step(callable, strict: true, &block)
+    end
+
+    def around(callable = nil, &block)
+      @around_blocks << (callable || block)
+      self
+    end
+
+    private
+
+    # Shared body for #step / #step!. The `output_type` + block form always
+    # builds a Transform (a declared conversion) regardless of `strict`; the
+    # plain form chains with `#>>` when strict, `#/` otherwise.
+    def add_step(callable, strict:, &block)
       if !callable.nil? && block
         @type = Transform.new(@type, Composable.wrap(callable), block)
         return self
@@ -88,16 +110,9 @@ module Plumb
 
       callable = prepare_step(callable)
       callable = @around_blocks.reverse.reduce(callable) { |cl, bl| AroundStep.new(cl, bl) } if @around_blocks.any?
-      @type >>= callable
+      @type = strict ? (@type >> callable) : (@type / callable)
       self
     end
-
-    def around(callable = nil, &block)
-      @around_blocks << (callable || block)
-      self
-    end
-
-    private
 
     def configure(&setup)
       case setup.arity

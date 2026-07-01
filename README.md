@@ -1477,11 +1477,16 @@ result = CreateUser.resolve(name: 'Joe', age: 40)
 # result.value => User
 ```
 
-##### Steps are type-checked
+##### `#step` (non-strict) and `#step!` (strict)
 
-Each `#step` is chained with the same strict [`#>>` composition check](#composition-type-checks): a step whose input can't accept the previous step's output raises `Plumb::TypeError` when the pipeline is defined, not at runtime. Opaque steps — plain procs and `#call(Result) => Result` objects — report `Any`, so they opt out (that's why the procs and `ValidateUser.new` above chain freely).
+A pipeline is a sequence of validators/coercions that progressively narrows its data, so **`#step` is non-strict**: it chains with [`#/`](#composition-type-checks), skipping the composition check (a later step may legitimately narrow what an earlier one produced). Use **`#step!`** for the strict [`#>>` check](#composition-type-checks) — a build-time `Plumb::TypeError` if a step could never accept the previous step's output.
 
-To add a step that **transforms** the value into a new type, pass the output type followed by a block. This builds a [`#transform`](#transform) — a trusted, declared conversion — so it bypasses the check, and the rest of the pipeline keeps type-checking from the new type:
+```ruby
+pl.step  Types::Hash                      # non-strict: a later step may narrow this
+pl.step! Types::Hash[name: Types::String] # strict: raises if it can't accept the prior output
+```
+
+To add a step that **transforms** the value into a new type, pass the output type followed by a block. This builds a [`#transform`](#transform) — a trusted, declared conversion — and the rest of the pipeline chains from the new type:
 
 ```ruby
 User = Data.define(:name)
