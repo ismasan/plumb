@@ -147,6 +147,7 @@ module Plumb
     Symbol = Any[::Symbol]
     Numeric = Any[::Numeric]
     Integer = Any[::Integer]
+    Float = Any[::Float]
     Decimal = Any[BigDecimal]
     Static = StaticClass.new
     Value = ValueClass.new
