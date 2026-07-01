@@ -229,12 +229,31 @@ module Plumb
     def input_type = self
     def output_type = self
 
+    # The type this step accepts as the consumer of a `left >> self` chain — the
+    # values its #call processes without rejecting outright. Defaults to what it
+    # takes as input (its resolved #input_type): right for plain matchers and for
+    # conversion/consumer types (Transform, Stream, Pipeline — they accept their
+    # declared input, so they need no override). Two kinds of type override it:
+    #   - a refinement (And): its #input_type is only the base (left) type and
+    #     would drop the constraint it adds, so it accepts its resolved *output*;
+    #   - a Hash: it relaxes each field to what that field accepts.
+    # Consulted by Plumb::Subtyping when checking `#>>`.
+    def accepted_type = Plumb::Subtyping.resolved_input(self)
+
     # Whether running this step twice in a row is the same as running it once,
     # i.e. it validates without changing the value. Lets `#>>` drop a redundant
     # `X >> X`. Default false; only types that never transform the value opt in
     # (see MatchClass). A transform must NOT be idempotent — `X >> X` would
     # apply it twice.
     def idempotent? = false
+
+    # Whether this step preserves its input's type — it asserts something about
+    # the value without narrowing it to a new nominal type (a pure predicate).
+    # A refinement `And` whose right side is transparent reports the *left*'s
+    # output type, so the base type survives the assertion: `User.check { … }`
+    # produces a User, not the opaque predicate. Default false; MatchClass opts
+    # in for proc matchers (the `#check` mechanism).
+    def transparent? = false
 
     # Chain two composable objects together.
     # A.K.A "and" or "sequence"

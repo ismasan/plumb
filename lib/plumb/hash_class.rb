@@ -183,6 +183,19 @@ module Plumb
       end
     end
 
+    # As a consumer, this Hash accepts each field relaxed to what *that* field
+    # accepts — so a converting field (eg. `price: Integer.build(Money)`) accepts
+    # an Integer, not the Money it produces. Only field types change; keys and
+    # optionality are preserved, so ordinary record subtyping is unchanged. This
+    # is what lets `Hash[price: Integer] >> Hash[price: Integer.build(Money)]`
+    # type-check (the front-end/back-end coercion pattern).
+    def accepted_type
+      relaxed = _schema.each_with_object({}) do |(key, field), h|
+        h[key] = Plumb::Subtyping.accepted_type(field)
+      end
+      self.class.new(schema: relaxed, inclusive: @inclusive)
+    end
+
     private
 
     # A non-inclusive structured Hash emits exactly its declared keys, so it is

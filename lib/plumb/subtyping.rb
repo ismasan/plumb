@@ -45,9 +45,15 @@ module Plumb
       return a.children.any? { |aa| subtype?(aa, b) } if a.is_a?(And) # (a1 ∧ a2) <= b
 
       # `a` decides via its #subtype_of? leaf; if it can't (it doesn't know about
-      # `b`), give `b` a chance to claim `a` as a subtype via #supertype_of? —
-      # the mirror hook for supertype-driven relations like Interface duck-typing.
-      a.subtype_of?(b) || b.supertype_of?(a)
+      # `b`), `b` may claim `a` via #supertype_of? — the mirror hook for
+      # supertype-driven relations like Interface duck-typing. Both are guarded:
+      # some Composable participants join via `extend` (Data classes) and never
+      # mix in the Equality hooks, so a missing hook means "can't decide" (fall
+      # through to no), not a crash. Reflexive/identity cases are handled above,
+      # so a bare Data type still compares equal to itself.
+      return true if a.respond_to?(:subtype_of?) && a.subtype_of?(b)
+
+      b.respond_to?(:supertype_of?) && b.supertype_of?(a)
     end
 
     # A leaf type whose single child is a raw (non-Composable) Ruby matcher or
@@ -141,13 +147,13 @@ module Plumb
             'narrow with #[] if this is intentional'
     end
 
-    # What `type` will accept without rejecting it outright. A conversion
-    # (Transform) consumes its declared input; any other type (a validator or
-    # refinement) accepts the values it would itself pass — its own constraint
-    # (its resolved output). Transparent wrappers are peeled first.
+    # What `type` will accept without rejecting it outright, when it's the
+    # consumer of a `left >> type` chain. The type itself answers via its
+    # #accepted_type hook (default: its resolved input; refinements and Hash
+    # override it — see Composable#accepted_type). Transparent wrappers are
+    # peeled first so the wrapped type answers.
     def accepted_type(type)
-      type = unwrap_transparent(type)
-      type.is_a?(Transform) ? resolved_input(type) : resolved_output(type)
+      unwrap_transparent(type).accepted_type
     end
 
     # Peel transparent wrappers (Policy/Metadata/Node) down to the wrapped type.

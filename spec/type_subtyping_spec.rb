@@ -147,6 +147,19 @@ RSpec.describe 'subtyping: Plumb::Subtyping.subtype? and #<=' do
     end
   end
 
+  describe '#accepted_type (what a #>> consumer accepts)' do
+    it 'defaults to the input type; refinements accept their output constraint' do
+      money = Class.new
+      # conversion/consumer types accept their declared input (via the default)
+      expect(STypes::Integer.build(money).accepted_type).to eq(STypes::Integer)
+      expect(STypes::Stream[STypes::Integer].accepted_type).to eq(STypes::Interface[:each])
+      # a plain matcher: input == output
+      expect(STypes::Integer.accepted_type).to eq(STypes::Integer)
+      # a refinement accepts the constraint it passes (its output), not the base
+      expect(STypes::Integer[1..10].accepted_type).to eq(STypes::Integer[1..10].output_type)
+    end
+  end
+
   describe 'composition type-checking (#>>)' do
     # `>>` is typed by subsumption: everything the left produces must be
     # acceptable to the right (produced <: accepted). Narrow with `#[]` instead.
@@ -192,6 +205,37 @@ RSpec.describe 'subtyping: Plumb::Subtyping.subtype? and #<=' do
       # covariant Stream[X] <= Stream[Y] subtyping is unaffected
       expect(STypes::Stream[STypes::Integer] <= STypes::Stream[STypes::Numeric]).to be(true)
       expect(STypes::Stream[STypes::Numeric] <= STypes::Stream[STypes::Integer]).to be(false)
+    end
+
+    it 'a Hash consumer accepts each field by what it consumes (transform fields)' do
+      money = Class.new
+      front = STypes::Hash[price: STypes::Integer, name: STypes::String]
+      # Back converts :price (Integer -> money). As a consumer its :price field
+      # *accepts* an Integer, so `front >> back` is sound and must type-check.
+      back = STypes::Hash[price: STypes::Integer.build(money)].inclusive
+      expect { front >> back }.not_to raise_error
+      # but a field that consumes an incompatible type still raises
+      bad = STypes::Hash[price: STypes::String.build(money)] # its :price consumes a String
+      expect { front >> bad }.to raise_error(Plumb::TypeError)
+    end
+
+    it 'preserves the base type through a transparent #check predicate' do
+      # a #check asserts about the value without changing its type, so the
+      # refinement produces the base type — not the opaque proc matcher — and
+      # composes cleanly with a consumer of that type.
+      checked = STypes::Integer.check("positive") { |v| v.positive? }
+      expect(checked.output_type).to eq(STypes::Integer)
+      expect { checked >> STypes::Integer }.not_to raise_error
+      # a genuinely incompatible consumer still raises (no false negative)
+      expect { STypes::String >> STypes::Integer.check { |_v| true } }.to raise_error(Plumb::TypeError)
+    end
+
+    it 'composes a checked Data value into a consumer of that type' do
+      user = STypes::Data[name: STypes::String]
+      is_named = user.check("named") { |u| !u.name.empty? }
+      # Data classes join Composable via `extend` (no Equality hooks), so this
+      # also exercises the subtype? guards — it must not raise or crash.
+      expect { is_named >> user }.not_to raise_error
     end
 
     it 'composes WITHOUT the subtype check via #/ (escape hatch)' do

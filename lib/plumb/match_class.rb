@@ -28,6 +28,13 @@ module Plumb
     # the same matcher) is redundant and `#>>` collapses it.
     def idempotent? = true
 
+    # A proc matcher is a pure predicate (the `#check` mechanism): it asserts
+    # something about the value without determining its type, so it is
+    # transparent to type-flow — `Base.check { … }` still produces a Base.
+    # Class/Range/Regexp/literal matchers DO carry type information (their output
+    # is meaningful), so they are not transparent.
+    def transparent? = @matcher.is_a?(::Proc)
+
     def call(result)
       @matcher === result.value ? result : result.invalid(errors: @error)
     end
