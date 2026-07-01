@@ -7,6 +7,21 @@ RSpec.describe 'subtyping: Plumb::Subtyping.subtype? and #<=' do
     include Plumb::Types
   end
 
+  describe 'refinements are base-carrying MatchClass leaves' do
+    it 'builds a MatchClass with a base (not an And) for #[] and #check' do
+      refined = STypes::Integer[1..10]
+      expect(refined).to be_a(Plumb::MatchClass)
+      expect(refined.base).to eq(STypes::Integer)
+      expect(STypes::Integer.check('pos') { |v| v.positive? }).to be_a(Plumb::MatchClass)
+      # Any collapses: a matcher over the top type stands alone (no base)
+      expect(STypes::Any[::String]).to eq(STypes::String)
+    end
+
+    it 'flows user metadata through the base' do
+      expect(STypes::Integer.metadata(unit: 'px')[1..10].metadata).to eq(unit: 'px')
+    end
+  end
+
   describe '#<= over atomic types' do
     it 'follows the Ruby class hierarchy' do
       expect(STypes::Integer <= STypes::Numeric).to be(true)
@@ -241,12 +256,12 @@ RSpec.describe 'subtyping: Plumb::Subtyping.subtype? and #<=' do
       expect { front >> bad }.to raise_error(Plumb::TypeError)
     end
 
-    it 'preserves the base type through a transparent #check predicate' do
-      # a #check asserts about the value without changing its type, so the
-      # refinement produces the base type — not the opaque proc matcher — and
-      # composes cleanly with a consumer of that type.
+    it 'a #check refines its base type, so `check >> typed` composes' do
+      # a #check asserts about the value without changing its type: the matcher
+      # carries Integer as its base, so the checked value is still a subtype of
+      # Integer and composes cleanly with a consumer of that type.
       checked = STypes::Integer.check("positive") { |v| v.positive? }
-      expect(checked.output_type).to eq(STypes::Integer)
+      expect(Plumb::Subtyping.subtype?(checked, STypes::Integer)).to be(true)
       expect { checked >> STypes::Integer }.not_to raise_error
       # a genuinely incompatible consumer still raises (no false negative)
       expect { STypes::String >> STypes::Integer.check { |_v| true } }.to raise_error(Plumb::TypeError)

@@ -257,6 +257,11 @@ module Plumb
     end
 
     on(:match) do |node, props|
+      # A refinement matcher describes its base first (eg. `Integer[1..10]` gets
+      # `type: integer` from the base Integer), then folds in the matcher's own
+      # constraint (`minimum`/`maximum`/`pattern`/`const`).
+      props = visit(node.base, props) if node.base
+
       # Set const if primitive
       matcher = node.children.first
       props = case matcher

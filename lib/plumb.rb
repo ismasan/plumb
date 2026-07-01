@@ -74,6 +74,10 @@ module Plumb
     when :and, :transform
       resolve_base_types(node.output_type)
     when :match
+      # A refinement matcher carries its base type — resolve that (eg.
+      # `Integer[1..10]` => [Integer], `User.check {}` => the User's base types).
+      return resolve_base_types(node.base) if node.base
+
       matcher = node.children.first
       case matcher
       when ::Class then [matcher]

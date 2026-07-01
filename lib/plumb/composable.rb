@@ -247,14 +247,6 @@ module Plumb
     # apply it twice.
     def idempotent? = false
 
-    # Whether this step preserves its input's type — it asserts something about
-    # the value without narrowing it to a new nominal type (a pure predicate).
-    # A refinement `And` whose right side is transparent reports the *left*'s
-    # output type, so the base type survives the assertion: `User.check { … }`
-    # produces a User, not the opaque predicate. Default false; MatchClass opts
-    # in for proc matchers (the `#check` mechanism).
-    def transparent? = false
-
     # Chain two composable objects together.
     # A.K.A "and" or "sequence"
     # @example
@@ -325,9 +317,11 @@ module Plumb
     #
     # @param errors [String] error message to use when validation fails
     # @param block [Proc] a block that will be applied to the value
-    # @return [And]
+    # @return [MatchClass]
     def check(errors = 'did not pass the check', &block)
-      self >> MatchClass.new(block, error: errors, label: errors)
+      # A refinement, not a sequence: build the matcher over `self` as its base so
+      # the checked value keeps `self`'s type (`User.check { … }` is still a User).
+      MatchClass.new(block, base: self, error: errors, label: errors)
     end
 
     # Return a new Step with added metadata, or build step metadata if no argument is provided.
@@ -385,9 +379,14 @@ module Plumb
     #   email = Types::String['@']
     #
     # @param args [Array<Object>]
-    # @return [And]
+    # @return [MatchClass]
     def match(*args)
-      constrain(MatchClass.new(*args))
+      # A refinement returns a base-carrying MatchClass directly (not an
+      # `And(self, matcher)`): the matcher records `self` as its base, so it
+      # subtypes and composes as "a `self` narrowed by the matcher". When `self`
+      # is the Any top the matcher stands alone (`Any[String]` == the String
+      # matcher), preserving the old collapsing behaviour.
+      MatchClass.new(*args, base: (is_a?(AnyClass) ? nil : self))
     end
 
     def [](val) = match(val)

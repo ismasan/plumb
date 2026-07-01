@@ -6,14 +6,7 @@ module Plumb
   class And
     include Composable
 
-    attr_reader :children, :input_type
-
-    # Both sides validate the same value. Normally the refinement's output type is
-    # the right side (the narrowing constraint). But if the right side is a
-    # transparent predicate (eg. a `#check`), it doesn't determine a type, so the
-    # output is the *left*'s output — the base type survives the assertion (so
-    # `User.check { … }.output_type` is User, not the opaque predicate).
-    def output_type = @output_type.transparent? ? @input_type : @output_type
+    attr_reader :children, :input_type, :output_type
 
     # A refinement/sequencing join, built by `Composable#>>`. Both sides
     # validate the *same* value (no conversion), so an `And` is the

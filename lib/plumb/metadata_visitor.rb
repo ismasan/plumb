@@ -30,6 +30,12 @@ module Plumb
       props
     end
 
+    # A refinement matcher carries its base; any user metadata lives on the base
+    # (the matcher itself is type-bound info we don't collect), so follow it.
+    on(:match) do |node, props|
+      node.base ? visit(node.base, props) : props
+    end
+
     on(:and) do |node, props|
       left, right = node.children.map { |child| visit(child) }
       props.merge(left).merge(right)
