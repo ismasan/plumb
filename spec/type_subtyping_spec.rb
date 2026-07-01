@@ -20,6 +20,17 @@ RSpec.describe 'subtyping: Plumb::Subtyping.subtype? and #<=' do
     it 'flows user metadata through the base' do
       expect(STypes::Integer.metadata(unit: 'px')[1..10].metadata).to eq(unit: 'px')
     end
+
+    it 'rejects a contradictory refinement (matcher disjoint from the base)' do
+      expect { STypes::String[1..20] }.to raise_error(Plumb::TypeError) # no String in an int range
+      expect { STypes::Integer[/x/] }.to raise_error(Plumb::TypeError)  # no Integer matches a regex
+      expect { STypes::String[5] }.to raise_error(Plumb::TypeError)     # no String === 5
+      # compatible refinements (and bare matchers with no base) still build
+      expect { STypes::Integer[1..20] }.not_to raise_error
+      expect { STypes::String['1'] }.not_to raise_error
+      expect { STypes::Any[1..20] }.not_to raise_error
+      expect { STypes::Integer.check('x') { |_v| true } }.not_to raise_error # proc: opaque, allowed
+    end
   end
 
   describe '#<= over atomic types' do

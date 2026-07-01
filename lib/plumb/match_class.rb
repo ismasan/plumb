@@ -18,6 +18,8 @@ module Plumb
     def initialize(matcher = Undefined, base: nil, error: nil, label: nil)
       raise ParseError, 'matcher must respond to #===' unless matcher.respond_to?(:===)
 
+      raise_if_incompatible!(base, matcher) if base
+
       @matcher = matcher
       @base = base
       @error = error.nil? ? build_error(matcher) : (error % matcher)
@@ -79,6 +81,34 @@ module Plumb
     end
 
     private
+
+    # A refinement whose matcher can never match a value of the base is a
+    # contradiction — an empty type, almost always a mistake — so reject it at
+    # build time (eg. `Types::String[1..20]`: no String is in an integer range).
+    # Only checked for matchers whose domain is knowable (Class/Range/Regexp/
+    # primitive literal); procs and custom `#===` objects are opaque, so allowed.
+    def raise_if_incompatible!(base, matcher)
+      base_types = Plumb.resolve_base_types(base)
+      return if base_types.empty? # unknown base (eg. a Data schema) — allow
+      return if base_types.any? { |klass| matcher_may_match?(matcher, klass) }
+
+      raise Plumb::TypeError,
+            "cannot refine #{base.inspect} with #{matcher.inspect}: " \
+            "no #{base_types.map(&:inspect).join(' / ')} value can match it"
+    end
+
+    # Could `matcher` match at least one instance of `klass`?
+    def matcher_may_match?(matcher, klass)
+      case matcher
+      when ::Module then !!((matcher <= klass) || (klass <= matcher))
+      when ::Range then (e = matcher.begin || matcher.end).nil? || e.is_a?(klass)
+      when ::Regexp then klass <= ::String || klass <= ::Symbol
+      when ::String, ::Symbol, ::Numeric, ::TrueClass, ::FalseClass, ::NilClass
+        matcher.is_a?(klass)
+      else
+        true # proc / opaque `#===` object: domain unknown, allow
+      end
+    end
 
     def _inspect
       return @label unless base
