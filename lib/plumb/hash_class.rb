@@ -115,7 +115,7 @@ module Plumb
     # check rejects — a Symbol-keyed map doesn't guarantee this schema's keys, so
     # this declares the step as a #transform (conversion) instead.
     def symbolized
-      Types::SymbolizedHash.transform(self)
+      Types::SymbolizedHash / self
     end
 
     def call(result)
