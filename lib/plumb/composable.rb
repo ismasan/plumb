@@ -26,6 +26,21 @@ module Plumb
   BLANK_RESULT = Result.wrap(Undefined)
   NOOP = ->(result) { result }
 
+  # Ruby's explicit conversion methods and the type each produces. Lets
+  # `#transform(:to_i)` expand to a typed transform to Integer (using `:to_i` as
+  # the callable), instead of spelling out `#transform(Integer, &:to_i)`.
+  COERCION_METHODS = {
+    to_s: ::String,
+    to_sym: ::Symbol,
+    to_i: ::Integer,
+    to_f: ::Float,
+    to_r: ::Rational,
+    to_c: ::Complex,
+    to_a: ::Array,
+    to_h: ::Hash,
+    to_proc: ::Proc
+  }.freeze
+
   module Callable
     def resolve(value = Undefined)
       call(Result.wrap(value))
@@ -303,11 +318,23 @@ module Plumb
     # @example
     #   Types::String.transform(Types::Symbol, &:to_sym)
     #
-    # @param target_type [Class] what type this step will transform the value to
+    # Shorthand: a single conversion symbol (see COERCION_METHODS) expands to a
+    # typed transform to the method's result type, using the symbol as the
+    # callable. When the input's base Ruby type is known, it also validates that
+    # the type actually responds to the method.
+    # @example
+    #   Types::String.transform(:to_i)   # => Transform to Integer, via :to_i
+    #   Types::Integer.transform(:to_sym) # raises: Integer has no #to_sym
+    #
+    # @param target_type [Class, Symbol] the output type, or a conversion symbol
     # @param callable [#call, nil] a callable that will be applied to the value, or nil if block provided
     # @param block [Proc] a block that will be applied to the value, or nil if callable provided
-    # @return [And]
+    # @return [Transform]
     def transform(target_type, callable = nil, &block)
+      if target_type.is_a?(::Symbol) && callable.nil? && block.nil? && (out = COERCION_METHODS[target_type])
+        return coercion_transform(target_type, out)
+      end
+
       transform_step(target_type, callable || block || Plumb::NOOP)
     end
 
@@ -530,6 +557,21 @@ module Plumb
     # callable, and declares `target_type` as the (validated) output type.
     private def transform_step(target_type, callable)
       Transform.new(self, Composable.wrap(target_type), ->(result) { result.valid(callable.call(result.value)) })
+    end
+
+    # Expand `#transform(:to_i)` into a typed transform to `output_type`, using
+    # the conversion symbol itself as the callable. If the input's base Ruby
+    # type(s) can be resolved, validate that they define the method (so
+    # `Types::Integer.transform(:to_sym)` fails loudly at build time).
+    private def coercion_transform(method_name, output_type)
+      bases = Plumb.resolve_base_types(self)
+      unless bases.empty? || bases.all? { |k| k.is_a?(::Module) && k.method_defined?(method_name) }
+        raise Plumb::TypeError,
+              "cannot #transform(#{method_name.inspect}): " \
+              "#{bases.map(&:inspect).join(' / ')} does not define ##{method_name}"
+      end
+
+      transform_step(output_type, method_name.to_proc)
     end
 
     # Always return a static value, regardless of the input.

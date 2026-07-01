@@ -80,6 +80,25 @@ RSpec.describe Plumb::Types do
       to_i = Types::Any.transform(::Integer)
       assert_result(to_i.resolve(10), 10, true)
     end
+
+    context 'with a single conversion symbol' do
+      it 'expands to a typed transform to the method result type' do
+        str_to_i = Types::String.transform(:to_i)
+        expect(str_to_i.output_type).to eq(Types::Integer)
+        assert_result(str_to_i.resolve('10'), 10, true)
+
+        int_to_s = Types::Integer.transform(:to_s)
+        expect(int_to_s.output_type).to eq(Types::String)
+        assert_result(int_to_s.resolve(10), '10', true)
+      end
+
+      it 'validates the input base type supports the method' do
+        expect { Types::Integer.transform(:to_sym) }.to raise_error(Plumb::TypeError)
+        expect { Types::Integer.transform(:to_a) }.to raise_error(Plumb::TypeError)
+        # unknown base (Any) is allowed
+        expect { Types::Any.transform(:to_i) }.not_to raise_error
+      end
+    end
   end
 
   specify '#as_node' do
