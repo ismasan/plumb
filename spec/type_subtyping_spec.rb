@@ -162,6 +162,22 @@ RSpec.describe 'subtyping: Plumb::Subtyping.subtype? and #<=' do
       expect { STypes::String.transform(::Integer, &:to_i)[1..10] }.not_to raise_error
     end
 
+    it 'composes WITHOUT the subtype check via #/ (escape hatch)' do
+      # the narrowings #>> rejects build fine with #/
+      expect { STypes::Integer[0..40] / STypes::Integer[2..10] }.not_to raise_error
+      expect { STypes::String / STypes::String[/d/] }.not_to raise_error
+
+      narrowed = STypes::Integer[0..40] / STypes::Integer[2..10]
+      # it's the same refinement And as a checked chain, so it still validates
+      expect(narrowed).to be_a(Plumb::And)
+      expect(narrowed.resolve(5).valid?).to be(true)
+      expect(narrowed.resolve(30).valid?).to be(false)
+      # and participates in subtyping like any other refinement
+      expect(narrowed <= STypes::Integer).to be(true)
+      # Any-collapse, consistent with #[]
+      expect(STypes::Any / STypes::String).to eq(STypes::String)
+    end
+
     it 'compares #where attribute constraints by value' do
       # an attribute-constrained type is a subtype of its base
       expect { STypes::Array.where(size: 10) >> STypes::Array }.not_to raise_error

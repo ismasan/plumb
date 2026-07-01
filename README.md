@@ -624,6 +624,13 @@ Types::Integer[0..40][2..10]                       # narrow to 2..10 (runtime-ch
 Types::String.transform(Integer, &:to_i)[1..10]    # convert, then bound the result
 ```
 
+For an arbitrary composition the checker can't prove — not just a matcher constraint — reach for `#/`, the unchecked counterpart of `#>>`. It builds the same refinement and is still validated at runtime, but skips the build-time check; you're asserting the chain is sound. It reads like `Pathname#/` ("join the next segment"):
+
+```ruby
+Types::Integer / Types::Integer[2..10]   # narrow without the build-time check
+Types::String / Types::String[/@/]       # a String you assert is an email downstream
+```
+
 The check is permissive only where types are genuinely unknown: opaque steps (plain procs/lambdas, `#invoke`, `#generate`) and value-level transforms (`#transform`/`#build`) report `Any` on the relevant side and opt out. (`#static` ignores its input, so it never blocks a chain feeding *into* it, but it does declare the value it produces — so `Types::Static['foo'] >> Types::Integer` is flagged.)
 
 For `Types::Hash` schemas, subsumption is record subtyping — the producer must provide every key the consumer requires (as a required key, with a subtype value); it may add extra keys:

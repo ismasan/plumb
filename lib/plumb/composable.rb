@@ -254,6 +254,22 @@ module Plumb
       And.new(self, other)
     end
 
+    # Compose like #>> but WITHOUT the strict subtype check — the escape hatch
+    # for chains the checker can't prove safe but you know are (eg. a narrowing
+    # like `Types::Integer / Types::Integer[1..10]`, or feeding a producer whose
+    # output you know the right side accepts). You assert the composition is
+    # valid; it is still runtime-checked when data flows through. Builds the same
+    # refinement #And as #>> (just skipping the build-time check), so the result
+    # participates in subtyping like any other refinement. The `/` reads as
+    # `Pathname#/` does — "join the next segment". When `self` is the Any top the
+    # right side stands alone, consistent with #[].
+    #
+    # @param other [Composable]
+    # @return [Composable]
+    def /(other)
+      constrain(Composable.wrap(other))
+    end
+
     # Chain two composable objects together as a disjunction ("or").
     #
     # @param other [Composable]
