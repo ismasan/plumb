@@ -153,6 +153,16 @@ module Plumb
 
       children.zip(other.children).all? { |c, o| Plumb::Subtyping.subtype?(c, o) }
     end
+
+    # Mirror of #subtype_of?, for relations the *supertype* owns and the subtype
+    # can't know about (eg. Interface duck-typing: any type is a subtype of an
+    # Interface whose methods its values support). Consulted by
+    # Plumb::Subtyping.subtype? only after #subtype_of? declines. Default: no —
+    # only the subtype side decides. Recurse via Plumb::Subtyping.subtype?, never
+    # #<=. Override for bespoke supertype behaviour (see InterfaceClass).
+    # @param other [Composable]
+    # @return [Boolean]
+    def supertype_of?(other) = false
   end
 
   #  Composable mixes in composition methods to classes.

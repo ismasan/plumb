@@ -44,7 +44,10 @@ module Plumb
       return b.children.all? { |bb| subtype?(a, bb) } if b.is_a?(And) # a <= (b1 ∧ b2)
       return a.children.any? { |aa| subtype?(aa, b) } if a.is_a?(And) # (a1 ∧ a2) <= b
 
-      a.subtype_of?(b)
+      # `a` decides via its #subtype_of? leaf; if it can't (it doesn't know about
+      # `b`), give `b` a chance to claim `a` as a subtype via #supertype_of? —
+      # the mirror hook for supertype-driven relations like Interface duck-typing.
+      a.subtype_of?(b) || b.supertype_of?(a)
     end
 
     # A leaf type whose single child is a raw (non-Composable) Ruby matcher or

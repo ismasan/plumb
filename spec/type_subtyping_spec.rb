@@ -125,6 +125,28 @@ RSpec.describe 'subtyping: Plumb::Subtyping.subtype? and #<=' do
     end
   end
 
+  describe '#<= over interfaces (duck typing)' do
+    it 'a type is a subtype of an Interface its values support' do
+      expect(STypes::String <= STypes::Interface[:to_s]).to be(true)
+      expect(STypes::Integer <= STypes::Interface[:to_s, :+]).to be(true)
+      expect(STypes::Array[STypes::Integer] <= STypes::Interface[:each]).to be(true)
+      # a missing method -> not a subtype
+      expect(STypes::String <= STypes::Interface[:nonexistent_xyz]).to be(false)
+      # an Interface is not generally a subtype of a concrete type
+      expect(STypes::Interface[:to_s] <= STypes::String).to be(false)
+    end
+
+    it 'an Interface is a subtype of a looser Interface (a subset of its methods)' do
+      expect(STypes::Interface[:a, :b] <= STypes::Interface[:a]).to be(true)
+      expect(STypes::Interface[:a] <= STypes::Interface[:a, :b]).to be(false)
+    end
+
+    it 'composes with #>> when the left supports the interface' do
+      expect { STypes::String >> STypes::Interface[:to_s] }.not_to raise_error
+      expect { STypes::String >> STypes::Interface[:nonexistent_xyz] }.to raise_error(Plumb::TypeError)
+    end
+  end
+
   describe 'composition type-checking (#>>)' do
     # `>>` is typed by subsumption: everything the left produces must be
     # acceptable to the right (produced <: accepted). Narrow with `#[]` instead.
@@ -160,6 +182,16 @@ RSpec.describe 'subtyping: Plumb::Subtyping.subtype? and #<=' do
       # the same narrowings that #>> rejects are fine as constraints:
       expect { STypes::Integer[0..40][2..10] }.not_to raise_error
       expect { STypes::String.transform(::Integer, &:to_i)[1..10] }.not_to raise_error
+    end
+
+    it 'lets any enumerable producer feed a Stream (its input opts out)' do
+      # a Stream consumes any enumerable (checked at runtime), not another Stream,
+      # so a producer of a raw Enumerator/Array can chain into it — eg. CSV rows.
+      enum_producer = STypes::Any.transform(::Enumerator, &:each)
+      expect { enum_producer >> STypes::Stream[STypes::Integer] }.not_to raise_error
+      # covariant Stream[X] <= Stream[Y] subtyping is unaffected
+      expect(STypes::Stream[STypes::Integer] <= STypes::Stream[STypes::Numeric]).to be(true)
+      expect(STypes::Stream[STypes::Numeric] <= STypes::Stream[STypes::Integer]).to be(false)
     end
 
     it 'composes WITHOUT the subtype check via #/ (escape hatch)' do
