@@ -10,6 +10,12 @@ module Plumb
 
     def initialize(value = Undefined)
       @value = value
+      # Pre-build the failure message once (the object is frozen and @value is
+      # fixed), so a miss on the hot path — eg. every non-matching branch of a
+      # `Value[a] | Value[b]` enum union — doesn't allocate a fresh String.
+      # Frozen because it's shared across every failing call (and across threads
+      # under Types::Array#concurrent) and only ever read, never mutated.
+      @error = "Must be equal to #{value}".freeze
       @children = [value].freeze
       freeze
     end
@@ -22,7 +28,7 @@ module Plumb
     def input_type = Types::Any
 
     def call(result)
-      @value == result.value ? result : result.invalid(errors: "Must be equal to #{@value}")
+      @value == result.value ? result : result.invalid(errors: @error)
     end
 
     private

@@ -53,7 +53,9 @@ module Plumb
         right_errors = right_result.errors.is_a?(Array) ? right_result.errors.first : right_result.errors
         left_errors << right_errors
 
-        right_result.invalid(errors: left_errors)
+        # right_result is a fresh Invalid we own — reuse it instead of allocating
+        # another just to swap in the merged errors.
+        right_result.with_errors(left_errors)
       end
     end
   end

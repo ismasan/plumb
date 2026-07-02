@@ -38,6 +38,13 @@ module Plumb
       self
     end
 
+    # Replace this result's errors in place and return self. For reusing an
+    # already-allocated Invalid instead of building a fresh one (see Or#call).
+    def with_errors(errs)
+      @errors = errs
+      self
+    end
+
     def valid(val = value)
       Result.valid(val)
     end
