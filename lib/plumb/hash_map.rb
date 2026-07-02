@@ -63,7 +63,11 @@ module Plumb
       # entries (it never rejects a Hash), so as a #>> consumer it accepts any
       # hash-like value — not itself. Without this, `Hash >> Hash[K, V].filtered`
       # would be flagged as an illegal narrowing.
-      def accepted_type = Types::Interface[:each_pair]
+      # Memoized at the class level (instances are frozen; Types isn't loaded
+      # yet when this file is).
+      def self.each_pair_interface = @each_pair_interface ||= Types::Interface[:each_pair]
+
+      def accepted_type = FilteredHashMap.each_pair_interface
 
       def call(result)
         result.invalid(errors: 'must be a Hash') unless result.value.is_a?(::Hash)

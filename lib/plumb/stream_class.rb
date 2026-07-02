@@ -37,7 +37,11 @@ module Plumb
     # #>> composition check. This lets a producer of a raw Enumerator/Array (eg.
     # a CSV enumerator) feed a Stream. Covariant Stream[X] <= Stream[Y]
     # subtyping is unaffected (that goes through #subtype_of? / #children).
-    def input_type = Types::Interface[:each]
+    # Memoized at the class level (instances are frozen; Types isn't loaded yet
+    # when this file is) — #call hits it on every data invocation.
+    def self.each_interface = @each_interface ||= Types::Interface[:each]
+
+    def input_type = StreamClass.each_interface
 
     # The [Step] interface
     # @param result [Result::Valid]

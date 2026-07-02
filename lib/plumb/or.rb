@@ -19,9 +19,21 @@ module Plumb
     # (A | B).output_type == A.output_type | B.output_type
     # Computed lazily: building these eagerly in #initialize would recurse
     # forever, since each Or.new would build its own input/output types.
-    # TODO: cache these?
-    def input_type = Or.new(@left.input_type, @right.input_type)
-    def output_type = Or.new(@left.output_type, @right.output_type)
+    # When both children are their own io type (the common leaf case) return
+    # self rather than a structurally-equal copy, so Subtyping.resolved_*
+    # converges on identity without allocating. Results are memoized per node
+    # at the consuming end (Subtyping.resolved_input/resolved_output).
+    def input_type
+      l = @left.input_type
+      r = @right.input_type
+      l.equal?(@left) && r.equal?(@right) ? self : Or.new(l, r)
+    end
+
+    def output_type
+      l = @left.output_type
+      r = @right.output_type
+      l.equal?(@left) && r.equal?(@right) ? self : Or.new(l, r)
+    end
 
     private def _inspect
       %((#{@left.inspect} | #{@right.inspect}))

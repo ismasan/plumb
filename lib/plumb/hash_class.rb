@@ -257,7 +257,11 @@ module Plumb
     # A filtered Hash is lenient: it accepts ANY hash and drops invalid/missing/
     # extra fields (it never rejects a Hash), so as a #>> consumer it accepts any
     # hash-like value. (Its #input_type still declares the schema it relaxes.)
-    def accepted_type = Types::Interface[:each_pair]
+    # Memoized at the class level (instances are frozen; Types isn't loaded yet
+    # when this file is).
+    def self.each_pair_interface = @each_pair_interface ||= Types::Interface[:each_pair]
+
+    def accepted_type = FilteredHash.each_pair_interface
 
     def call(result) = transform_proc.call(result)
 
