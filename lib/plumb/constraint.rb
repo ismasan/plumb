@@ -74,7 +74,9 @@ module Plumb
     end
 
     def call(result)
-      result = base.call(result) if base
+      # Read the ivar directly (not the #base attr_reader) — this runs on every
+      # constraint check, so avoiding the extra method dispatch adds up.
+      result = @base.call(result) if @base
       return result unless result.valid?
 
       @matcher === result.value ? result : result.invalid(errors: @error)
