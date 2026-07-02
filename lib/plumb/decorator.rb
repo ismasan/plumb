@@ -30,7 +30,8 @@ module Plumb
                And.new(left, right)
              when Transform
                left, right = visit_children(type)
-               Transform.new(left, right, type.transform_proc)
+               # type.class preserves a GuaranteedTransform across decoration.
+               type.class.new(left, right, type.transform_proc)
              when Or
                left, right = visit_children(type)
                Or.new(left, right)

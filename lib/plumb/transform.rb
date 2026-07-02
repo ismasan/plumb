@@ -32,4 +32,18 @@ module Plumb
       result.map(@input_type).map(@transform_proc).map(@output_type)
     end
   end
+
+  # A Transform whose proc is known *at build time* to produce a value of
+  # output_type (eg. a `:to_i` coercion always yields an Integer), so the runtime
+  # output check is provably redundant. Choosing the class at build time means
+  # #call carries no per-call `guaranteed?` branch — the check is simply absent.
+  # It inherits Transform's node_name (:transform) and `is_a?(Transform)`, so
+  # visitors, JSON-schema, subtyping and the decorator treat it as a Transform;
+  # only the produced value's output re-validation is dropped. @output_type is
+  # still kept as metadata (inference / JSON schema / subtyping).
+  class GuaranteedTransform < Transform
+    def call(result)
+      result.map(@input_type).map(@transform_proc)
+    end
+  end
 end

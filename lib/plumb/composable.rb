@@ -335,6 +335,15 @@ module Plumb
         return coercion_transform(target_type, out)
       end
 
+      # Explicit output type + a coercion symbol as the callable
+      # (eg. `#transform(::Numeric, :to_f)`): if the coercion's known result type
+      # is within the declared output, the produced value is guaranteed to be of
+      # that type, so the runtime output check can be skipped.
+      if callable.is_a?(::Symbol) && block.nil? && (ret = COERCION_METHODS[callable])
+        guaranteed = target_type.is_a?(::Module) && ret <= target_type
+        return transform_step(target_type, callable.to_proc, guaranteed:)
+      end
+
       transform_step(target_type, callable || block || Plumb::NOOP)
     end
 
@@ -555,8 +564,10 @@ module Plumb
 
     # Build a Transform that validates the input (self), applies a value-level
     # callable, and declares `target_type` as the (validated) output type.
-    private def transform_step(target_type, callable)
-      Transform.new(self, Composable.wrap(target_type), ->(result) { result.valid(callable.call(result.value)) })
+    private def transform_step(target_type, callable, guaranteed: false)
+      klass = guaranteed ? GuaranteedTransform : Transform
+      klass.new(self, Composable.wrap(target_type),
+                ->(result) { result.valid(callable.call(result.value)) })
     end
 
     # Expand `#transform(:to_i)` into a typed transform to `output_type`, using
@@ -571,7 +582,9 @@ module Plumb
               "#{bases.map(&:inspect).join(' / ')} does not define ##{method_name}"
       end
 
-      transform_step(output_type, method_name.to_proc)
+      # The output type IS the coercion method's result type, so the produced
+      # value is guaranteed to match — skip the runtime output check.
+      transform_step(output_type, method_name.to_proc, guaranteed: true)
     end
 
     # Always return a static value, regardless of the input.

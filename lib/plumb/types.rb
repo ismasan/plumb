@@ -176,7 +176,7 @@ module Plumb
     #   SymbolizedHash.parse({ 'count' => 1, 'active' => true })  # => { count: 1, active: true }
     SymbolizedHash = Hash[
       # String keys are converted to symbols, existing symbols are preserved
-      (Symbol | String.transform(::Symbol, &:to_sym)),
+      (Symbol | String.transform(::Symbol, :to_sym)),
       # Hash values are recursively symbolized, other types pass through unchanged
       Any.defer { SymbolizedHash } | Any
     ]
@@ -201,20 +201,20 @@ module Plumb
 
       String = Types::String \
         | Types::Decimal.transform(::String) { |v| v.to_s('F') } \
-        | Types::Numeric.transform(::String, &:to_s)
+        | Types::Numeric.transform(::String, :to_s)
 
-      Symbol = Types::Symbol | Types::String.transform(::Symbol, &:to_sym)
+      Symbol = Types::Symbol | Types::String.transform(::Symbol, :to_sym)
 
       NumberString = Types::String.match(NUMBER_EXPR)
       CoercibleNumberString = NumberString.transform(::String) { |v| v.tr(',', '') }
 
-      Numeric = Types::Numeric | CoercibleNumberString.transform(::Numeric, &:to_f)
+      Numeric = Types::Numeric | CoercibleNumberString.transform(::Numeric, :to_f)
 
       Decimal = Types::Decimal | \
-                (Types::Numeric.transform(::String, &:to_s) | CoercibleNumberString) \
+                (Types::Numeric.transform(::String, :to_s) | CoercibleNumberString) \
                 .transform(::BigDecimal) { |v| BigDecimal(v) }
 
-      Integer = Numeric.transform(::Integer, &:to_i)
+      Integer = Numeric.transform(::Integer, :to_i)
     end
 
     module Forms
