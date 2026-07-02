@@ -74,10 +74,15 @@ module Plumb
     end
 
     def call(result)
-      # Read the ivar directly (not the #base attr_reader) — this runs on every
-      # constraint check, so avoiding the extra method dispatch adds up.
-      result = @base.call(result) if @base
-      return result unless result.valid?
+      # Only the base can invalidate the incoming result (callers — map/Or/resolve
+      # — always pass a valid one), so the `valid?` short-circuit is only needed
+      # when there IS a base. Root constraints skip straight to the matcher check,
+      # like a flat leaf. Reading @base directly (not the #base reader) also skips
+      # a dispatch on this hot path.
+      if @base
+        result = @base.call(result)
+        return result unless result.valid?
+      end
 
       @matcher === result.value ? result : result.invalid(errors: @error)
     end
