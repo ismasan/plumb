@@ -99,6 +99,28 @@ RSpec.describe Plumb::Types do
         expect { Types::Any.transform(:to_i) }.not_to raise_error
       end
     end
+
+    context 'with an explicit output type and a conversion symbol' do
+      it 'allows the symbol result type to be within the declared output' do
+        # :to_f produces a Float, which is a Numeric — the output check is provably
+        # redundant, so this builds a guaranteed (output-check-free) transform.
+        to_num = Types::Any.transform(::Numeric, :to_f)
+        assert_result(to_num.resolve('2.5'), 2.5, true)
+
+        # declared type equal to the symbol's result type is fine too
+        to_i = Types::Any.transform(::Integer, :to_i)
+        assert_result(to_i.resolve('10'), 10, true)
+      end
+
+      it 'raises at composition time when the symbol result type is disjoint from the output' do
+        # :to_s always produces a String, which can never be an Integer, so this
+        # transform would reject every input — a composition error, not a runtime one.
+        expect { Types::String.transform(::Integer, :to_s) }
+          .to raise_error(ArgumentError, /:to_s produces a String, which is never a Integer/)
+        # disjoint siblings under Numeric are caught too
+        expect { Types::Any.transform(::Integer, :to_f) }.to raise_error(ArgumentError)
+      end
+    end
   end
 
   specify '#as_node' do

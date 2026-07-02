@@ -336,11 +336,25 @@ module Plumb
       end
 
       # Explicit output type + a coercion symbol as the callable
-      # (eg. `#transform(::Numeric, :to_f)`): if the coercion's known result type
-      # is within the declared output, the produced value is guaranteed to be of
-      # that type, so the runtime output check can be skipped.
+      # (eg. `#transform(::Numeric, :to_f)`). Since the symbol's result type is
+      # known, we can compare it against the declared output at composition time:
+      #  - `ret <= target_type`  => the produced value is always within the
+      #    declared type, so the runtime output check is redundant (guaranteed).
+      #  - `ret` and `target_type` disjoint (neither is a subtype of the other)
+      #    => no value can be an instance of both, so the transform would reject
+      #    EVERY input. That's a composition error, not a runtime one — raise now.
+      #  - otherwise (`target_type < ret`, a genuine narrowing) => may or may not
+      #    hold at runtime; leave the output check to do its job.
       if callable.is_a?(::Symbol) && block.nil? && (ret = COERCION_METHODS[callable])
-        guaranteed = target_type.is_a?(::Module) && ret <= target_type
+        guaranteed = false
+        if target_type.is_a?(::Module)
+          if ret <= target_type
+            guaranteed = true
+          elsif !(target_type <= ret)
+            raise ArgumentError,
+                  ":#{callable} produces a #{ret}, which is never a #{target_type}"
+          end
+        end
         return transform_step(target_type, callable.to_proc, guaranteed:)
       end
 
