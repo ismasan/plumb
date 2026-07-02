@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require 'plumb/type_cache'
+
 module Plumb
   # The structural subtype/subset relation over types, and the `#>>`
   # composition type-check (subsumption) that builds on it. Methods are module
@@ -145,9 +147,12 @@ module Plumb
     # consumer of a `left >> type` chain. The type itself answers via its
     # #accepted_type hook (default: its resolved input; refinements and Hash
     # override it — see Composable#accepted_type). Transparent wrappers are
-    # peeled first so the wrapped type answers.
+    # peeled first so the wrapped type answers. Memoized per node in TypeCache
+    # (frozen nodes only) — this is the sole consumer of #accepted_type, so
+    # caching here covers every type, eg. HashClass's per-field rebuild.
     def accepted_type(type)
-      unwrap_transparent(type).accepted_type
+      type = unwrap_transparent(type)
+      TypeCache.fetch(:accepted_type, type) { type.accepted_type }
     end
 
     # Peel transparent wrappers (Policy/Metadata/Node) down to the wrapped type.
@@ -164,18 +169,28 @@ module Plumb
     # its right child, which may itself be an opaque Step (output Any) or another
     # composite. Follow the chain to a fixpoint so the composition check sees the
     # effective produced/accepted type (and so opaque steps resolve to Any).
+    # Memoized per node in TypeCache (frozen nodes only), so re-resolving a chain
+    # that was already walked — eg. each step of A >> B >> C >> D — is O(1).
     def resolved_output(type, depth = 0)
-      nxt = type.output_type
-      return type if depth >= 50 || nxt.equal?(type) || nxt == type
-
-      resolved_output(nxt, depth + 1)
+      TypeCache.fetch(:resolved_output, type) do
+        nxt = type.output_type
+        if depth >= 50 || nxt.equal?(type) || nxt == type
+          type
+        else
+          resolved_output(nxt, depth + 1)
+        end
+      end
     end
 
     def resolved_input(type, depth = 0)
-      nxt = type.input_type
-      return type if depth >= 50 || nxt.equal?(type) || nxt == type
-
-      resolved_input(nxt, depth + 1)
+      TypeCache.fetch(:resolved_input, type) do
+        nxt = type.input_type
+        if depth >= 50 || nxt.equal?(type) || nxt == type
+          type
+        else
+          resolved_input(nxt, depth + 1)
+        end
+      end
     end
   end
 end
