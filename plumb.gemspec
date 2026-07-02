@@ -12,7 +12,8 @@ Gem::Specification.new do |spec|
   spec.description = 'Data structures, validation, coercion and processing toolkit for Ruby'
   spec.homepage = 'https://ismasan.github.io/plumb'
   spec.license = 'MIT'
-  spec.required_ruby_version = '>= 3.0.0'
+  # ObjectSpace::WeakKeyMap (used by Plumb::TypeCache) requires 3.3.
+  spec.required_ruby_version = '>= 3.3.0'
 
   # spec.metadata["homepage_uri"] = spec.homepage
   spec.metadata["source_code_uri"] = 'https://github.com/ismasan/plumb'
