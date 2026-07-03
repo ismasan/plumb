@@ -92,4 +92,23 @@ RSpec.describe 'composition reduction (>>)' do
         .to raise_error(Plumb::TypeError)
     end
   end
+
+  describe '#/ (escape-hatch composition) reduces too' do
+    it 'drops the redundant base gate on a narrowing #>> would reject' do
+      narrowed = RTypes::Integer[0..40] / RTypes::Integer[2..10]
+      expect(narrowed).to be_a(Plumb::Constraint)
+      expect(narrowed).to eq(RTypes::Integer[0..40][2..10])
+      expect(matcher_chain(narrowed).count { |m| m == ::Integer }).to eq(1)
+      assert_result(narrowed.resolve(5), 5, true)
+      assert_result(narrowed.resolve(30), 30, false)
+    end
+
+    it 'preserves the Any-collapse (Any / X == X)' do
+      expect(RTypes::Any / RTypes::String).to eq(RTypes::String)
+    end
+
+    it 'leaves #value as an And (ValueClass is not a Constraint)' do
+      expect(RTypes::String.value('x')).to be_a(Plumb::And)
+    end
+  end
 end

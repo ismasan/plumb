@@ -297,9 +297,9 @@ module Plumb
     # for chains the checker can't prove safe but you know are (eg. a narrowing
     # like `Types::Integer / Types::Integer[1..10]`, or feeding a producer whose
     # output you know the right side accepts). You assert the composition is
-    # valid; it is still runtime-checked when data flows through. Builds the same
-    # refinement #And as #>> (just skipping the build-time check), so the result
-    # participates in subtyping like any other refinement. The `/` reads as
+    # valid; it is still runtime-checked when data flows through. Reduces and
+    # builds the same refinement as #>> (just skipping the build-time check), so
+    # the result participates in subtyping like any other refinement. The `/` reads as
     # `Pathname#/` does — "join the next segment". When `self` is the Any top the
     # right side stands alone, consistent with #[].
     #
@@ -449,10 +449,16 @@ module Plumb
     # (eg. `Generic[::URI::HTTP]` narrows a URI to an HTTP URI). When `self` is
     # the Any top type the constraint stands alone (`Any[::String]` == the
     # String matcher), preserving the collapsing that `AnyClass#>>` provides.
+    # Applies the same base-type reduction as #>> (see Subtyping.reduce_step), so
+    # `Integer[0..40] / Integer[2..10]` re-parents to `Integer[0..40][2..10]`
+    # rather than re-checking `::Integer`. `reduce_step` bails for a non-Constraint
+    # constraint (eg. #value's ValueClass), leaving the And.
     # @param constraint [Composable]
     # @return [Composable]
     private def constrain(constraint)
-      is_a?(AnyClass) ? constraint : And.new(self, constraint)
+      return constraint if is_a?(AnyClass)
+
+      Plumb::Subtyping.reduce_step(self, constraint) || And.new(self, constraint)
     end
 
     #  Support #as_node.
