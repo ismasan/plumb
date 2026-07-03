@@ -115,14 +115,78 @@ RSpec.describe 'composition reduction (>>)' do
     end
   end
 
+  describe 'a redundant value-preserving refinement is absorbed' do
+    it 'drops a vacuous where-clause the left already guarantees' do
+      reduced = RTypes::String.where(size: 3..10) >> RTypes::String.where(size: 0..)
+      expect(reduced).to eq(RTypes::String.where(size: 3..10))
+      expect(reduced.resolve('abcde').valid?).to be(true)
+      expect(reduced.resolve('ab').valid?).to be(false)
+      expect(reduced.resolve('abcdefghijkl').valid?).to be(false)
+    end
+
+    it 'drops a redundant union the left already subsumes' do
+      expect(RTypes::Integer[0..100] >> (RTypes::Integer | RTypes::Float))
+        .to eq(RTypes::Integer[0..100])
+    end
+
+    it 'reduces where-clauses whose attribute values are themselves Plumb types' do
+      reduced = RTypes::String.where(size: RTypes::Integer[3..10]) >>
+                RTypes::String.where(size: RTypes::Integer[0..])
+      expect(reduced).to eq(RTypes::String.where(size: RTypes::Integer[3..10]))
+    end
+
+    it 'still raises on a narrowing where-clause (>> forbids narrowing)' do
+      expect { RTypes::String.where(size: 3..10) >> RTypes::String.where(size: 5..8) }
+        .to raise_error(Plumb::TypeError)
+    end
+  end
+
+  describe 'attribute constraints (#where) narrow like Constraints' do
+    it 'intersects overlapping same-attribute clauses via #/ (one base check)' do
+      reduced = RTypes::String.where(size: 0..40) / RTypes::String.where(size: 10..100)
+      expect(reduced).to eq(RTypes::String.where(size: 10..40))
+    end
+
+    it 'intersects when chaining #where on the same attribute' do
+      expect(RTypes::String.where(size: 0..40).where(size: 10..100))
+        .to eq(RTypes::String.where(size: 10..40))
+    end
+
+    it 'intersects Set-valued clauses' do
+      reduced = RTypes::String.where(size: Set[1, 2, 3, 4]) / RTypes::String.where(size: Set[3, 4, 5, 6])
+      expect(reduced).to eq(RTypes::String.where(size: Set[3, 4]))
+    end
+
+    it 'keeps clauses on different attributes stacked, both applied' do
+      reduced = RTypes::String.where(size: 3..10).where(length: 4..8)
+      expect(reduced.resolve('xxxx').valid?).to be(true)   # size 4, length 4 — both pass
+      expect(reduced.resolve('xx').valid?).to be(false)    # size 2 out of 3..10
+      expect(reduced.resolve('x' * 9).valid?).to be(false) # length 9 out of 4..8
+    end
+
+    it 'stacks disjoint same-attribute clauses (unsatisfiable, like Constraints)' do
+      reduced = RTypes::String.where(size: 0..5) / RTypes::String.where(size: 10..20)
+      expect(reduced.resolve('xxx').valid?).to be(false)    # size 3 fails 10..20
+      expect(reduced.resolve('x' * 12).valid?).to be(false) # size 12 fails 0..5
+    end
+
+    it 'runtime-validates the intersected clause' do
+      reduced = RTypes::String.where(size: 0..40) / RTypes::String.where(size: 10..100)
+      expect(reduced.resolve('x' * 5).valid?).to be(false)
+      expect(reduced.resolve('x' * 25).valid?).to be(true)
+      expect(reduced.resolve('x' * 60).valid?).to be(false)
+    end
+  end
+
   describe 'bail cases fall back to And' do
     specify 'right is a transform (value-changing barrier)' do
       chain = RTypes::Integer[0..100] >> RTypes::Any.transform(::Integer) { |v| v + 1 }
       expect(chain).to be_a(Plumb::And)
     end
 
-    specify 'right is a union' do
-      chain = RTypes::Integer[0..100] >> (RTypes::Integer | RTypes::Float)
+    specify 'right is a union with a value-changing branch (not value-preserving)' do
+      coercing = RTypes::Integer | RTypes::String.transform(::Integer, :to_i)
+      chain = RTypes::Integer[0..100] >> coercing
       expect(chain).to be_a(Plumb::And)
     end
 

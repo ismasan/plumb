@@ -168,6 +168,22 @@ module Plumb
     # Degenerate `left >> Integer` (`matchers == []`) returns `left` — a pure
     # redundant type gate removed.
     def reduce_step(left, right)
+      # A refinement `And` (a `where`-clause chain, or any value-preserving
+      # intersection) narrows by each conjunct in turn: `left / (b ∧ c)` is
+      # `(left / b) / c`. An `And` carrying a transform changes the value and is
+      # a barrier, so it is left intact (falls through to the Constraint check
+      # below, which bails).
+      if right.is_a?(And) && value_preserving?(right)
+        l = reduce_step(left, right.children[0]) || And.new(left, right.children[0])
+        return reduce_step(l, right.children[1]) || And.new(l, right.children[1])
+      end
+
+      # An attribute constraint intersects into `left`'s clause on the same
+      # attribute — like Constraint.narrow intersects Ranges — or stacks on when
+      # there is none. `String.where(size: 0..40) / .where(size: 10..100)` ->
+      # `.where(size: 10..40)`, one `String` check.
+      return narrow_attribute(left, right) if right.is_a?(AttributeValueMatch)
+
       return nil unless right.is_a?(Constraint)
 
       matchers = [] # innermost-first, excludes the root gate
@@ -183,6 +199,89 @@ module Plumb
       # Stack right's refinements onto left; Constraint.narrow intersects Ranges
       # so `Integer[0..100] >> Integer[0..]` collapses to `Integer[0..100]`.
       matchers.reduce(left) { |acc, m| Constraint.narrow(acc, m) }
+    end
+
+    # Narrow `left` by attribute constraint `avm`: intersect it into `left`'s
+    # existing clause on the same attribute+base type (mirroring how
+    # Constraint.narrow intersects Range matchers), or stack it on when there is
+    # no such clause. Always reduces (never bails) — an AVM is a value-narrowing
+    # refinement, so there is no duplicated type gate to keep it apart.
+    def narrow_attribute(left, avm)
+      merge_attribute_into(left, avm) || And.new(left, avm)
+    end
+
+    # `left` rebuilt with `avm` merged into its matching same-attribute clause,
+    # or nil when `left` has none (the caller then stacks). Prefers the outermost
+    # (most-recently-added) clause.
+    def merge_attribute_into(left, avm)
+      case left
+      when AttributeValueMatch
+        return nil unless left.attr_name == avm.attr_name && compatible_base?(left.type, avm.type)
+
+        merged = intersect_attribute_values(left.value, avm.value)
+        merged.nil? ? nil : AttributeValueMatch.new(left.type, left.attr_name, merged)
+      when And
+        if (right = merge_attribute_into(left.children[1], avm))
+          And.new(left.children[0], right)
+        elsif (leftc = merge_attribute_into(left.children[0], avm))
+          And.new(leftc, left.children[1])
+        end
+      end
+    end
+
+    # Subtype test between two attribute-constraint VALUES (the `value` of a
+    # `where(attr: value)` clause). A value is either a full Plumb type — compared
+    # structurally with #subtype? — or a raw `===`-matcher (Range/Set/literal/
+    # Regexp/Array/Hash), compared with #atomic_subtype?. The split is load-
+    # bearing: #subtype? wraps its arguments, and Composable.wrap turns a raw
+    # Array into `Array[element]` (raising on multi-element arrays) and a Hash into
+    # a record type — but an AttributeValueMatch matches its value with plain
+    # `===`, which is exactly what #atomic_subtype? models. Mirrors how a
+    # Constraint's matcher can be either kind.
+    def value_subtype?(a, b)
+      if a.is_a?(Composable) || b.is_a?(Composable)
+        subtype?(a, b)
+      else
+        atomic_subtype?(a, b)
+      end
+    end
+
+    # Intersect two attribute-constraint values into a single value, or nil to
+    # keep the two clauses stacked. Raw Ranges/Sets intersect to their (possibly
+    # narrower) overlap via Constraint.merge_matchers; a Plumb-typed value reduces
+    # only by subsumption — keeping the narrower — and otherwise stays stacked
+    # (intersecting two arbitrary Plumb types into one clause isn't representable).
+    def intersect_attribute_values(a, b)
+      return a if a == b
+
+      if a.is_a?(Composable) || b.is_a?(Composable)
+        return a if value_subtype?(a, b)
+        return b if value_subtype?(b, a)
+
+        nil
+      else
+        Constraint.merge_matchers(a, b)
+      end
+    end
+
+    # Two same-attribute clauses may merge when their base types are subtype-
+    # comparable — so a clause built on `String` and one built on the accumulated
+    # `String.where(size: …)` (as chained `#where` produces) still fold together.
+    def compatible_base?(a, b)
+      a == b || subtype?(a, b) || subtype?(b, a)
+    end
+
+    # In `left >> right`, is `right` a no-op that `left` already guarantees?
+    # True when `right` preserves values AND every value `left` produces already
+    # satisfies it (`left <= right`), so `right` can neither reject nor change
+    # them — eg. `String.where(size: 3..10) >> String.where(size: 0..)` drops the
+    # vacuous `size: 0..`. This is what reduce_step does for a Constraint chain,
+    # generalized to any value-preserving refinement (a `where`/AVM And, a nested
+    # Or). It tests REAL subsumption via #subtype?, not check_composable!'s type-
+    # compat check — a value-narrowing refinement (AVM) opts out of the latter
+    # (its #input_type is Any), so check_composable! can't tell it apart.
+    def redundant_refinement?(left, right)
+      value_preserving?(right) && subtype?(left, right)
     end
 
     # Join-dual of `reduce_step`: absorption for `a | b`. If one branch's value

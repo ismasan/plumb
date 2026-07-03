@@ -7,6 +7,10 @@ module Plumb
     attr_reader :type, :attr_name, :value
 
     def initialize(type, attr_name, value)
+      unless attr_name.is_a?(::Symbol) || attr_name.is_a?(::String)
+        raise ArgumentError, "attribute name must be a Symbol or String, got #{attr_name.inspect}"
+      end
+
       @type = type
       @attr_name = attr_name
       @value = value
@@ -32,6 +36,9 @@ module Plumb
     # (opts out of #>> composition type-checks).
     def input_type = Types::Any
 
+    # It checks an attribute and returns the value unchanged — a pure refinement.
+    def value_preserving? = true
+
     # Subtyping for an attribute constraint. Against another constraint on the
     # SAME attribute, the base types must be compatible and this constraint's
     # value must be a subtype of the other's — eg. `size: 10` <= `size: 8..100`,
@@ -42,7 +49,7 @@ module Plumb
       if other.is_a?(AttributeValueMatch)
         attr_name == other.attr_name &&
           Plumb::Subtyping.subtype?(type, other.type) &&
-          Plumb::Subtyping.atomic_subtype?(value, other.value)
+          Plumb::Subtyping.value_subtype?(value, other.value)
       else
         Plumb::Subtyping.subtype?(type, other)
       end

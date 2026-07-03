@@ -482,6 +482,16 @@ RSpec.describe Plumb::Types do
       assert_result(Types::Array.where(size: 1..2).resolve([1, 2]), [1, 2], true)
       assert_result(Types::Array.where(size: 1..2).resolve([1, 2, 3]), [1, 2, 3], false)
     end
+
+    it 'requires a non-empty Hash of attribute => matcher (not a bare matcher)' do
+      expect { Types::String.where(3..45) }.to raise_error(ArgumentError, /Hash of attribute/)
+      expect { Types::String.where(3) }.to raise_error(ArgumentError, /Hash of attribute/)
+      expect { Types::String.where({}) }.to raise_error(ArgumentError, /Hash of attribute/)
+    end
+
+    it 'rejects a non-Symbol/String attribute name' do
+      expect { Types::String.where(3 => nil) }.to raise_error(ArgumentError, /Symbol or String/)
+    end
   end
 
   describe '#policy' do

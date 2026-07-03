@@ -46,6 +46,8 @@ module Plumb
     # Intersection of two knowable matchers of the same kind, or nil to not merge.
     # Sets always intersect (an empty Set is representable); an empty Range is not,
     # so intersect_ranges returns nil and the two Ranges stay stacked instead.
+    # Public because AttributeValueMatch narrowing reuses it (see Subtyping) — an
+    # attribute constraint intersects its Range/Set values just like a Constraint.
     def self.merge_matchers(a, b)
       if a.is_a?(::Range) && b.is_a?(::Range)
         intersect_ranges(a, b)
@@ -53,7 +55,6 @@ module Plumb
         a & b
       end
     end
-    private_class_method :merge_matchers
 
     # Intersection of two Ranges as a Range, or nil when empty / incomputable
     # (incomparable endpoints — left to #new's incompatibility check to reject).
