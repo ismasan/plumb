@@ -513,6 +513,12 @@ module Plumb
       # delegates type-flow to the wrapped type.
       def input_type = type.input_type
       def output_type = type.output_type
+      def value_preserving? = type.value_preserving?
+
+      # Inspect as the wrapped type. Constant-assigned nodes (Types::Boolean,
+      # Email) are renamed by constant assignment and ignore this; a runtime node
+      # (eg. a factored :refined_union) would otherwise show "Composable::Node".
+      private def _inspect = type.inspect
 
       # Two nodes are equal when they wrap the same type with the same
       # node_name and args. The default Composable#== compares #children,
