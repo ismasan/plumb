@@ -438,8 +438,10 @@ module Plumb
       # `And(self, matcher)`): the matcher records `self` as its base, so it
       # subtypes and composes as "a `self` narrowed by the matcher". When `self`
       # is the Any top the matcher stands alone (`Any[String]` == the String
-      # matcher), preserving the old collapsing behaviour.
-      Constraint.new(*args, base: (is_a?(AnyClass) ? nil : self))
+      # matcher), preserving the old collapsing behaviour. Routed through
+      # Constraint.narrow so stacked Range refinements intersect
+      # (`Integer[0..100][10..]` == `Integer[10..100]`).
+      Constraint.narrow((is_a?(AnyClass) ? nil : self), *args)
     end
 
     def [](val) = match(val)

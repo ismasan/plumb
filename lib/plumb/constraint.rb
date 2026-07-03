@@ -28,6 +28,47 @@ module Plumb
       freeze
     end
 
+    # Smart refinement constructor: builds `Constraint.new(matcher, base:)`, but
+    # when both `base` (a Constraint) and `matcher` describe Ranges, it INTERSECTS
+    # them into a single Range over `base`'s own base rather than stacking two
+    # range checks — so `Integer[0..100][10..]` is `Integer[10..100]`, and
+    # `Integer[0..100] >> Integer[0..]` reduces to `Integer[0..100]`. Only Ranges
+    # (a knowable, totally-ordered matcher) merge; other matchers stack as before.
+    # An empty intersection can't be represented as a Range, so it falls back to
+    # stacking (the type still rejects every value at runtime).
+    def self.narrow(base, matcher)
+      if base.is_a?(Constraint) && base.matcher.is_a?(::Range) && matcher.is_a?(::Range)
+        merged = intersect_ranges(base.matcher, matcher)
+        return narrow(base.base, merged) if merged # recurse: base.base may be a type gate
+      end
+      new(matcher, base:)
+    end
+
+    # Intersection of two Ranges as a Range, or nil when empty / incomputable
+    # (incomparable endpoints — left to #new's incompatibility check to reject).
+    def self.intersect_ranges(a, b)
+      ab = a.begin
+      bb = b.begin
+      new_begin = ab.nil? ? bb : (bb.nil? ? ab : (ab >= bb ? ab : bb)) # greater begin (nil = -inf)
+      ae = a.end
+      be = b.end
+      new_end, new_exclude = # lesser end (nil = +inf), carrying exclusivity
+        if ae.nil? then [be, b.exclude_end?]
+        elsif be.nil? then [ae, a.exclude_end?]
+        elsif ae < be then [ae, a.exclude_end?]
+        elsif be < ae then [be, b.exclude_end?]
+        else [ae, a.exclude_end? || b.exclude_end?]
+        end
+      unless new_begin.nil? || new_end.nil?
+        return nil if new_begin > new_end
+        return nil if new_begin == new_end && new_exclude
+      end
+      ::Range.new(new_begin, new_end, new_exclude)
+    rescue ::ArgumentError, ::TypeError
+      nil
+    end
+    private_class_method :intersect_ranges
+
     # As the consumer of a `left >> self` chain:
     #   - a refinement (has a base) or a Class/Module gate accepts exactly what it
     #     validates — itself — so `Integer >> Integer[1..10]` is correctly

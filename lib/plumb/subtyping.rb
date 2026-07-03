@@ -172,7 +172,9 @@ module Plumb
       return nil unless root.is_a?(Constraint) && root.matcher.is_a?(::Module)
       return nil unless subtype?(resolved_output(left), root)
 
-      matchers.reduce(left) { |acc, m| Constraint.new(m, base: acc) }
+      # Stack right's refinements onto left; Constraint.narrow intersects Ranges
+      # so `Integer[0..100] >> Integer[0..]` collapses to `Integer[0..100]`.
+      matchers.reduce(left) { |acc, m| Constraint.narrow(acc, m) }
     end
 
     # What `type` will accept without rejecting it outright, when it's the

@@ -292,10 +292,10 @@ RSpec.describe 'subtyping: Plumb::Subtyping.subtype? and #<=' do
       expect { STypes::String / STypes::String[/d/] }.not_to raise_error
 
       narrowed = STypes::Integer[0..40] / STypes::Integer[2..10]
-      # same reduction as #>>: the redundant ::Integer gate is dropped, so it
-      # re-parents to Integer[0..40][2..10] (a Constraint) and still validates
+      # reduction intersects the two ranges into one Constraint: (0..40) ∩ (2..10)
+      # == (2..10), with the redundant ::Integer gate checked once
       expect(narrowed).to be_a(Plumb::Constraint)
-      expect(narrowed).to eq(STypes::Integer[0..40][2..10])
+      expect(narrowed).to eq(STypes::Integer[2..10])
       expect(narrowed.resolve(5).valid?).to be(true)
       expect(narrowed.resolve(30).valid?).to be(false)
       # and participates in subtyping like any other refinement

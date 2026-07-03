@@ -21,36 +21,47 @@ RSpec.describe 'composition reduction (>>)' do
     chain
   end
 
-  describe 'two refinements sharing a base type' do
-    subject(:reduced) { RTypes::Integer[0..100] >> RTypes::Integer[-10..110] }
-
-    it 'builds a re-parented Constraint chain, not an And' do
+  describe 'range intersection (rung 2)' do
+    it '>> intersects to the narrower range (always left, after the strict check)' do
+      # >> checks composability first (left <: right), so the surviving range is
+      # always left's own: Integer[0..100] ∩ (-10..110) == 0..100.
+      reduced = RTypes::Integer[0..100] >> RTypes::Integer[-10..110]
       expect(reduced).to be_a(Plumb::Constraint)
-      expect(reduced).to eq(RTypes::Integer[0..100][-10..110])
-      expect(reduced.inspect).to end_with('[0..100][-10..110]')
+      expect(reduced).to eq(RTypes::Integer[0..100])
+      expect(matcher_chain(reduced)).to eq([0..100, ::Integer]) # ::Integer once, single range
     end
 
-    it 'checks the base type (::Integer) exactly once' do
-      chain = matcher_chain(reduced)
-      expect(chain.count { |m| m == ::Integer }).to eq(1)
-      expect(chain).to include(0..100, -10..110) # both ranges preserved (rung 1)
+    it '>> Integer[0..] collapses to Integer[0..100]' do
+      expect(RTypes::Integer[0..100] >> RTypes::Integer[0..]).to eq(RTypes::Integer[0..100])
     end
 
-    it 'keeps the redundant range (rung 1, not value-subsumption rung 2)' do
-      # Semantically equal to Integer[0..100], but structurally still carries the
-      # wider -10..110 refinement — we did not compare range values.
-      expect(reduced).not_to eq(RTypes::Integer[0..100])
-      expect(matcher_chain(reduced)).to eq([-10..110, 0..100, ::Integer])
+    it '#[] intersects stacked ranges: Integer[0..100][10..] == Integer[10..100]' do
+      merged = RTypes::Integer[0..100][10..]
+      expect(merged).to eq(RTypes::Integer[10..100])
+      expect(matcher_chain(merged)).to eq([10..100, ::Integer])
+    end
+
+    it '#/ intersects: Integer[0..40] / Integer[2..10] == Integer[2..10]' do
+      expect(RTypes::Integer[0..40] / RTypes::Integer[2..10]).to eq(RTypes::Integer[2..10])
+    end
+
+    it 'carries exclusive ends and generalizes to String ranges' do
+      expect(RTypes::Integer[0...10][5..]).to eq(RTypes::Integer[5...10])
+      expect(RTypes::String['a'..'m']['c'..'z']).to eq(RTypes::String['c'..'m'])
+    end
+
+    it 'leaves an empty intersection stacked (still rejects every value)' do
+      empty = RTypes::Integer[0..5][10..]
+      expect(matcher_chain(empty)).to eq([10.., 0..5, ::Integer]) # not merged
+      expect(empty.resolve(3).valid?).to be(false)
     end
 
     it 'validates identically to the pre-reduction composition' do
+      reduced = RTypes::Integer[0..100][10..] # == Integer[10..100]
       assert_result(reduced.resolve(50), 50, true)
-      bad_range = reduced.resolve(200)
-      expect(bad_range.valid?).to be(false)
-      expect(bad_range.errors).to eq('Must be within 0..100')
-      bad_type = reduced.resolve('x')
-      expect(bad_type.valid?).to be(false)
-      expect(bad_type.errors).to eq('Must be a Integer')
+      expect(reduced.resolve(5).errors).to eq('Must be within 10..100')
+      expect(reduced.resolve(200).errors).to eq('Must be within 10..100')
+      expect(reduced.resolve('x').errors).to eq('Must be a Integer')
     end
   end
 
