@@ -44,6 +44,15 @@ RSpec.describe Plumb::Types do
       assert_result(Types::Any['a'..'f'].resolve('c'), 'c', true)
       assert_result(Types::Any['a'..'f'].resolve('z'), 'z', false)
     end
+
+    it 'wraps a splatted list of values as a Set membership matcher' do
+      expect(Types::Integer[1, 2, 3, 4]).to eq(Types::Integer[Set[1, 2, 3, 4]])
+      assert_result(Types::Integer[1, 2, 3].resolve(2), 2, true)
+      assert_result(Types::Integer[1, 2, 3].resolve(9), 9, false)
+      # a single argument is used as-is (value / Range / Set), not wrapped
+      expect(Types::Integer[5].matcher).to eq(5)
+      expect(Types::Integer[0..100].matcher).to eq(0..100)
+    end
   end
 
   specify '#>>' do

@@ -444,7 +444,13 @@ module Plumb
       Constraint.narrow((is_a?(AnyClass) ? nil : self), *args)
     end
 
-    def [](val) = match(val)
+    # Sugar over #match: a splatted list of values becomes a Set membership
+    # matcher, so `Integer[1, 2, 3]` == `Integer[Set[1, 2, 3]]` (and composes /
+    # reduces like any Set constraint). A single argument is used as-is — a Range,
+    # Regexp, Set, class or literal value.
+    # @example
+    #   Types::String['a', 'b', 'c'] # one of these three strings
+    def [](*args) = match(args.size > 1 ? ::Set.new(args) : args.first)
 
     # Narrow `self` with a constraint. A constraint refines rather than
     # sequences a new type, so this bypasses the #>> composition type-check
