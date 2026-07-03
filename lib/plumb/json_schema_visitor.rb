@@ -166,7 +166,12 @@ module Plumb
         val = any_of[defidx.zero? ? 1 : 0]
         props.merge(val).merge(DEFAULT => any_of[defidx][DEFAULT])
       else
-        props.merge(ANY_OF => any_of)
+        # anyOf is associative, so splice a child that is itself a BARE `anyOf`
+        # (a nested Or from an n-ary factored union) into this level to keep the
+        # schema flat. Only when it is pure anyOf — other keys would be lost, and
+        # the default-bearing branches above are deliberately left un-spliced.
+        flat = any_of.flat_map { |s| s.keys == [ANY_OF] ? s[ANY_OF] : [s] }.uniq
+        props.merge(ANY_OF => flat)
       end
     end
 

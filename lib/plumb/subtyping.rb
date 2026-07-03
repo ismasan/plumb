@@ -212,71 +212,65 @@ module Plumb
     # it in the right branch when the left fails). Factoring runs it once, which
     # is behaviour-preserving iff `P` is referentially transparent. A VALUE-
     # PRESERVING `P` guarantees this: it never alters the value, so both forms
-    # feed the divergent suffixes the identical input — and the guard is on the
-    # PREFIX only, so the suffixes A/B may be anything, including transforms. A
-    # transform prefix is NOT factored (its purity/determinism is unprovable).
+    # feed the divergent suffixes the identical input. The guard is per prefix
+    # STEP (below), so the suffixes may be anything (incl. transforms) and a
+    # transform prefix — whose purity is unprovable — halts the shared prefix.
     #
-    # Runs AFTER reduce_union, so a prefix that consumes a whole branch (one
-    # subsumes the other) was already absorbed and can't reach here. Returns the
-    # factored `And` decorated as a `:refined_union` node (a distinct #node_name
-    # so visitors fold the type-less suffix disjunction into P's type spec rather
-    # than the generic `:and` handler dropping it); runtime is the plain And.
+    # Both branches are flattened to their `>>` step lists (#steps unwraps already-
+    # factored `:refined_union` nodes, so a third branch folds into an existing
+    # `P >> (…)` rather than re-checking `P` — n-ary folding). The longest common
+    # value-preserving step prefix is pulled out; the divergent tails become the
+    # Or. Runs AFTER reduce_union, so a prefix consuming a whole branch was
+    # already absorbed. The result is decorated `:refined_union` so visitors fold
+    # the type-less disjunction into P's type spec; runtime is the plain And.
     def factor_union(a, b)
-      factor_constraints(a, b) || factor_composition(a, b)
+      sa = steps(a)
+      sb = steps(b)
+      k = common_step_prefix(sa, sb)
+      return nil if k.zero? # disjoint prefixes — nothing shared
+      return nil if k == sa.size || k == sb.size # one is a prefix of the other (absorption's job)
+
+      inner = Or.new(rebuild(sa.drop(k)), rebuild(sb.drop(k)))
+      And.new(rebuild(sa.take(k)), inner).as_node(:refined_union)
     end
 
-    # Two fused Constraint chains sharing a common base prefix (`String[/d/] |
-    # String[/c/]` → `String >> (/d/ | /c/)`). The prefix is always value-
-    # preserving (a Constraint never changes the value).
-    def factor_constraints(a, b)
-      return nil unless a.is_a?(Constraint) && b.is_a?(Constraint)
-
-      a_chain = constraint_chain(a) # [[matcher, node], …] root-first
-      b_chain = constraint_chain(b)
-      j = common_prefix_length(a_chain, b_chain)
-      return nil if j.zero? # disjoint roots — nothing shared
-      return nil if j == a_chain.size || j == b_chain.size # a prefix of b (absorption's job)
-
-      prefix = a_chain[j - 1].last # reuse a's actual prefix node (keeps its labels)
-      inner = Or.new(build_suffix(a_chain, j), build_suffix(b_chain, j))
-      And.new(prefix, inner).as_node(:refined_union)
-    end
-
-    # Two `>>` compositions sharing a value-preserving left prefix (`(A >> B) |
-    # (A >> C)` → `A >> (B | C)`). Because `A >> B >> …` is left-nested
-    # (`And(And(A, B), …)`), comparing #input_type factors the shared prefix as
-    # one unit, and recursing on #output_type folds a deeper shared tail.
-    def factor_composition(a, b)
-      return nil unless a.is_a?(And) && b.is_a?(And)
-      return nil unless a.input_type == b.input_type && value_preserving?(a.input_type)
-
-      inner = factor_union(a.output_type, b.output_type) || Or.new(a.output_type, b.output_type)
-      And.new(a.input_type, inner).as_node(:refined_union)
-    end
-
-    # A refinement chain decomposed into [matcher, node] pairs, ROOT-first, so
-    # chain[i].last is the sub-constraint whose matcher stack is chain[0..i].
-    def constraint_chain(constraint)
-      chain = []
-      node = constraint
-      while node.is_a?(Constraint)
-        chain.unshift([node.matcher, node])
-        node = node.base
+    # Flatten a type into its `>>` execution steps. A fused Constraint chain
+    # (`String[/d/]`) unfolds to its base then a bare matcher refinement; an And
+    # to its two sides; an already-factored `:refined_union` node is peeled so its
+    # shared prefix re-exposes for n-ary folding. Everything else (root gate,
+    # transform, Or, container) is atomic. Only `:refined_union` nodes are peeled
+    # — Metadata/Policy/other Nodes carry identity we must not factor away.
+    def steps(type)
+      type = type.type if type.is_a?(Composable::Node) && type.node_name == :refined_union
+      case type
+      when And then steps(type.input_type) + steps(type.output_type)
+      when Constraint then type.base ? steps(type.base) + [Constraint.new(type.matcher)] : [type]
+      else [type]
       end
-      chain
     end
 
-    # How many leading matchers two chains agree on (by matcher equality).
-    def common_prefix_length(a_chain, b_chain)
-      max = a_chain.size < b_chain.size ? a_chain.size : b_chain.size
+    # Length of the longest leading run of steps the two lists agree on AND that
+    # is value-preserving — the sound-to-factor shared prefix.
+    def common_step_prefix(sa, sb)
+      max = sa.size < sb.size ? sa.size : sb.size
       i = 0
-      i += 1 while i < max && a_chain[i].first == b_chain[i].first
+      i += 1 while i < max && sa[i] == sb[i] && value_preserving?(sa[i])
       i
     end
 
-    # Rebuild the matchers above the shared prefix as a bare (base-less) chain.
-    def build_suffix(chain, from)
-      chain[from..].reduce(nil) { |acc, (matcher, _node)| Constraint.narrow(acc, matcher) }
+    # Re-fold a step list into a type, fusing consecutive Constraint refinements
+    # back into a Constraint chain (`[String, /d/] → String[/d/]`) and using And at
+    # a non-fusable boundary (a transform or an Or suffix).
+    def rebuild(list)
+      list.reduce { |left, step| compose_step(left, step) }
+    end
+
+    def compose_step(left, right)
+      if left.is_a?(Constraint) && right.is_a?(Constraint) && right.base.nil?
+        Constraint.narrow(left, right.matcher)
+      else
+        And.new(left, right)
+      end
     end
 
     # Does `type` return its input unchanged on success (a coreflexive

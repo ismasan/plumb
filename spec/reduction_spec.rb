@@ -278,5 +278,64 @@ RSpec.describe 'composition reduction (>>)' do
         expect(Plumb::Subtyping.factor_union(left, right)).to be_nil
       end
     end
+
+    context 'n-ary folding: 3+ branches over one prefix, checked once' do
+      it 'folds a 3-way union into a single refined_union (not a nested Or)' do
+        u = RTypes::String[/a/] | RTypes::String[/b/] | RTypes::String[/c/]
+
+        expect(u.node_name).to eq(:refined_union) # NOT :or — base is shared, not re-checked
+        expect(u.type.input_type).to eq(RTypes::String)
+      end
+
+      it 'keeps every branch reachable at runtime after folding' do
+        u = RTypes::String[/a/] | RTypes::String[/b/] | RTypes::String[/c/]
+
+        assert_result(u.resolve('a!'), 'a!', true)
+        assert_result(u.resolve('b!'), 'b!', true)
+        assert_result(u.resolve('c!'), 'c!', true) # third branch, previously behind a re-checked base
+        assert_result(u.resolve('zzz'), 'zzz', false)
+        expect(u.resolve(9).valid?).to be(false)
+      end
+
+      it 'folds a 4-way union too' do
+        u = RTypes::String[/a/] | RTypes::String[/b/] | RTypes::String[/c/] | RTypes::String[/d/]
+
+        expect(u.node_name).to eq(:refined_union)
+        expect(u.type.input_type).to eq(RTypes::String)
+      end
+
+      it 'folds a shared multi-step prefix once (String[/x/])' do
+        u = RTypes::String[/x/][/a/] | RTypes::String[/x/][/b/] | RTypes::String[/x/][/c/]
+
+        expect(u.node_name).to eq(:refined_union)
+        expect(u.type.input_type).to eq(RTypes::String[/x/])
+      end
+
+      it 'folds a 3-way composition with transform suffixes' do
+        b = RTypes::String.transform(::Symbol, :to_sym)
+        c = RTypes::String.transform(::Integer, :to_i)
+        d = RTypes::String.transform(::Float, :to_f)
+        u = (RTypes::String >> b) | (RTypes::String >> c) | (RTypes::String >> d)
+
+        expect(u.node_name).to eq(:refined_union)
+        expect(u.type.input_type).to eq(RTypes::String)
+      end
+
+      it 'renders a FLAT anyOf in JSON Schema (no nested Or)' do
+        schema = Plumb::JSONSchemaVisitor.call(RTypes::String[/a/] | RTypes::String[/b/] | RTypes::String[/c/])
+
+        expect(schema['anyOf'].map { |b| b['pattern'] }).to contain_exactly('a', 'b', 'c')
+        expect(schema['anyOf'].any? { |b| b.key?('anyOf') }).to be(false) # flattened
+      end
+
+      it 'does NOT flatten a branch carrying other keys (soundness)' do
+        # (String[/a/] | String[/b/]) renders {type:string, anyOf:[…]}; OR'd with an
+        # Integer it must stay nested, else the string patterns escape the type gate.
+        schema = Plumb::JSONSchemaVisitor.call((RTypes::String[/a/] | RTypes::String[/b/]) | RTypes::Integer[1..3])
+        string_branch = schema['anyOf'].find { |b| b['type'] == 'string' }
+
+        expect(string_branch).to have_key('anyOf')
+      end
+    end
   end
 end
