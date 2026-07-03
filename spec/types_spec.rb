@@ -242,19 +242,21 @@ RSpec.describe Plumb::Types do
     end
 
     it 'exposes the two sides of a chain (A >> B)' do
-      # A >> B requires B to accept A's output; Integer's output is a subtype of
-      # Numeric's input, so the chain is well-typed.
-      chain = Types::Integer >> Types::Numeric
+      # A value-changing (transform) step keeps the chain as an And. Refinement-
+      # only chains collapse via reduction instead (see reduction_spec.rb).
+      b = Types::Integer.transform(::String, :to_s)
+      chain = Types::Integer >> b
+      expect(chain).to be_a(Plumb::And)
       expect(chain.input_type).to eq(Types::Integer)
-      expect(chain.output_type).to eq(Types::Numeric)
+      expect(chain.output_type).to eq(b)
     end
 
     it 'is shallow for longer chains: input_type is everything but the last step' do
-      # (A >> B >> C) == ((A >> B) >> C). Each step's output must be a subtype of
-      # the next step's input, so the chain widens left-to-right.
+      # (A >> B >> C) == ((A >> B) >> C). Transform steps keep the And nesting;
+      # each step's output must be a subtype of the next step's input.
       a = Types::Integer[1..5]
-      b = Types::Integer
-      c = Types::Numeric
+      b = Types::Integer.transform(::String, :to_s)
+      c = Types::String.transform(::Integer, :to_i)
       chain = a >> b >> c
       expect(chain.input_type).to eq(a >> b)
       expect(chain.output_type).to eq(c)

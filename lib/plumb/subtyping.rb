@@ -143,6 +143,38 @@ module Plumb
             'narrow with #[] if this is intentional'
     end
 
+    # Rung-1 structural reduction of `left >> right`. When `right` is a refinement
+    # (a `Constraint` chain) whose ROOT is a base-type (Module) gate that `left`'s
+    # output already guarantees, that gate is a duplicated runtime check: re-parent
+    # `right`'s refinement matchers onto `left` and drop it. Returns the reduced
+    # type, or `nil` to fall back to `And.new`.
+    #
+    # Keyed on the root TYPE only (`subtype?(left_output, root)`), NOT on matcher
+    # values — so `Integer[0..100] >> Integer[-10..110]` becomes
+    # `Integer[0..100][-10..110]` (the `-10..110` range is preserved), not the
+    # value-subsumed `Integer[0..100]` (that would be rung 2).
+    #
+    #   matchers=[-10..110], root=Constraint(::Integer), left guarantees Integer
+    #   => Constraint(-10..110, base: Integer[0..100]) == Integer[0..100][-10..110]
+    #
+    # Degenerate `left >> Integer` (`matchers == []`) returns `left` — a pure
+    # redundant type gate removed.
+    def reduce_step(left, right)
+      return nil unless right.is_a?(Constraint)
+
+      matchers = [] # innermost-first, excludes the root gate
+      node = right
+      while node.is_a?(Constraint) && node.base
+        matchers.unshift(node.matcher)
+        node = node.base
+      end
+      root = node
+      return nil unless root.is_a?(Constraint) && root.matcher.is_a?(::Module)
+      return nil unless subtype?(resolved_output(left), root)
+
+      matchers.reduce(left) { |acc, m| Constraint.new(m, base: acc) }
+    end
+
     # What `type` will accept without rejecting it outright, when it's the
     # consumer of a `left >> type` chain. The type itself answers via its
     # #accepted_type hook (default: its resolved input; refinements and Hash

@@ -287,7 +287,10 @@ module Plumb
       return self if idempotent? && self == other
 
       Plumb::Subtyping.check_composable!(self, other)
-      And.new(self, other)
+      # Drop a base-type gate `other` re-asserts that `self` already guarantees
+      # (eg. `Integer[0..100] >> Integer[-10..110]` -> `Integer[0..100][-10..110]`,
+      # validating `::Integer` once). Falls back to `And` when nothing reduces.
+      Plumb::Subtyping.reduce_step(self, other) || And.new(self, other)
     end
 
     # Compose like #>> but WITHOUT the strict subtype check — the escape hatch
