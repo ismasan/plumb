@@ -262,6 +262,14 @@ module Plumb
     # apply it twice.
     def idempotent? = false
 
+    # Whether this type returns its input value UNCHANGED on success — a
+    # coreflexive refinement (a pure filter). Lets `#|` absorb a redundant
+    # branch (`Integer | Numeric == Numeric`) without dropping a coercion. See
+    # Subtyping.reduce_union, which memoizes this per frozen node in TypeCache.
+    # Default false; refinements opt in, transforms/containers stay false.
+    # A stronger property than #idempotent? (value-preserving ⟹ idempotent).
+    def value_preserving? = false
+
     # Chain two composable objects together.
     # A.K.A "and" or "sequence"
     # @example
@@ -310,11 +318,16 @@ module Plumb
     end
 
     # Chain two composable objects together as a disjunction ("or").
+    # When one value-preserving branch subsumes the other (`Integer | Numeric`,
+    # or `X | X`), the union absorbs to the wider branch — see
+    # Subtyping.reduce_union. Transforms/containers never reduce (they may accept
+    # inputs the survivor rejects), so coercion unions are preserved.
     #
     # @param other [Composable]
-    # @return [Or]
+    # @return [Composable]
     def |(other)
-      Or.new(self, Composable.wrap(other))
+      other = Composable.wrap(other)
+      Plumb::Subtyping.reduce_union(self, other) || Or.new(self, other)
     end
 
     # Transform value. Requires specifying the resulting type of the value after transformation.

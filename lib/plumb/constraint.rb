@@ -90,8 +90,10 @@ module Plumb
     def input_type = base || @matcher.is_a?(::Module) ? self : Types::Any
 
     # A matcher validates without changing the value, so `Match >> Match` (of the
-    # same matcher) is redundant and `#>>` collapses it.
+    # same matcher) is redundant and `#>>` collapses it — and a redundant `#|`
+    # branch absorbs.
     def idempotent? = true
+    def value_preserving? = true
 
     # Structural subtyping. A matcher describes the set `base ∩ {x | matcher === x}`
     # (base = everything when nil). `self <= other` when self's set is contained in

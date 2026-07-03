@@ -158,4 +158,38 @@ RSpec.describe 'composition reduction (>>)' do
       expect(RTypes::String.value('x')).to be_a(Plumb::And)
     end
   end
+
+  describe 'union absorption (Or reduction, refinement-only)' do
+    it 'absorbs the narrower branch to the wider (order-independent)' do
+      expect(RTypes::Integer | RTypes::Numeric).to eq(RTypes::Numeric)
+      expect(RTypes::Numeric | RTypes::Integer).to eq(RTypes::Numeric)
+    end
+
+    it 'dedupes X | X' do
+      expect(RTypes::String | RTypes::String).to eq(RTypes::String)
+    end
+
+    it 'absorbs a refinement into its base: Integer[0..10] | Integer == Integer' do
+      expect(RTypes::Integer[0..10] | RTypes::Integer).to eq(RTypes::Integer)
+    end
+
+    it 'keeps disjoint branches as an Or' do
+      expect(RTypes::String | RTypes::Integer).to be_a(Plumb::Or)
+    end
+
+    it 'does NOT reduce a coercion (transform) branch — the union is preserved' do
+      coerce = RTypes::String.transform(::Integer, :to_i) # accepts Strings, outputs Integer
+      u = coerce | RTypes::Numeric
+      expect(u).to be_a(Plumb::Or)
+      assert_result(u.resolve('5'), 5, true)   # string branch still coerces
+      assert_result(u.resolve(2.5), 2.5, true) # numeric branch still accepted
+    end
+
+    it 'validates identically to the un-reduced union' do
+      r = RTypes::Integer | RTypes::Numeric # == Numeric
+      assert_result(r.resolve(5), 5, true)
+      assert_result(r.resolve(5.5), 5.5, true)
+      expect(r.resolve('x').valid?).to be(false)
+    end
+  end
 end

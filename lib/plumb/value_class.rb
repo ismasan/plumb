@@ -27,6 +27,9 @@ module Plumb
     # not gate by Ruby type).
     def input_type = Types::Any
 
+    # Matches a specific value and passes it through unchanged.
+    def value_preserving? = true
+
     def call(result)
       @value == result.value ? result : result.invalid(errors: @error)
     end

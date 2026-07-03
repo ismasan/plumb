@@ -185,6 +185,35 @@ module Plumb
       matchers.reduce(left) { |acc, m| Constraint.narrow(acc, m) }
     end
 
+    # Join-dual of `reduce_step`: absorption for `a | b`. If one branch's value
+    # set is contained in the other's (`a <= b`), the union equals the wider
+    # branch (`a ∪ b == b`), so drop the narrower — and `a | a` dedupes. Returns
+    # the surviving type, or nil to fall back to `Or.new`.
+    #
+    # Guarded to VALUE-PRESERVING refinements only. `subtype?` identifies a
+    # Transform by its OUTPUT type, so `subtype?(String->Integer, Numeric)` is
+    # true even though that branch accepts Strings a bare Numeric rejects —
+    # reducing there would silently drop a coercion branch. Only when both
+    # branches pass values through unchanged does `subtype?` reflect the accepted
+    # input domain, making the drop behaviour-preserving.
+    def reduce_union(a, b)
+      return nil unless value_preserving?(a) && value_preserving?(b)
+      return b if subtype?(a, b) # a ⊆ b — keep the wider b (also dedupes a == b)
+      return a if subtype?(b, a) # b ⊆ a — keep the wider a
+
+      nil
+    end
+
+    # Does `type` return its input unchanged on success (a coreflexive
+    # refinement)? Delegates to the type's polymorphic #value_preserving? hook —
+    # so custom types opt in by defining it — and memoizes per frozen node in
+    # TypeCache, a pure structural predicate like #accepted_type. Transforms and
+    # value-building containers (Hash/Array/Tuple/…) change the value and stay
+    # false; refinements and their And/Or compositions are true.
+    def value_preserving?(type)
+      TypeCache.fetch(:value_preserving, type) { type.value_preserving? }
+    end
+
     # What `type` will accept without rejecting it outright, when it's the
     # consumer of a `left >> type` chain. The type itself answers via its
     # #accepted_type hook (default: its resolved input; refinements and Hash

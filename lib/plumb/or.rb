@@ -35,6 +35,11 @@ module Plumb
       l.equal?(@left) && r.equal?(@right) ? self : Or.new(l, r)
     end
 
+    # A disjunction preserves the value only if EVERY branch does — a branch
+    # that transforms (a coercion) changes it when taken. Recurses through the
+    # cached accessor so shared subtrees are memoized once.
+    def value_preserving? = children.all? { |c| Plumb::Subtyping.value_preserving?(c) }
+
     private def _inspect
       %((#{@left.inspect} | #{@right.inspect}))
     end

@@ -33,5 +33,10 @@ module Plumb
     # and would ignore the refinement (eg. `Integer[1..10].input_type` is just
     # Integer, but it only accepts values in 1..10).
     def accepted_type = Plumb::Subtyping.resolved_output(self)
+
+    # A conjunction preserves the value only if BOTH steps do — a transform on
+    # either side changes it. Recurses through the cached accessor so shared
+    # subtrees are memoized once.
+    def value_preserving? = children.all? { |c| Plumb::Subtyping.value_preserving?(c) }
   end
 end
