@@ -41,6 +41,12 @@ module Plumb
       props.merge(left).merge(right)
     end
 
+    # A factored union is transparent for metadata — its wrapped And carries the
+    # base + disjunction, so delegate to it.
+    on(:refined_union) do |node, props|
+      visit(node.type, props)
+    end
+
     on(:transform) do |node, props|
       left, right = node.children.map { |child| visit(child) }
       props.merge(left).merge(right)

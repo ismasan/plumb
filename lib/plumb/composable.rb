@@ -327,7 +327,9 @@ module Plumb
     # @return [Composable]
     def |(other)
       other = Composable.wrap(other)
-      Plumb::Subtyping.reduce_union(self, other) || Or.new(self, other)
+      Plumb::Subtyping.reduce_union(self, other) ||
+        Plumb::Subtyping.factor_union(self, other) ||
+        Or.new(self, other)
     end
 
     # Transform value. Requires specifying the resulting type of the value after transformation.

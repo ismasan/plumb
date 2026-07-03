@@ -192,4 +192,91 @@ RSpec.describe 'composition reduction (>>)' do
       expect(r.resolve('x').valid?).to be(false)
     end
   end
+
+  describe 'union factoring: shared base checked once (distributivity)' do
+    it 'factors a shared root type into a :refined_union of And(base, Or(suffixes))' do
+      u = RTypes::String[/d/] | RTypes::String[/c/]
+
+      expect(u.node_name).to eq(:refined_union)
+      expect(u.type).to be_a(Plumb::And)
+      expect(u.type.input_type).to eq(RTypes::String)  # base
+      expect(u.type.output_type).to be_a(Plumb::Or)    # disjunction of bare suffixes
+    end
+
+    it 'is runtime-equivalent to the un-factored union' do
+      u = RTypes::String[/d/] | RTypes::String[/c/]
+
+      assert_result(u.resolve('dog'), 'dog', true)   # matches /d/
+      assert_result(u.resolve('cat'), 'cat', true)   # matches /c/ (exercises right branch)
+      assert_result(u.resolve('xyz'), 'xyz', false)  # a string, matches neither
+      expect(u.resolve(42).valid?).to be(false)      # not a string
+    end
+
+    it 'renders JSON Schema as the base type with anyOf of the branch matchers' do
+      schema = Plumb::JSONSchemaVisitor.call(RTypes::String[/d/] | RTypes::String[/c/])
+
+      expect(schema['type']).to eq('string')
+      expect(schema['anyOf'].map { |b| b['pattern'] }).to contain_exactly('d', 'c')
+    end
+
+    it 'factors the longest common prefix, not just the root' do
+      u = RTypes::String[/a/][/b/] | RTypes::String[/a/][/c/]
+
+      expect(u.node_name).to eq(:refined_union)
+      expect(u.type.input_type).to eq(RTypes::String[/a/])
+    end
+
+    it 'keeps disjoint roots as a plain Or' do
+      expect(RTypes::String[/d/] | RTypes::Integer[1..3]).to be_a(Plumb::Or)
+    end
+
+    it 'lets absorption win when one branch subsumes the other' do
+      expect(RTypes::String[/d/] | RTypes::String).to eq(RTypes::String)
+    end
+
+    it 'does NOT factor when a branch transforms (coercion preserved)' do
+      coerce = RTypes::String.transform(::Integer, :to_i)
+
+      expect(coerce | RTypes::String[/c/]).to be_a(Plumb::Or)
+    end
+
+    it 'has a stable ==' do
+      expect(RTypes::String[/d/] | RTypes::String[/c/]).to eq(RTypes::String[/d/] | RTypes::String[/c/])
+    end
+
+    context 'general composition: (A >> B) | (A >> C) with any suffixes' do
+      let(:to_sym) { RTypes::String.transform(::Symbol, :to_sym) }
+      let(:to_i)   { RTypes::String.transform(::Integer, :to_i) }
+
+      it 'factors a value-preserving prefix out, leaving transform suffixes in the Or' do
+        u = (RTypes::String >> to_sym) | (RTypes::String >> to_i)
+
+        expect(u.node_name).to eq(:refined_union)
+        expect(u.type.input_type).to eq(RTypes::String)  # A pulled out (checked once)
+        expect(u.type.output_type).to be_a(Plumb::Or)    # (B | C)
+      end
+
+      it 'is runtime-equivalent to the un-factored union (suffixes still run)' do
+        factored = (RTypes::String >> to_sym) | (RTypes::String >> to_i)
+        plain    = Plumb::Or.new(RTypes::String >> to_sym, RTypes::String >> to_i)
+
+        %w[hi 42].each { |v| assert_result(factored.resolve(v), plain.resolve(v).value, true) }
+        expect(factored.resolve(99).valid?).to be(false) # not a string
+      end
+
+      it 'keeps the base type in JSON Schema (disjunction folded, not dropped)' do
+        u = (RTypes::String >> to_sym) | (RTypes::String >> to_i)
+
+        expect(Plumb::JSONSchemaVisitor.call(u)['type']).to eq('string')
+      end
+
+      it 'does NOT factor a transform prefix (purity is unprovable)' do
+        coerce = RTypes::String.transform(::Integer, :to_i)
+        left   = Plumb::And.new(coerce, RTypes::Integer[1..])
+        right  = Plumb::And.new(coerce, RTypes::Integer[0..0])
+
+        expect(Plumb::Subtyping.factor_union(left, right)).to be_nil
+      end
+    end
+  end
 end

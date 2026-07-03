@@ -116,6 +116,16 @@ module Plumb
     # input side and fold in the output side when it shares the input's type (a
     # constraint such as `pattern`/`minimum`/`format`), or when the input is
     # untyped. Both sides are validators over one value, so both are visited.
+    # A factored union `And(base, Or(suffix, …))` (built by Composable#| when
+    # branches share a base type). Unlike the generic `:and` handler, the
+    # disjunction is a *refinement* of the base, not a different type: render the
+    # base, then fold the (type-less) disjunction's `anyOf` into that same spec.
+    on(:refined_union) do |node, props|
+      and_node = node.type
+      props = visit(and_node.input_type, props) # base -> {type: …}
+      visit(and_node.output_type, props)        # Or(suffixes) -> merge anyOf into it
+    end
+
     on(:and) do |node, props|
       left, right = node.children.map { |c| visit(c) }
       if !left.key?(TYPE) || left[TYPE] == right[TYPE]

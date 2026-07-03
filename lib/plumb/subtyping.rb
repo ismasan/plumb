@@ -204,6 +204,81 @@ module Plumb
       nil
     end
 
+    # Distributive factoring — the join-dual of reduce_union's absorption:
+    # `(P >> A) | (P >> B)` factors to `P >> (A | B)` when the shared left prefix
+    # `P` is value-preserving, so `P` is validated once instead of per branch.
+    #
+    # SOUNDNESS. The un-factored union runs `P` once per branch (the Or re-runs
+    # it in the right branch when the left fails). Factoring runs it once, which
+    # is behaviour-preserving iff `P` is referentially transparent. A VALUE-
+    # PRESERVING `P` guarantees this: it never alters the value, so both forms
+    # feed the divergent suffixes the identical input — and the guard is on the
+    # PREFIX only, so the suffixes A/B may be anything, including transforms. A
+    # transform prefix is NOT factored (its purity/determinism is unprovable).
+    #
+    # Runs AFTER reduce_union, so a prefix that consumes a whole branch (one
+    # subsumes the other) was already absorbed and can't reach here. Returns the
+    # factored `And` decorated as a `:refined_union` node (a distinct #node_name
+    # so visitors fold the type-less suffix disjunction into P's type spec rather
+    # than the generic `:and` handler dropping it); runtime is the plain And.
+    def factor_union(a, b)
+      factor_constraints(a, b) || factor_composition(a, b)
+    end
+
+    # Two fused Constraint chains sharing a common base prefix (`String[/d/] |
+    # String[/c/]` → `String >> (/d/ | /c/)`). The prefix is always value-
+    # preserving (a Constraint never changes the value).
+    def factor_constraints(a, b)
+      return nil unless a.is_a?(Constraint) && b.is_a?(Constraint)
+
+      a_chain = constraint_chain(a) # [[matcher, node], …] root-first
+      b_chain = constraint_chain(b)
+      j = common_prefix_length(a_chain, b_chain)
+      return nil if j.zero? # disjoint roots — nothing shared
+      return nil if j == a_chain.size || j == b_chain.size # a prefix of b (absorption's job)
+
+      prefix = a_chain[j - 1].last # reuse a's actual prefix node (keeps its labels)
+      inner = Or.new(build_suffix(a_chain, j), build_suffix(b_chain, j))
+      And.new(prefix, inner).as_node(:refined_union)
+    end
+
+    # Two `>>` compositions sharing a value-preserving left prefix (`(A >> B) |
+    # (A >> C)` → `A >> (B | C)`). Because `A >> B >> …` is left-nested
+    # (`And(And(A, B), …)`), comparing #input_type factors the shared prefix as
+    # one unit, and recursing on #output_type folds a deeper shared tail.
+    def factor_composition(a, b)
+      return nil unless a.is_a?(And) && b.is_a?(And)
+      return nil unless a.input_type == b.input_type && value_preserving?(a.input_type)
+
+      inner = factor_union(a.output_type, b.output_type) || Or.new(a.output_type, b.output_type)
+      And.new(a.input_type, inner).as_node(:refined_union)
+    end
+
+    # A refinement chain decomposed into [matcher, node] pairs, ROOT-first, so
+    # chain[i].last is the sub-constraint whose matcher stack is chain[0..i].
+    def constraint_chain(constraint)
+      chain = []
+      node = constraint
+      while node.is_a?(Constraint)
+        chain.unshift([node.matcher, node])
+        node = node.base
+      end
+      chain
+    end
+
+    # How many leading matchers two chains agree on (by matcher equality).
+    def common_prefix_length(a_chain, b_chain)
+      max = a_chain.size < b_chain.size ? a_chain.size : b_chain.size
+      i = 0
+      i += 1 while i < max && a_chain[i].first == b_chain[i].first
+      i
+    end
+
+    # Rebuild the matchers above the shared prefix as a bare (base-less) chain.
+    def build_suffix(chain, from)
+      chain[from..].reduce(nil) { |acc, (matcher, _node)| Constraint.narrow(acc, matcher) }
+    end
+
     # Does `type` return its input unchanged on success (a coreflexive
     # refinement)? Delegates to the type's polymorphic #value_preserving? hook —
     # so custom types opt in by defining it — and memoizes per frozen node in
