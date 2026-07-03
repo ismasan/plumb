@@ -23,7 +23,6 @@ module Plumb
   BLANK_STRING = ''
   BLANK_ARRAY = [].freeze
   BLANK_HASH = {}.freeze
-  BLANK_RESULT = Result.wrap(Undefined)
   NOOP = ->(result) { result }
 
   # Ruby's explicit conversion methods and the type each produces. Lets
