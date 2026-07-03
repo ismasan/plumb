@@ -60,4 +60,27 @@ RSpec.describe Plumb::TypeCache do
     2.times { described_class.fetch(:accepted_type, frozen) { calls += 1 } }
     expect(calls).to eq(1)
   end
+
+  specify '.fetch caches falsy results (false / nil), not just truthy ones' do
+    [false, nil].each do |falsy|
+      frozen = Object.new.freeze
+      calls = 0
+      values = Array.new(3) { described_class.fetch(:value_preserving, frozen) { calls += 1; falsy } }
+
+      expect(calls).to eq(1), "expected #{falsy.inspect} to be cached after the first compute"
+      expect(values).to all(be(falsy))
+    end
+  end
+
+  specify 'Subtyping.value_preserving? memoizes a transforming (false) union' do
+    union = Types::String.transform(::Integer, &:size) | Types::Integer # false: has a transform branch
+
+    expect(Plumb::Subtyping.value_preserving?(union)).to be(false)
+
+    # The frozen node is genuinely cached — the falsy result is stored, not
+    # dropped by a truthiness check and recomputed on every call.
+    map = Plumb::TypeCache::MAPS.fetch(:value_preserving)
+    expect(map.key?(union)).to be(true)
+    expect(map[union]).to be(false)
+  end
 end
