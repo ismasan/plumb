@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require 'set'
 require 'spec_helper'
 
 # Rung-1 structural reduction of `left >> right`: when `right` re-asserts a base
@@ -62,6 +63,41 @@ RSpec.describe 'composition reduction (>>)' do
       expect(reduced.resolve(5).errors).to eq('Must be within 10..100')
       expect(reduced.resolve(200).errors).to eq('Must be within 10..100')
       expect(reduced.resolve('x').errors).to eq('Must be a Integer')
+    end
+  end
+
+  describe 'set intersection (rung 2)' do
+    it '#[] intersects stacked sets: Integer[Set[1,2,3]][Set[2,3,4]] == Integer[Set[2,3]]' do
+      merged = RTypes::Integer[Set[1, 2, 3]][Set[2, 3, 4]]
+      expect(merged).to eq(RTypes::Integer[Set[2, 3]])
+      expect(matcher_chain(merged)).to eq([Set[2, 3], ::Integer])
+    end
+
+    it '#/ intersects sets' do
+      expect(RTypes::Integer[Set[1, 2, 3]] / RTypes::Integer[Set[2, 3, 4]])
+        .to eq(RTypes::Integer[Set[2, 3]])
+    end
+
+    it '>> composes and reduces a subset narrowing' do
+      expect(RTypes::Integer[Set[2, 3]] >> RTypes::Integer[Set[1, 2, 3, 4]])
+        .to eq(RTypes::Integer[Set[2, 3]])
+    end
+
+    it '>> still raises a non-subset narrowing (strict check first, like ranges)' do
+      expect { RTypes::Integer[Set[1, 2, 3]] >> RTypes::Integer[Set[2, 3, 4]] }
+        .to raise_error(Plumb::TypeError)
+    end
+
+    it 'merges an empty intersection to Set[] (matches nothing)' do
+      empty = RTypes::Integer[Set[1, 2]][Set[3, 4]]
+      expect(empty).to eq(RTypes::Integer[Set[]])
+      expect(empty.resolve(1).valid?).to be(false)
+    end
+
+    it 'validates membership after intersection' do
+      t = RTypes::Integer[Set[1, 2, 3]][Set[2, 3, 4]] # == Integer[Set[2,3]]
+      assert_result(t.resolve(2), 2, true)
+      expect(t.resolve(1).valid?).to be(false)
     end
   end
 

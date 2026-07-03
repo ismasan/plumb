@@ -29,20 +29,31 @@ module Plumb
     end
 
     # Smart refinement constructor: builds `Constraint.new(matcher, base:)`, but
-    # when both `base` (a Constraint) and `matcher` describe Ranges, it INTERSECTS
-    # them into a single Range over `base`'s own base rather than stacking two
-    # range checks — so `Integer[0..100][10..]` is `Integer[10..100]`, and
-    # `Integer[0..100] >> Integer[0..]` reduces to `Integer[0..100]`. Only Ranges
-    # (a knowable, totally-ordered matcher) merge; other matchers stack as before.
-    # An empty intersection can't be represented as a Range, so it falls back to
-    # stacking (the type still rejects every value at runtime).
+    # when both `base` (a Constraint) and `matcher` are the same kind of knowable
+    # matcher (Ranges or Sets), it INTERSECTS them into one over `base`'s own base
+    # rather than stacking two checks — so `Integer[0..100][10..]` is
+    # `Integer[10..100]`, `Integer[Set[1,2,3]][Set[2,3,4]]` is `Integer[Set[2,3]]`,
+    # and `Integer[0..100] >> Integer[0..]` reduces to `Integer[0..100]`. Other
+    # matchers stack as before.
     def self.narrow(base, matcher)
-      if base.is_a?(Constraint) && base.matcher.is_a?(::Range) && matcher.is_a?(::Range)
-        merged = intersect_ranges(base.matcher, matcher)
+      if base.is_a?(Constraint)
+        merged = merge_matchers(base.matcher, matcher)
         return narrow(base.base, merged) if merged # recurse: base.base may be a type gate
       end
       new(matcher, base:)
     end
+
+    # Intersection of two knowable matchers of the same kind, or nil to not merge.
+    # Sets always intersect (an empty Set is representable); an empty Range is not,
+    # so intersect_ranges returns nil and the two Ranges stay stacked instead.
+    def self.merge_matchers(a, b)
+      if a.is_a?(::Range) && b.is_a?(::Range)
+        intersect_ranges(a, b)
+      elsif a.is_a?(::Set) && b.is_a?(::Set)
+        a & b
+      end
+    end
+    private_class_method :merge_matchers
 
     # Intersection of two Ranges as a Range, or nil when empty / incomputable
     # (incomparable endpoints — left to #new's incompatibility check to reject).

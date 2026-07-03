@@ -74,13 +74,21 @@ module Plumb
         when ::Module then class_le?(lm, rm)        # Integer <= Numeric
         when ::Range then range_in_class?(lm, rm)   # (1..10) <= Integer
         when ::Regexp then class_le?(::String, rm)  # /x/ matches Strings
+        when ::Set then lm.all? { |e| rm === e }    # Set[1,2,3] <= Integer
         else rm === lm                              # value 5 <= Integer
         end
       when ::Range
         case lm
         when ::Range then range_in_range?(lm, rm)   # (1..10) <= (0..20)
+        when ::Set then lm.all? { |e| rm === e }    # Set[1,2,3] <= (0..10)
         when ::Module, ::Regexp then false
         else rm === lm                              # value within range
+        end
+      when ::Set
+        case lm
+        when ::Set then lm.subset?(rm)              # Set[2,3] <= Set[1,2,3,4]
+        when ::Module, ::Range, ::Regexp then false # infinite domain ⊄ finite set
+        else rm === lm                              # value is a member
         end
       when ::Regexp
         case lm
