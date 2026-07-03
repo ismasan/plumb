@@ -89,7 +89,7 @@ module Plumb
     # participates in subtyping (see FilteredHash).
     def filtered
       op = lambda do |result|
-        return result.invalid(errors: 'must be a Hash') unless result.value.is_a?(::Hash)
+        return result.invalid!(errors: 'must be a Hash') unless result.value.is_a?(::Hash)
         return result unless _schema.any?
 
         input = result.value
@@ -100,11 +100,14 @@ module Plumb
             r = field.call(field_result.reset(input[key_s]))
             ret[key_s] = r.value if r.valid?
           elsif !key.optional?
-            r = field.call(BLANK_RESULT)
+            # Reuse the scratch (reset to Undefined) rather than the shared
+            # BLANK_RESULT constant: fields now flip the cursor in place, and
+            # mutating the shared constant would corrupt it process-wide.
+            r = field.call(field_result.reset(Undefined))
             ret[key_s] = r.value if r.valid?
           end
         end
-        result.valid(output)
+        result.valid!(output)
       end
       FilteredHash.new(self, relaxed_to_optional, op)
     end
@@ -119,7 +122,7 @@ module Plumb
     end
 
     def call(result)
-      return result.invalid(errors: NOT_A_HASH) unless result.value.is_a?(::Hash)
+      return result.invalid!(errors: NOT_A_HASH) unless result.value.is_a?(::Hash)
       return result unless _schema.any?
 
       input = result.value
@@ -137,7 +140,9 @@ module Plumb
             errors[key_s] = r.errors
           end
         elsif !key.optional?
-          r = field.call(BLANK_RESULT)
+          # See #filtered: pass the scratch, never the shared BLANK_RESULT,
+          # since fields may now flip the cursor in place.
+          r = field.call(field_result.reset(Undefined))
           output[key_s] = r.value unless r.value == Undefined
           unless r.valid?
             errors ||= {}
@@ -146,7 +151,7 @@ module Plumb
         end
       end
 
-      errors ? result.invalid(output, errors:) : result.valid(output)
+      errors ? result.invalid!(output, errors:) : result.valid!(output)
     end
 
     def ==(other)

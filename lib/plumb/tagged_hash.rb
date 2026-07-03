@@ -34,7 +34,7 @@ module Plumb
       return result unless result.valid?
 
       child = @index[result.value[@key.to_sym]]
-      return result.invalid(errors: "expected :#{@key.to_sym} to be one of #{@index.keys.join(', ')}") unless child
+      return result.invalid!(errors: "expected :#{@key.to_sym} to be one of #{@index.keys.join(', ')}") unless child
 
       child.call(result)
     end

@@ -31,7 +31,7 @@ module Plumb
     def value_preserving? = true
 
     def call(result)
-      @value == result.value ? result : result.invalid(errors: @error)
+      @value == result.value ? result : result.invalid!(errors: @error)
     end
 
     private

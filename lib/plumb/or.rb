@@ -45,23 +45,29 @@ module Plumb
     end
 
     def call(result)
+      # Snapshot the input value: @left may flip the cursor to invalid in place,
+      # so we need the original to retry @right on the same object.
+      original = result.value
+
       left_result = @left.call(result)
       return left_result if left_result.valid?
 
-      right_result = @right.call(result)
-      if right_result.valid?
-        right_result
-      else
-        # Decrease Array allocations slightly
-        # OR can be really expensive in composite ORed types
-        left_errors = left_result.errors.is_a?(Array) ? left_result.errors : [left_result.errors]
-        right_errors = right_result.errors.is_a?(Array) ? right_result.errors.first : right_result.errors
-        left_errors << right_errors
+      # Capture left's errors before reusing the cursor — if @left mutated
+      # `result` in place, `left_result` IS `result` and the reset below would
+      # wipe them.
+      left_raw = left_result.errors
 
-        # right_result is a fresh Invalid we own — reuse it instead of allocating
-        # another just to swap in the merged errors.
-        right_result.with_errors(left_errors)
-      end
+      right_result = @right.call(result.reset(original))
+      return right_result if right_result.valid?
+
+      # Both branches failed. Merge errors (same flattening as before) and reuse
+      # right's already-invalid cursor in place rather than allocating another.
+      # OR can be really expensive in composite ORed types.
+      left_errors = left_raw.is_a?(Array) ? left_raw : [left_raw]
+      right_errors = right_result.errors.is_a?(Array) ? right_result.errors.first : right_result.errors
+      left_errors << right_errors
+
+      right_result.invalid!(errors: left_errors)
     end
   end
 end

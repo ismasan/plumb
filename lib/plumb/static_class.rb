@@ -29,7 +29,7 @@ module Plumb
     def input_type = Types::Any
 
     def call(result)
-      result.valid(@value)
+      result.valid!(@value)
     end
 
     private
