@@ -70,7 +70,7 @@ module Plumb
     # @param other [InterfaceClass]
     # @return [InterfaceClass]
     def &(other)
-      raise ArgumentError, "expected another Types::Interface, but got #{other.inspect}" unless other.is_a?(self.class)
+      return super unless other.is_a?(self.class)
 
       self.class.new(method_names & other.method_names)
     end

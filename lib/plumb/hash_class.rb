@@ -57,12 +57,43 @@ module Plumb
       self.class.new(schema: merge_rightmost_keys(_schema, other_schema), inclusive: @inclusive)
     end
 
+    # Two Hash schemas are treated as maps: the result keeps the keys present in
+    # BOTH, and each shared key's field type is itself intersected (`self`'s field
+    # `&` `other`'s field). So a field may narrow — `Hash[age: Integer[1..20]] &
+    # Hash[age: Integer[0..10]]` == `Hash[age: Integer[1..10]]` — or collapse to
+    # `Never` when the two field types are disjoint (`Hash[age: Integer[1..5]] &
+    # Hash[age: Integer[10..20]]` == `Hash[age: Never]`). Key optionality is taken
+    # from `other`.
+    #
+    # Two non-empty schemas that share NO keys have nothing in common, so the
+    # intersection is empty ⇒ `Types::Never`. (Pragmatic map reading: under strict
+    # width subtyping a value like `{a: 1, b: "x"}` inhabits both `Hash[a: Integer]`
+    # and `Hash[b: String]`, so their value-set meet is non-empty — but for maps we
+    # treat "no common keys" as no intersection.) The empty-schema Hash
+    # (`Types::Hash`) is the "any Hash" top of the family and the IDENTITY of
+    # intersection, NOT an empty overlap: `Hash[] & X == X`.
+    #
+    # A required shared key whose field is `Never` makes the hash effectively
+    # uninhabitable, but is kept structurally as `Hash[key: Never]` rather than
+    # collapsed to a whole-hash `Never` — an optional such key would still admit
+    # hashes that omit it, so a blanket collapse would be unsound.
+    #
+    # Against anything that is not a HashClass there is no key intersection: defer
+    # to the generic Composable#& (Subtyping.intersect), which yields Types::Never
+    # for a provably-disjoint type (eg. `Hash & Integer`).
     def &(other)
-      raise ArgumentError, "expected a HashClass, got #{other.class}" unless other.is_a?(HashClass)
+      other = Composable.wrap(other)
+      return super unless other.is_a?(HashClass)
+
+      # The any-Hash top is the identity of intersection: Hash[] & X == X.
+      return other if _schema.empty?
+      return self if other._schema.empty?
 
       intersected_keys = other._schema.keys & _schema.keys
+      return Types::Never if intersected_keys.empty? # disjoint schemas — empty intersection
+
       intersected = intersected_keys.each.with_object({}) do |k, memo|
-        memo[k] = other.at_key(k)
+        memo[k] = at_key(k) & other.at_key(k)
       end
 
       self.class.new(schema: intersected, inclusive: @inclusive)

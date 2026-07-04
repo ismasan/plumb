@@ -142,6 +142,7 @@ module Plumb
     extend TypeRegistry
 
     Any = AnyClass.new
+    Never = NeverClass.new
     Undefined = Any.value(Plumb::Undefined)
     String = Any[::String]
     Symbol = Any[::Symbol]

@@ -79,6 +79,12 @@ module Plumb
       props
     end
 
+    # The bottom type matches nothing — JSON Schema `{ "not": {} }` (the empty
+    # schema `{}` matches everything, so its negation matches nothing).
+    on(:never) do |_node, props|
+      props.merge('not' => {})
+    end
+
     on(:pipeline) do |node, props|
       visit_children(node, props)
     end

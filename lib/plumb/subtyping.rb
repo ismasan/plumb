@@ -303,6 +303,110 @@ module Plumb
       nil
     end
 
+    # The meet (greatest lower bound) of two types — the dual of reduce_union's
+    # join. `intersect(a, b)` returns the narrowed type, or nil to fall back to
+    # `And.new(a, b)` (a sound runtime intersection: both sides must pass). It
+    # only produces `Types::Never` when the intersection is PROVABLY empty
+    # (disjoint ranges/sets/classes); when it can't prove emptiness or a subtype
+    # relation, it declines (nil) so the caller keeps a runtime And.
+    #
+    # Consumed by Composable#&.
+    def intersect(a, b)
+      a = Composable.wrap(a)
+      b = Composable.wrap(b)
+
+      return a if a.is_a?(NeverClass) # Never & X == Never
+      return b if b.is_a?(NeverClass)
+      return b if a.is_a?(AnyClass)   # Any & X == X (top is the meet identity)
+      return a if b.is_a?(AnyClass)
+
+      return a if a == b
+      return a if subtype?(a, b) # a ⊆ b — meet keeps the narrower a
+      return b if subtype?(b, a) # b ⊆ a — keep the narrower b
+
+      # Distribute over unions: (a1 | a2) & b == (a1 & b) | (a2 & b).
+      return intersect_union(a, b) if a.is_a?(Or)
+      return intersect_union(b, a) if b.is_a?(Or)
+
+      intersect_constraints(a, b) ||
+        intersect_containers(a, b) ||
+        (disjoint_atomic?(a, b) ? Types::Never : nil)
+    end
+
+    # Distribute `&` over a union: intersect each branch with `other`, drop the
+    # branches that go Never, and rejoin the survivors with `|`. All-Never ⇒
+    # Never. A branch the reducer can't fold becomes a runtime And.
+    def intersect_union(union, other)
+      parts = union.children.filter_map do |branch|
+        m = intersect(branch, other) || And.new(branch, other)
+        m unless m.is_a?(NeverClass)
+      end
+      return Types::Never if parts.empty?
+
+      parts.reduce { |acc, p| acc | p }
+    end
+
+    # Intersect two knowable refinements over the SAME base type (Ranges or Sets),
+    # reusing Constraint.merge_matchers. An empty overlap (disjoint Ranges, empty
+    # Set intersection) is provably empty ⇒ Never; a non-empty overlap rebuilds via
+    # Constraint.narrow (`Integer[2..] & Integer[0..100]` == `Integer[2..100]`).
+    # Returns nil for anything it can't merge here (different bases, non-Range/Set
+    # matchers), leaving the caller to try other strategies.
+    def intersect_constraints(a, b)
+      return nil unless a.is_a?(Constraint) && b.is_a?(Constraint)
+      return nil unless a.base && b.base && a.base == b.base
+
+      am = a.matcher
+      bm = b.matcher
+      if am.is_a?(::Range) && bm.is_a?(::Range)
+        merged = Constraint.merge_matchers(am, bm) # nil == empty overlap
+        merged ? Constraint.narrow(a.base, merged) : Types::Never
+      elsif am.is_a?(::Set) && bm.is_a?(::Set)
+        merged = am & bm
+        merged.empty? ? Types::Never : Constraint.narrow(a.base, merged)
+      end
+    end
+
+    # Intersect two covariant containers of the same class (Array/Tuple/HashMap)
+    # by intersecting their children pairwise — `Array[A] & Array[B]` ==
+    # `Array[A & B]`. Any child that goes Never makes the whole container Never
+    # (no value can populate it). Returns nil for non-containers or a class/arity
+    # mismatch (the caller then falls back).
+    def intersect_containers(a, b)
+      return nil unless container_covariant?(a) && a.instance_of?(b.class)
+      return nil if a.children.empty? || a.children.size != b.children.size
+
+      merged = a.children.zip(b.children).map { |x, y| intersect(x, y) || And.new(x, y) }
+      return Types::Never if merged.any? { |m| m.is_a?(NeverClass) }
+
+      rebuild_container(a, merged)
+    end
+
+    def container_covariant?(type)
+      type.is_a?(ArrayClass) || type.is_a?(TupleClass) || type.is_a?(HashMap)
+    end
+
+    def rebuild_container(type, children)
+      case type
+      when ArrayClass then type.of(children.first)
+      when TupleClass then type.of(*children)
+      when HashMap then HashMap.new(children[0], children[1])
+      end
+    end
+
+    # Are two leaf types provably disjoint? True when NO pair of their underlying
+    # Ruby base types is subtype-related — so no value can be an instance of both
+    # (`Types::String & Types::Integer` ⇒ Never). Conservative: an unknown base
+    # (opaque matcher ⇒ empty base-type list) is NOT provably disjoint, so the
+    # caller keeps a runtime And rather than wrongly collapsing to Never.
+    def disjoint_atomic?(a, b)
+      abt = Plumb.resolve_base_types(a)
+      bbt = Plumb.resolve_base_types(b)
+      return false if abt.empty? || bbt.empty?
+
+      abt.none? { |x| bbt.any? { |y| class_le?(x, y) || class_le?(y, x) } }
+    end
+
     # Distributive factoring — the join-dual of reduce_union's absorption:
     # `(P >> A) | (P >> B)` factors to `P >> (A | B)` when the shared left prefix
     # `P` is value-preserving, so `P` is validated once instead of per branch.
