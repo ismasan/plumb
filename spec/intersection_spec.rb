@@ -76,8 +76,12 @@ RSpec.describe 'intersection (#&) and Never' do
         .to eq(ITypes::Array[ITypes::Float])
     end
 
-    it 'collapses to Never when the element intersection is empty' do
-      expect(ITypes::Array[ITypes::Integer] & ITypes::Array[ITypes::String]).to eq(ITypes::Never)
+    it 'keeps Array[Never] (inhabited by []) when the element intersection is empty' do
+      empty_only = ITypes::Array[ITypes::Integer] & ITypes::Array[ITypes::String]
+      expect(empty_only).to eq(ITypes::Array[ITypes::Never])
+      expect(empty_only).not_to eq(ITypes::Never)
+      assert_result(empty_only.resolve([]), [], true)      # the empty array satisfies it
+      expect(empty_only.resolve([1]).valid?).to be(false)  # but nothing else does
     end
 
     it 'intersects Tuple positions (same arity)' do
@@ -86,10 +90,23 @@ RSpec.describe 'intersection (#&) and Never' do
         .to eq(ITypes::Tuple[ITypes::Integer[5..10], ITypes::String])
     end
 
+    it 'collapses a Tuple to Never when a position is empty (fixed arity)' do
+      expect(ITypes::Tuple[ITypes::Integer, ITypes::String] &
+             ITypes::Tuple[ITypes::String, ITypes::String])
+        .to eq(ITypes::Never)
+    end
+
     it 'intersects HashMap key/value types' do
       expect(ITypes::Hash[ITypes::String, ITypes::Integer[0..10]] &
              ITypes::Hash[ITypes::String, ITypes::Integer[5..20]])
         .to eq(ITypes::Hash[ITypes::String, ITypes::Integer[5..10]])
+    end
+
+    it 'keeps HashMap[K, Never] (inhabited by {}) when the value intersection is empty' do
+      map = ITypes::Hash[ITypes::Symbol, ITypes::Integer] & ITypes::Hash[ITypes::Symbol, ITypes::String]
+      expect(map).to eq(ITypes::Hash[ITypes::Symbol, ITypes::Never])
+      assert_result(map.resolve({}), {}, true)
+      expect(map.resolve({ a: 1 }).valid?).to be(false)
     end
   end
 

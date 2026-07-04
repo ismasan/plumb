@@ -369,15 +369,20 @@ module Plumb
 
     # Intersect two covariant containers of the same class (Array/Tuple/HashMap)
     # by intersecting their children pairwise — `Array[A] & Array[B]` ==
-    # `Array[A & B]`. Any child that goes Never makes the whole container Never
-    # (no value can populate it). Returns nil for non-containers or a class/arity
-    # mismatch (the caller then falls back).
+    # `Array[A & B]`. Returns nil for non-containers or a class/arity mismatch (the
+    # caller then falls back).
+    #
+    # A `Never` child does NOT necessarily sink the whole container. A Tuple has
+    # fixed arity — every position must be filled — so a `Never` element makes it
+    # uninhabitable ⇒ `Never`. A homogeneous container (Array/HashMap) can be
+    # empty, so `Array[Never]` / `HashMap[K, Never]` are still inhabited (by `[]` /
+    # `{}`) and are kept as-is rather than collapsed.
     def intersect_containers(a, b)
       return nil unless container_covariant?(a) && a.instance_of?(b.class)
       return nil if a.children.empty? || a.children.size != b.children.size
 
       merged = a.children.zip(b.children).map { |x, y| intersect(x, y) || And.new(x, y) }
-      return Types::Never if merged.any? { |m| m.is_a?(NeverClass) }
+      return Types::Never if a.is_a?(TupleClass) && merged.any? { |m| m.is_a?(NeverClass) }
 
       rebuild_container(a, merged)
     end
