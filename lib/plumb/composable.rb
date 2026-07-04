@@ -265,8 +265,13 @@ module Plumb
     # coreflexive refinement (a pure filter). Lets `#|` absorb a redundant
     # branch (`Integer | Numeric == Numeric`) without dropping a coercion. See
     # Subtyping.reduce_union, which memoizes this per frozen node in TypeCache.
-    # Default false; refinements opt in, transforms/containers stay false.
-    # A stronger property than #idempotent? (value-preserving ⟹ idempotent).
+    # Default false; refinements opt in, transforms stay false. A covariant
+    # container (Array/Tuple/HashMap) preserves the value exactly when all its
+    # element/child types do — so `Array[Integer] >> Array[Numeric]` collapses
+    # like the scalar `Integer >> Numeric` — while a container that reshapes the
+    # value (a filtered map dropping entries, a record dropping undeclared keys)
+    # stays false. A stronger property than #idempotent? (value-preserving ⟹
+    # idempotent).
     def value_preserving? = false
 
     # Chain two composable objects together.

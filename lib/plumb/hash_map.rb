@@ -32,6 +32,11 @@ module Plumb
       super
     end
 
+    # A HashMap re-maps each key and value through its key/value types, so it
+    # preserves the value only when both do (a coercing key or value would change
+    # the hash).
+    def value_preserving? = children.all? { |c| Plumb::Subtyping.value_preserving?(c) }
+
     def call(result)
       return result.invalid!(errors: 'must be a Hash') unless result.value.is_a?(::Hash)
 
@@ -64,6 +69,10 @@ module Plumb
       # the subclass would otherwise inherit :hash_map. Restore its own name so
       # visitors still dispatch to their :filtered_hash_map handlers.
       def node_name = :filtered_hash_map
+
+      # A filtered map DROPS non-matching entries, so it changes the value
+      # regardless of its key/value types — never value-preserving.
+      def value_preserving? = false
 
       # A filtered map is lenient: it accepts ANY hash and drops non-matching
       # entries (it never rejects a Hash), so as a #>> consumer it accepts any

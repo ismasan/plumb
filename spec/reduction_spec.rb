@@ -403,3 +403,43 @@ RSpec.describe 'composition reduction (>>)' do
     end
   end
 end
+
+# A covariant container is value-preserving exactly when its element/child types
+# are, so `#>>` / `#|` reduce it like the scalar case (see ArrayClass/TupleClass/
+# HashMap#value_preserving?).
+RSpec.describe 'covariant container reductions' do
+  module CTypes
+    include Plumb::Types
+  end
+
+  it '>> drops a redundant wider Array, like the scalar case' do
+    expect(CTypes::Array[CTypes::Integer] >> CTypes::Array[CTypes::Numeric])
+      .to eq(CTypes::Array[CTypes::Integer])
+    expect(CTypes::Array[CTypes::Integer] >> CTypes::Array[CTypes::Integer])
+      .to eq(CTypes::Array[CTypes::Integer])
+  end
+
+  it '| absorbs the narrower Array into the wider' do
+    expect(CTypes::Array[CTypes::Integer] | CTypes::Array[CTypes::Numeric])
+      .to eq(CTypes::Array[CTypes::Numeric])
+  end
+
+  it 'reduces Tuples and HashMaps the same way' do
+    expect(CTypes::Tuple[CTypes::Integer, CTypes::String] >> CTypes::Tuple[CTypes::Numeric, CTypes::String])
+      .to eq(CTypes::Tuple[CTypes::Integer, CTypes::String])
+    expect(CTypes::Hash[CTypes::Symbol, CTypes::Integer] >> CTypes::Hash[CTypes::Symbol, CTypes::Numeric])
+      .to eq(CTypes::Hash[CTypes::Symbol, CTypes::Integer])
+  end
+
+  it 'does NOT reduce when an element type coerces (not value-preserving)' do
+    coercing = CTypes::Array[CTypes::Integer.transform(::Float, &:to_f)]
+    expect(Plumb::Subtyping.value_preserving?(coercing)).to be(false)
+    # a coercing branch survives the union rather than being absorbed
+    union = CTypes::Array[CTypes::Integer] | coercing
+    expect(union).to be_a(Plumb::Or)
+  end
+
+  it 'keeps a filtered map non-value-preserving (it drops entries)' do
+    expect(Plumb::Subtyping.value_preserving?(CTypes::Hash[CTypes::Symbol, CTypes::Integer].filtered)).to be(false)
+  end
+end

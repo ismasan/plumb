@@ -24,6 +24,12 @@ module Plumb
 
     alias [] of
 
+    # An Array re-maps each element through its element type, so it preserves the
+    # value only when that element type does (a coercing element would change the
+    # array). This lets `#>>` drop a redundant `Array[Integer] >> Array[Numeric]`
+    # and `#|` absorb `Array[Integer] | Array[Numeric]`, matching the scalar case.
+    def value_preserving? = children.all? { |c| Plumb::Subtyping.value_preserving?(c) }
+
     def concurrent
       ConcurrentArrayClass.new(element_type:)
     end
