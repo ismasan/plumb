@@ -139,7 +139,7 @@ More about [Types::Hash](#typeshash) and [Types::Array](#typesarray). There's al
 
 ### Type composition
 
-At the core, Plumb types are little [Railway-oriented pipelines](https://ismaelcelis.com/posts/composable-pipelines-in-ruby/) that can be composed together with _AND_, _OR_ and _NOT_ semantics. Everything else builds on top of these two ideas.
+At the core, Plumb types are little [Railway-oriented pipelines](https://ismaelcelis.com/posts/composable-pipelines-in-ruby/) that can be composed together with _AND_ (`#>>`), _OR_ (`#|`) and _NOT_ (`#not`) semantics, plus set-style _intersection_ (`#&`). Everything else builds on top of these ideas.
 
 #### Composing types with `#>>` ("And")
 
@@ -215,6 +215,51 @@ FlexibleUSD.parse(Money.new(1000, 'GBP')) # Money(USD 15.00)
 ```
 
 You can see more use cases in [the examples directory](https://github.com/ismasan/plumb/tree/main/examples)
+
+#### Intersection with `#&` and the `Never` type
+
+`A & B` is the **intersection** (the greatest lower bound) of two types: it describes values that satisfy **both**. Unlike `#>>`, it is symmetric (order-independent) and never raises — where the two types can't overlap it produces `Types::Never` (see below).
+
+Where it can, `#&` narrows to the exact overlap:
+
+```ruby
+Types::Integer[2..] & Types::Integer[0..100]   # => Integer[2..100]  (ranges intersected)
+Types::Integer[1, 2, 3] & Types::Integer[2, 3, 4] # => Integer[Set[2, 3]]
+Types::Integer & Types::Numeric                # => Integer          (keeps the narrower)
+```
+
+It distributes over unions and intersects covariant containers element-wise:
+
+```ruby
+Types::Array[Types::Integer | Types::Float] & Types::Array[Types::Float] # => Array[Float]
+Types::Integer | (Types::String & Types::Integer)                        # => Integer
+```
+
+When the intersection is provably empty, the result is `Types::Never`:
+
+```ruby
+Types::String & Types::Integer                 # => Types::Never  (no value is both)
+Types::Integer[2..10] & Types::Integer[11..100] # => Types::Never  (disjoint ranges)
+```
+
+When it can neither narrow nor prove emptiness, `#&` falls back to a runtime intersection that validates the value through both sides.
+
+`Types::Hash#&` ([Hash intersections](#hash-intersections)) and `Types::Interface#&` ([Intersecting interfaces](#intersecting-interfaces)) are the record- and interface-specific cases of the same operator.
+
+##### `Types::Never`
+
+`Types::Never` is the **bottom type** — the dual of the `Types::Any` top. No value inhabits it, so it always fails validation, and it collapses out of compositions:
+
+```ruby
+Types::Any     & Types::Integer   # => Integer  (Any is the identity of &)
+Types::Integer & Types::Never     # => Types::Never  (Never absorbs &)
+Types::Integer | Types::Never     # => Integer       (Never is dropped from |)
+
+Types::Never.resolve(42).valid?   # => false  (nothing is a Never)
+Types::Never.to_json_schema       # => { "not" => {} }
+```
+
+You rarely write `Types::Never` by hand — it's what an impossible intersection reduces to, which lets the composition algebra prove and discard dead branches (as in `Integer | (String & Integer)` above). It's also useful as a Hash catch-all to forbid undeclared keys — see [`_: Types::Never`](#undeclared-keys-and-the-_-catch-all).
 
 ### Built-in types
 
@@ -1844,7 +1889,7 @@ This is how [Plumb::Types::Data](#typesdata) is implemented.
 
 #### Participating in subtype & composition checks
 
-The subtype (`#<=`) and [`#>>` composition](#composition-type-checks) checks are built on a single hook that every `Plumb::Composable` already implements with a sensible default — `#>>` is just `subtype?(produced, accepted)`, so there's nothing extra to implement for composition. A custom type participates **without changing any core library code**: it either relies on the default or overrides the hook. `Plumb::Subtyping` itself only knows the composition algebra (the top type `Types::Any`, union `#|`, intersection `#>>`, and conversion `#transform`); everything else is delegated to the type.
+The subtype (`#<=`) and [`#>>` composition](#composition-type-checks) checks are built on a single hook that every `Plumb::Composable` already implements with a sensible default — `#>>` is just `subtype?(produced, accepted)`, so there's nothing extra to implement for composition. A custom type participates **without changing any core library code**: it either relies on the default or overrides the hook. `Plumb::Subtyping` itself only knows the composition algebra (the top type `Types::Any`, the bottom type `Types::Never`, union `#|`, intersection `#&`, refinement/sequencing `#>>`, and conversion `#transform`); everything else is delegated to the type.
 
 The default leans on two methods your type already has:
 
@@ -1857,7 +1902,7 @@ The default leans on two methods your type already has:
 | --- | --- | --- | --- |
 | `#subtype_of?(other)` | `Boolean` | `#<=`, `Plumb::Subtyping.subtype?`, and so `#>>` | reflexive · atomic · same-class covariant `#children` |
 
-`#subtype_of?` answers "is every value I describe also described by `other`?". It's the leaf step of `subtype?`, reached after the algebra (`Any`/`|`/`>>`/`#transform`) has been peeled away. Override it for bespoke behaviour — **recurse through `Plumb::Subtyping.subtype?`, never through `#<=`** (which would loop back into the algebra). `HashClass` overrides it for record (width + depth + optionality) subtyping.
+`#subtype_of?` answers "is every value I describe also described by `other`?". It's the leaf step of `subtype?`, reached after the algebra (`Any`/`Never`/`|`/`&`/`>>`/`#transform`) has been peeled away. Override it for bespoke behaviour — **recurse through `Plumb::Subtyping.subtype?`, never through `#<=`** (which would loop back into the algebra). `HashClass` overrides it for record (width + depth + optionality) subtyping.
 
 ```ruby
 # An "even integer" refinement that knows it is a subtype of Integer (and
