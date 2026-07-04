@@ -908,10 +908,27 @@ StaffMember = User + Employee # Hash[:name, :age, :company]
 
 #### Hash intersections
 
-Use `Types::Hash#&` to produce a new Hash definition with keys present in both.
+Use `Types::Hash#&` to intersect two hash definitions as maps. It keeps the keys present in **both**, and intersects each shared key's value type:
 
 ```ruby
-intersection = User & Employee # Hash[:name]
+User & Employee # => Hash[name: String]  (only the shared :name survives)
+
+# shared keys have their value types intersected
+Types::Hash[age: Types::Integer[18..]] & Types::Hash[age: Types::Integer[..65]]
+# => Hash[age: Integer[18..65]]
+```
+
+Two closed schemas that share no keys have nothing in common, so the intersection is `Types::Never` — the empty/bottom type, which no value satisfies:
+
+```ruby
+Types::Hash[a: Types::Integer] & Types::Hash[b: Types::String] # => Types::Never
+```
+
+A [`_` catch-all](#undeclared-keys-and-the-_-catch-all) widens what survives, since it admits the other side's extra keys:
+
+```ruby
+Types::Hash[a: Types::String, _: Types::Any] & Types::Hash[a: Types::String, b: Types::Integer]
+# => Hash[a: String, b: Integer]  (:b admitted via the left's catch-all)
 ```
 
 #### `Types::Hash#tagged_by`
@@ -931,18 +948,41 @@ Events = Types::Hash.tagged_by(
 Events.parse(type: 'name_updated', name: 'Joe') # Uses NameUpdatedEvent definition
 ```
 
-#### `Types::Hash#inclusive`
+#### Undeclared keys and the `_` catch-all
 
-Use `#inclusive` to preserve input keys not defined in the hash schema.
+By default, keys present in the input but **not** declared in the schema are dropped:
 
 ```ruby
-hash = Types::Hash[age: Types::Lax::Integer].inclusive
-
-# Only :age, is coerced and validated, all other keys are preserved as-is
-hash.parse(age: '30', name: 'Joe', last_name: 'Bloggs') # { age: 30, name: 'Joe', last_name: 'Bloggs' }
+Types::Hash[age: Types::Integer].parse(age: 30, name: 'Joe') # => { age: 30 }  (:name dropped)
 ```
 
-This can be useful if you only care about validating some fields, or to assemble different front and back hashes. For example a client-facing one that validates JSON or form data, and a backend one that runs further coercions or domain validations on some keys.
+To control what happens to those undeclared keys, add a special `_` key. It is a **catch-all**: its value type is applied to every key not otherwise declared. The value type you give it decides the behaviour:
+
+| Catch-all | Meaning | Undeclared key `name`… |
+| --- | --- | --- |
+| _(none)_ | drop (default) | is removed |
+| `_: Types::Any` | include, unchanged | is kept as-is |
+| `_: SomeType` | include, validated/coerced | must be a `SomeType` (coerced if the type coerces) |
+| `_: Types::Never` | exclude (strict) | is a validation **error** |
+
+```ruby
+# _: Any — keep every undeclared key, unchanged
+hash = Types::Hash[age: Types::Lax::Integer, _: Types::Any]
+hash.parse(age: '30', name: 'Joe', last_name: 'Bloggs')
+# => { age: 30, name: 'Joe', last_name: 'Bloggs' }
+
+# _: SomeType — every undeclared value must be (or coerce to) that type
+Types::Hash[id: Types::String, _: Types::Integer].parse(id: 'x', a: 1, b: 2)
+# => { id: 'x', a: 1, b: 2 }
+Types::Hash[id: Types::String, _: Types::Integer].resolve(id: 'x', a: 'nope').valid? # => false
+
+# _: Never — reject any undeclared key (a closed/strict hash)
+strict = Types::Hash[a: Types::String, _: Types::Never]
+strict.resolve(a: 'x').valid?          # => true
+strict.resolve(a: 'x', b: 1).valid?    # => false  (b is not allowed)
+```
+
+`_: Any` is useful when you only care about validating some fields, or to assemble different front and back hashes — for example a client-facing one that validates JSON or form data, and a backend one that runs further coercions on some keys while passing the rest through:
 
 ```ruby
 # Front-end definition does structural validation
@@ -952,14 +992,28 @@ Front = Types::Hash[price: Integer, name: String, category: String]
 IntToMoney = Types::Integer.build(Money)
 
 # Backend definition turns :price into a Money object, leaves other keys as-is
-Back = Types::Hash[price: IntToMoney].inclusive
+Back = Types::Hash[price: IntToMoney, _: Types::Any]
 
 # Compose the pipeline
 InputHandler = Front >> Back
 
 InputHandler.parse(price: 100_000, name: 'iPhone 15', category: 'smartphones')
-# => { price: #<Money fractional:100000 currency:GBP>, name: 'iPhone 15', category: 'smartphone' }
+# => { price: #<Money fractional:100000 currency:GBP>, name: 'iPhone 15', category: 'smartphones' }
 ```
+
+The catch-all also shows up in generated JSON Schema as `additionalProperties`: `_: Any` → `{}` (anything), `_: Integer` → `{ "type": "integer" }`, and `_: Never` → `{ "not": {} }` (nothing allowed).
+
+#### Typed keys
+
+Keys are not limited to symbols. A key can be any type or matcher, and it matches an input key via `key === other`. So you can key by String, or by a pattern, and mix them with a catch-all:
+
+```ruby
+Types::Hash['name' => Types::String]                 # a String key
+Types::Hash[Types::String[/^id_/] => Types::Integer, # keys matching /^id_/ hold Integers
+            _: Types::Any]                           # everything else passes through
+```
+
+A typed key is **lenient**: input keys that don't match any declared or typed key follow the catch-all rule above (dropped by default). This is different from a homogeneous map (`Types::Hash[Types::Symbol, Types::Integer]`, a `HashMap` — note the comma, not `=>`), which is **strict** (a non-conforming key is an error) and coerces keys through the key type. Use a `HashMap` for "every key/value has this type"; use typed keys for "keys shaped like this map to that".
 
 #### `Types::Hash#filtered`
 

@@ -15,11 +15,31 @@ module Plumb
 
     attr_reader :_schema
 
-    def initialize(schema: BLANK_HASH, inclusive: false)
+    def initialize(schema: BLANK_HASH)
       @_schema = wrap_keys_and_values(schema)
-      @inclusive = inclusive
+      # Partition once (the instance is frozen): literal keys use exact lookup in
+      # #call; matcher keys (typed keys and the `_` catch-all) are matched against
+      # leftover input keys. `_schema` stays the source of truth for ==/subtyping.
+      @literal_fields = @_schema.select { |k, _| k.literal? }
+      @matcher_fields = @_schema.reject { |k, _| k.literal? }
+      # The `_` catch-all's value type, if present (there is at most one).
+      @catch_all_type = @_schema.find { |k, _| k.catch_all? }&.last
       freeze
     end
+
+    # The `_` catch-all value type (what every otherwise-unmatched key must be),
+    # or nil when the schema is closed. See #call / #&.
+    attr_reader :catch_all_type
+
+    # The literal (Symbol/String) entries of the schema.
+    attr_reader :literal_fields
+
+    # The matcher (typed/catch-all) entries of the schema.
+    attr_reader :matcher_fields
+
+    # Only a single `_` catch-all and no named/typed keys — the "open any-key map"
+    # shape (`Hash[_: V]`). Used by HashMap subtyping.
+    def only_catch_all? = @literal_fields.empty? && @matcher_fields.size == 1 && !@catch_all_type.nil?
 
     # A Hash type with a specific schema.
     # Option 1: a Hash representing schema
@@ -32,7 +52,7 @@ module Plumb
     def schema(*args)
       case args
       in [::Hash => hash]
-        self.class.new(schema: _schema.merge(wrap_keys_and_values(hash)), inclusive: @inclusive)
+        self.class.new(schema: _schema.merge(wrap_keys_and_values(hash)))
       in [key_type, value_type]
         HashMap.new(Composable.wrap(key_type), Composable.wrap(value_type))
       else
@@ -54,7 +74,7 @@ module Plumb
                        raise ArgumentError, "expected a HashClass or Hash, got #{other.class}"
                      end
 
-      self.class.new(schema: merge_rightmost_keys(_schema, other_schema), inclusive: @inclusive)
+      self.class.new(schema: merge_rightmost_keys(_schema, other_schema))
     end
 
     # Two Hash schemas are treated as maps: the result keeps the keys present in
@@ -78,6 +98,13 @@ module Plumb
     # collapsed to a whole-hash `Never` — an optional such key would still admit
     # hashes that omit it, so a blanket collapse would be unsound.
     #
+    # A `_` catch-all widens what survives: a key present on ONE side survives the
+    # meet iff the OTHER side permits it — either it names the key too, or it has a
+    # catch-all that admits it. So `Hash[a: String, _: Any] & Hash[a: String, b:
+    # Integer] == Hash[a: String, b: Integer]` (the right's `b` is admitted by the
+    # left's `_`, met with Any). The result carries a catch-all only when BOTH
+    # sides do (`Tₐ & T_b`).
+    #
     # Against anything that is not a HashClass there is no key intersection: defer
     # to the generic Composable#& (Subtyping.intersect), which yields Types::Never
     # for a provably-disjoint type (eg. `Hash & Integer`).
@@ -89,22 +116,34 @@ module Plumb
       return other if _schema.empty?
       return self if other._schema.empty?
 
-      intersected_keys = other._schema.keys & _schema.keys
-      return Types::Never if intersected_keys.empty? # disjoint schemas — empty intersection
+      my_catch = catch_all_type
+      their_catch = other.catch_all_type
+      result = {}
 
-      intersected = intersected_keys.each.with_object({}) do |k, memo|
-        memo[k] = at_key(k) & other.at_key(k)
+      non_catch_all_schema.each do |my_key, my_field|
+        if (other_key = other.stored_key(my_key))
+          # shared key: intersect fields; optionality from `other` (right wins).
+          result[other_key] = my_field & other._schema[other_key]
+        elsif their_catch # kept only if the other side's catch-all admits it
+          result[my_key] = my_field & their_catch
+        end
       end
 
-      self.class.new(schema: intersected, inclusive: @inclusive)
+      other.non_catch_all_schema.each do |their_key, their_field|
+        next if stored_key(their_key) # already handled as a shared key
+
+        result[their_key] = their_field & my_catch if my_catch
+      end
+
+      result[Key.new(Types::Any)] = my_catch & their_catch if my_catch && their_catch
+
+      return Types::Never if result.empty? # two closed schemas that share nothing
+
+      self.class.new(schema: result)
     end
 
     def tagged_by(key, *types)
       TaggedHash.new(self, key, types)
-    end
-
-    def inclusive
-      self.class.new(schema: _schema, inclusive: true)
     end
 
     def at_key(a_key)
@@ -127,14 +166,26 @@ module Plumb
         # Reuse the incoming cursor as the per-field scratch (see #call): `input`
         # is captured above and `result` is only flipped at the end, so fields
         # reset it in place with no scratch allocation.
-        output = _schema.each.with_object({}) do |(key, field), ret|
-          key_s = key.to_sym
+        output = {}
+        @literal_fields.each do |key, field|
+          key_s = key.to_key
           if input.key?(key_s)
             r = field.call(result.reset(input[key_s]))
-            ret[key_s] = r.value if r.valid?
+            output[key_s] = r.value if r.valid?
           elsif !key.optional?
             r = field.call(result.reset(Undefined))
-            ret[key_s] = r.value if r.valid?
+            output[key_s] = r.value if r.valid?
+          end
+        end
+        unless @matcher_fields.empty?
+          input.each do |k, v|
+            next if output.key?(k)
+
+            match = @matcher_fields.find { |mk, _| mk.match?(k) }
+            next unless match
+
+            r = match[1].call(result.reset(v))
+            output[k] = r.value if r.valid?
           end
         end
         result.valid!(output)
@@ -157,17 +208,18 @@ module Plumb
 
       input = result.value
       errors = nil # Do not allocate errors unless needed
-      output = @inclusive ? input.dup : {}
+      output = {}
 
-      # Reuse the incoming cursor as the per-field scratch: `input` is captured
-      # above and `result` is not read again until the final flip below, so each
-      # field can reset it in place — a Hash validates with zero Result
-      # allocations of its own. `output`/`errors` hold the fields' values/errors
-      # by reference (read out immediately per field), and #reset only reassigns
-      # the cursor's slots, so previously stored entries are never mutated. This
-      # mirrors ArrayClass's element-cursor reuse; a field whose value is lazily
-      # consumed later (a Stream) snapshots its own source, so it stays correct.
-      _schema.each do |key, field|
+      # Pass 1 — literal keys by exact lookup (the fast path). Reuse the incoming
+      # cursor as the per-field scratch: `input` is captured above and `result` is
+      # not read again until the final flip below, so each field can reset it in
+      # place — a Hash validates with zero Result allocations of its own.
+      # `output`/`errors` hold the fields' values/errors by reference (read out
+      # immediately per field), and #reset only reassigns the cursor's slots, so
+      # previously stored entries are never mutated. This mirrors ArrayClass's
+      # element-cursor reuse; a field whose value is lazily consumed later (a
+      # Stream) snapshots its own source, so it stays correct.
+      @literal_fields.each do |key, field|
         key_s = key.to_key
         if input.key?(key_s)
           r = field.call(result.reset(input[key_s]))
@@ -182,6 +234,25 @@ module Plumb
           unless r.valid?
             errors ||= {}
             errors[key_s] = r.errors
+          end
+        end
+      end
+
+      # Pass 2 — leftover input keys against matcher keys (typed keys + the `_`
+      # catch-all), first match wins. Keys matching nothing are dropped (the
+      # non-inclusive default). Matcher keys never impose a required key.
+      unless @matcher_fields.empty?
+        input.each do |k, v|
+          next if output.key?(k)
+
+          match = @matcher_fields.find { |mk, _| mk.match?(k) }
+          next unless match
+
+          r = match[1].call(result.reset(v))
+          output[k] = r.value
+          unless r.valid?
+            errors ||= {}
+            errors[k] = r.errors
           end
         end
       end
@@ -212,7 +283,8 @@ module Plumb
       return hashmap_subtype?(other) if other.is_a?(HashMap)
       return false unless other.is_a?(HashClass)
 
-      other._schema.all? do |other_key, other_field|
+      # Depth/width over `other`'s named (literal) keys, as before.
+      literal_ok = other.literal_fields.all? do |other_key, other_field|
         mine_key, mine_field = _schema.find { |k, _| k.eql?(other_key) }
         if mine_field
           Plumb::Subtyping.subtype?(mine_field, other_field) &&
@@ -220,6 +292,22 @@ module Plumb
         else
           other_key.optional?
         end
+      end
+      return false unless literal_ok
+
+      # Catch-all covariance: if `other` accepts an arbitrary tail `Tᵒ`, every key
+      # `self` may carry that `other` does not name must be a subtype of `Tᵒ` —
+      # `self`'s own catch-all `Tˢ`, and any literal key of `self` not named by
+      # `other`. If `other` is closed, no extra restriction (a closed consumer
+      # drops unknown keys, so width subtyping is unaffected — as before).
+      if (oc = other.catch_all_type)
+        return false if catch_all_type && !Plumb::Subtyping.subtype?(catch_all_type, oc)
+
+        literal_fields.all? do |mk, mf|
+          other._schema.key?(mk) || Plumb::Subtyping.subtype?(mf, oc)
+        end
+      else
+        true
       end
     end
 
@@ -233,30 +321,44 @@ module Plumb
       relaxed = _schema.each_with_object({}) do |(key, field), h|
         h[key] = Plumb::Subtyping.accepted_type(field)
       end
-      self.class.new(schema: relaxed, inclusive: @inclusive)
+      self.class.new(schema: relaxed)
     end
+
+    protected
+
+    # The schema entries excluding the `_` catch-all (the named + typed keys).
+    def non_catch_all_schema = @_schema.reject { |k, _| k.catch_all? }
+
+    # The Key instance stored in this schema that is eql? to `key` (so callers can
+    # read the owning side's optionality), or nil.
+    def stored_key(key) = @_schema.each_key.find { |k| k.eql?(key) }
 
     private
 
-    # A non-inclusive structured Hash emits exactly its declared keys, so it is
-    # a subtype of a `key_type => value_type` map when every key fits `key_type`
-    # and every value type is a subtype of `value_type`. An inclusive or empty
-    # (any-Hash) schema may carry arbitrary entries that don't fit the map.
+    # A structured Hash is a subtype of a `key_type => value_type` map when every
+    # entry fits: each key (literal name, or a matcher/catch-all's key matcher) is
+    # a subtype of `key_type`, and each value type is a subtype of `value_type`.
+    # A catch-all `_: T` carries the Any key matcher, so `Any <= key_type` fails
+    # unless the map accepts any key — an open Hash is NOT a subtype of a
+    # Symbol-keyed map (this is what the old `@inclusive` guard expressed).
     def hashmap_subtype?(other)
-      return false if @inclusive || _schema.empty?
+      return false if _schema.empty?
 
       key_type, value_type = other.children
       _schema.all? do |key, field|
-        Plumb::Subtyping.subtype?(Composable.wrap(key.to_key), key_type) &&
+        key_matcher = key.literal? ? Composable.wrap(key.to_key) : key.matcher
+        Plumb::Subtyping.subtype?(key_matcher, key_type) &&
           Plumb::Subtyping.subtype?(field, value_type)
       end
     end
 
     # This schema with every key relaxed to optional (same value types). Used as
-    # the output type of #filtered, which may drop any field.
+    # the output type of #filtered, which may drop any field. Matcher keys (typed/
+    # catch-all) are already optional, so they pass through unchanged.
     def relaxed_to_optional
       relaxed = _schema.each_with_object({}) do |(key, type), h|
-        h[Key.new(key.to_key, optional: true)] = type
+        new_key = key.literal? ? Key.new(key.to_key, optional: true) : key
+        h[new_key] = type
       end
       self.class.new(schema: relaxed)
     end
@@ -267,7 +369,11 @@ module Plumb
 
     def wrap_keys_and_values(hash)
       hash.each.with_object({}) do |(k, v), ret|
-        ret[Key.wrap(k)] = Composable.wrap(v)
+        # `_:` is sugar for a catch-all key over the Any top. Only intercept a raw
+        # `:_` symbol (the schema-literal syntax); an already-wrapped Key (from #+,
+        # #&, relaxed/accepted rebuilds, or a Data attribute) passes through as-is.
+        key = k == :_ ? Key.new(Types::Any) : Key.wrap(k)
+        ret[key] = Composable.wrap(v)
       end
     end
 

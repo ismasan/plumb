@@ -16,12 +16,18 @@ module Plumb
     end
 
     # A HashMap is a Hash, so it is a subtype of the "any Hash" top — an
-    # empty-schema HashClass like Types::Hash. It is NOT a subtype of a
-    # structured HashClass, which requires specific keys a map doesn't
-    # guarantee. Against another HashMap it is covariant in key and value types
-    # (handled by the default #subtype_of?).
+    # empty-schema HashClass like Types::Hash — or of an open catch-all-only
+    # HashClass `Hash[_: V]` when this map's value type is a subtype of `V` (the
+    # catch-all's Any key admits any map key). It is NOT a subtype of a HashClass
+    # that requires specific keys a map doesn't guarantee. Against another HashMap
+    # it is covariant in key and value types (handled by the default #subtype_of?).
     def subtype_of?(other)
-      return other._schema.empty? if other.is_a?(HashClass)
+      if other.is_a?(HashClass)
+        return true if other._schema.empty?
+        return false unless other.only_catch_all?
+
+        return Plumb::Subtyping.subtype?(@value_type, other.catch_all_type)
+      end
 
       super
     end

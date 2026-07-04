@@ -260,7 +260,7 @@ RSpec.describe 'subtyping: Plumb::Subtyping.subtype? and #<=' do
       front = STypes::Hash[price: STypes::Integer, name: STypes::String]
       # Back converts :price (Integer -> money). As a consumer its :price field
       # *accepts* an Integer, so `front >> back` is sound and must type-check.
-      back = STypes::Hash[price: STypes::Integer.build(money)].inclusive
+      back = STypes::Hash[price: STypes::Integer.build(money), _: STypes::Any]
       expect { front >> back }.not_to raise_error
       # but a field that consumes an incompatible type still raises
       bad = STypes::Hash[price: STypes::String.build(money)] # its :price consumes a String
@@ -374,8 +374,8 @@ RSpec.describe 'subtyping: Plumb::Subtyping.subtype? and #<=' do
       # key type clash (symbol key vs String-keyed map)
       expect { STypes::Hash[name: STypes::Integer] >> STypes::Hash[STypes::String, STypes::Integer] }
         .to raise_error(Plumb::TypeError)
-      # inclusive may carry entries that don't fit
-      expect { STypes::Hash[name: STypes::Integer].inclusive >> STypes::Hash[STypes::Symbol, STypes::Integer] }
+      # a catch-all (open) Hash may carry keys that don't fit the map's key type
+      expect { STypes::Hash[name: STypes::Integer, _: STypes::Any] >> STypes::Hash[STypes::Symbol, STypes::Integer] }
         .to raise_error(Plumb::TypeError)
     end
 
