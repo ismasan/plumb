@@ -17,10 +17,16 @@ module DryTypesHash
   BLANK_STRING = ''
 
   # Custom Money type: pass a Money through, else parse via Monetize (mirrors
-  # PlumbHash::PARSE_MONEY).
-  Money = T.Constructor(::Money) do |value|
-    value.is_a?(::Money) ? value : Monetize.parse!(value.to_s.gsub(',', ''))
-  end
+  # PlumbHash::Money). STUB_MONEY swaps it for an identity passthrough (see
+  # plumb_hash.rb) so the benchmark can measure the schema WITHOUT the shared
+  # money-parsing cost that both libraries otherwise pay.
+  Money = if ENV['STUB_MONEY']
+            T::Any
+          else
+            T.Constructor(::Money) do |value|
+              value.is_a?(::Money) ? value : Monetize.parse!(value.to_s.gsub(',', ''))
+            end
+          end
 
   # Blank string -> nil, otherwise coerce to a Date (mirrors Forms::Nil | Forms::Date).
   BlankStringOrDate = T::Params::Date.optional
