@@ -443,3 +443,52 @@ RSpec.describe 'covariant container reductions' do
     expect(Plumb::Subtyping.value_preserving?(CTypes::Hash[CTypes::Symbol, CTypes::Integer].filtered)).to be(false)
   end
 end
+
+# A record `left >> right` reduces to `left` when `right` merely re-validates
+# left's output without dropping or converting anything (see
+# Subtyping.redundant_record_refinement?).
+RSpec.describe 'record (Hash) composition reductions' do
+  module HRTypes
+    include Plumb::Types
+  end
+
+  it 'drops a redundant wider record, like the scalar case' do
+    expect(HRTypes::Hash[age: HRTypes::Integer] >> HRTypes::Hash[age: HRTypes::Numeric])
+      .to eq(HRTypes::Hash[age: HRTypes::Integer])
+  end
+
+  it 'reduces across several keys' do
+    expect(HRTypes::Hash[a: HRTypes::Integer, b: HRTypes::Integer] >>
+           HRTypes::Hash[a: HRTypes::Numeric, b: HRTypes::Numeric])
+      .to eq(HRTypes::Hash[a: HRTypes::Integer, b: HRTypes::Integer])
+  end
+
+  it 'reduces when both carry a matching value-preserving catch-all' do
+    expect(HRTypes::Hash[a: HRTypes::Integer, _: HRTypes::Any] >>
+           HRTypes::Hash[a: HRTypes::Numeric, _: HRTypes::Any])
+      .to eq(HRTypes::Hash[a: HRTypes::Integer, _: HRTypes::Any])
+  end
+
+  it 'reduces identically at runtime' do
+    reduced = HRTypes::Hash[age: HRTypes::Integer] >> HRTypes::Hash[age: HRTypes::Numeric]
+    assert_result(reduced.resolve(age: 5, extra: 9), { age: 5 }, true)
+  end
+
+  it 'does NOT reduce when the right record drops a key the left keeps' do
+    type = HRTypes::Hash[age: HRTypes::Integer, name: HRTypes::String] >> HRTypes::Hash[age: HRTypes::Numeric]
+    expect(type).to be_a(Plumb::And)
+    # right drops :name, so the composed result differs from the left alone
+    assert_result(type.resolve(age: 5, name: 'x'), { age: 5 }, true)
+  end
+
+  it 'does NOT reduce when the right record would drop the left catch-all tail' do
+    expect(HRTypes::Hash[a: HRTypes::Integer, _: HRTypes::Any] >> HRTypes::Hash[a: HRTypes::Numeric])
+      .to be_a(Plumb::And)
+  end
+
+  it 'does NOT reduce when a right field converts the value (front/back coercion)' do
+    money = Class.new
+    back = HRTypes::Hash[price: HRTypes::Integer.build(money), _: HRTypes::Any]
+    expect(HRTypes::Hash[price: HRTypes::Integer] >> back).to be_a(Plumb::And)
+  end
+end

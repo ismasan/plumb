@@ -281,7 +281,59 @@ module Plumb
     # compat check — a value-narrowing refinement (AVM) opts out of the latter
     # (its #input_type is Any), so check_composable! can't tell it apart.
     def redundant_refinement?(left, right)
-      value_preserving?(right) && subtype?(left, right)
+      (value_preserving?(right) && subtype?(left, right)) ||
+        redundant_record_refinement?(left, right)
+    end
+
+    # The record case of `redundant_refinement?`. A HashClass is NOT value-
+    # preserving in general — a non-inclusive record drops undeclared keys — so
+    # the generic test above never fires for it. `left >> right` (both records)
+    # still reduces to `left` when `right` merely re-validates every value `left`
+    # produces without dropping or changing anything. Sound sufficient conditions:
+    #
+    #   - both are plain records (no typed/pattern keys — only literal keys and an
+    #     optional `_` catch-all — so key-keeping is decidable);
+    #   - the same declared (literal) key set — `right` drops none of `left`'s keys
+    #     and requires none `left` lacks;
+    #   - `left <= right` — `right`'s fields are supertypes with compatible
+    #     optionality, so it rejects nothing `left` emits;
+    #   - every `right` field is value-preserving — `right` coerces nothing;
+    #   - if `left` carries a catch-all (so it emits arbitrary extra keys), `right`
+    #     carries a value-preserving catch-all that covers it — otherwise `right`
+    #     would drop or reject those extra keys.
+    #
+    # Anything short keeps the And (`right` might drop keys or convert values —
+    # eg. the front/back coercion `Hash[price: Int] >> Hash[price: Int.build(Money)]`
+    # must NOT collapse).
+    def redundant_record_refinement?(left, right)
+      return false unless left.is_a?(HashClass) && right.is_a?(HashClass)
+      return false unless plain_record?(left) && plain_record?(right)
+      return false unless same_literal_keys?(left, right)
+      return false unless catch_all_preserved?(left, right)
+      return false unless subtype?(left, right)
+
+      right.literal_fields.all? { |_key, field| value_preserving?(field) }
+    end
+
+    # A record whose only keys are literal names plus an optional `_` catch-all
+    # (no typed/pattern keys, whose key-keeping we don't reason about here).
+    def plain_record?(hash) = hash.matcher_fields.all? { |key, _| key.catch_all? }
+
+    # Do two records declare the same set of literal key names?
+    def same_literal_keys?(left, right)
+      lk = left.literal_fields.keys
+      rk = right.literal_fields.keys
+      lk.size == rk.size && lk.all? { |k| rk.any? { |o| o.eql?(k) } }
+    end
+
+    # Does `right` keep and preserve `left`'s catch-all tail (the keys `left` emits
+    # beyond its declared ones)? Vacuously true when `left` has no catch-all.
+    def catch_all_preserved?(left, right)
+      lc = left.catch_all_type
+      return true if lc.nil?
+
+      rc = right.catch_all_type
+      !rc.nil? && value_preserving?(rc) && subtype?(lc, rc)
     end
 
     # Join-dual of `reduce_step`: absorption for `a | b`. If one branch's value
