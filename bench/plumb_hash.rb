@@ -12,16 +12,18 @@ module PlumbHash
   BLANK_STRING = ''
   MONEY_EXP = /(\W{1}|\w{3})?[\d+,.]/
 
-  PARSE_MONEY = proc do |result|
-    value = Monetize.parse!(result.value.to_s.gsub(',', ''))
-    result.valid(value)
-  end
-
   BlankStringOrDate = Forms::Nil | Forms::Date
 
-  Money = Any[::Money] \
-    | (String.present >> PARSE_MONEY) \
-    | (Numeric >> PARSE_MONEY)
+  # STUB_MONEY swaps the Monetize-parsing constructor for an identity
+  # passthrough, so the benchmark can measure the schema WITHOUT the (shared)
+  # money-parsing cost that both Plumb and Dry pay equally.
+  Money = if ENV['STUB_MONEY']
+            Any
+          else
+            Any.build(::Money) do |v|
+              v.is_a?(::Money) ? v : Monetize.parse!(v.to_s.gsub(',', ''))
+            end
+          end
 
   Term = Hash[
     name: String.default(BLANK_STRING),
@@ -48,7 +50,7 @@ module PlumbHash
     name: String.present,
     upfront_cost_description: String.default(BLANK_STRING),
     tv_channels_count: Integer.default(0),
-    terms: Array[Term].policy(size: 1..).default(BLANK_ARRAY),
+    terms: Array[Term].where(size: 1..).default(BLANK_ARRAY),
     tv_included: Boolean,
     additional_info: String,
     product_type: String.nullable,
@@ -58,7 +60,7 @@ module PlumbHash
       name: String,
       technology: String,
       is_mobile: Boolean.default(false),
-      desciption: String,
+      description: String,
       technology_tags: Array[String].default(BLANK_ARRAY),
       download_speed_measurement: String.default(BLANK_STRING),
       download_speed: Numeric.default(0),

@@ -165,6 +165,9 @@ module Plumb
       Deferred.new(definition || block)
     end
 
+    def input_type = self
+    def output_type = self
+
     # Chain two composable objects together.
     # A.K.A "and" or "sequence"
     # @example
@@ -193,7 +196,7 @@ module Plumb
     # @param block [Proc] a block that will be applied to the value, or nil if callable provided
     # @return [And]
     def transform(target_type, callable = nil, &block)
-      self >> Transform.new(target_type, callable || block)
+      transform_step(target_type, callable || block || Plumb::NOOP)
     end
 
     # Pass the value through an arbitrary validation
@@ -348,7 +351,7 @@ module Plumb
     def policy(*args, &blk)
       case args
       in [::Symbol => name, *rest] # #policy(:name, arg)
-        types = Array(metadata[:type]).uniq
+        types = Plumb.resolve_base_types(output_type).uniq
 
         bargs = [self]
         arg = Undefined
@@ -385,7 +388,13 @@ module Plumb
     # @param factory_method [Symbol] method to call on the class to instantiate it.
     # @return [And]
     def build(cns, factory_method = :new, &block)
-      self >> Build.new(cns, factory_method:, &block)
+      transform_step(cns, block || ->(value) { cns.send(factory_method, value) })
+    end
+
+    # Build an And that validates the input (self), applies a value-level
+    # callable, and declares `target_type` as the (validated) output type.
+    private def transform_step(target_type, callable)
+      And.new(self, Composable.wrap(target_type), ->(result) { result.valid(callable.call(result.value)) })
     end
 
     # Always return a static value, regardless of the input.
@@ -398,12 +407,6 @@ module Plumb
     # @param value [Object]
     # @return [And]
     def static(value)
-      my_type = Array(metadata[:type]).first
-      unless my_type.nil? || value.instance_of?(my_type)
-        raise ArgumentError,
-              "can't set a static #{value.class} value for a #{my_type} step"
-      end
-
       StaticClass.new(value) >> self
     end
 
@@ -468,7 +471,5 @@ end
 
 require 'plumb/deferred'
 require 'plumb/attribute_value_match'
-require 'plumb/transform'
 require 'plumb/policy'
-require 'plumb/build'
 require 'plumb/metadata'

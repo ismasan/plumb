@@ -15,7 +15,7 @@ RSpec.describe Plumb::Types::Stream do
 
   specify '#metadata' do
     stream = Types::Stream[Integer]
-    expect(stream.metadata).to eq(type: Enumerator)
+    expect(stream.metadata).to eq({})
   end
 
   specify '#filtered' do

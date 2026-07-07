@@ -8,6 +8,7 @@ gemspec
 gem 'money'
 
 group :development do
+  gem 'csv'
   gem 'debug'
   gem 'rake', '~> 13.0'
   gem 'rspec', '~> 3.0'
@@ -17,7 +18,11 @@ end
 
 group :benchmark do
   gem 'ruby-prof'
+  gem 'benchmark'
   gem 'benchmark-ips'
+  gem 'memory_profiler'
   gem 'monetize'
   gem 'parametric'
+  gem 'dry-types'
+  gem 'dry-schema'
 end
