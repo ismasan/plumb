@@ -20,8 +20,8 @@ module Plumb
     alias [] of
 
     def call(result)
-      return result.invalid(errors: 'must be an Array') unless result.value.is_a?(::Array)
-      return result.invalid(errors: 'must have the same size') unless result.value.size == @children.size
+      return result.invalid!(errors: 'must be an Array') unless result.value.is_a?(::Array)
+      return result.invalid!(errors: 'must have the same size') unless result.value.size == @children.size
 
       errors = {}
       values = @children.map.with_index do |type, idx|
@@ -31,9 +31,9 @@ module Plumb
         r.value
       end
 
-      return result.valid(values) unless errors.any?
+      return result.valid!(values) unless errors.any?
 
-      result.invalid(errors:)
+      result.invalid!(errors:)
     end
 
     private

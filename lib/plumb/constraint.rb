@@ -139,7 +139,7 @@ module Plumb
         return result unless result.valid?
       end
 
-      @matcher === result.value ? result : result.invalid(errors: @error)
+      @matcher === result.value ? result : result.invalid!(errors: @error)
     end
 
     private

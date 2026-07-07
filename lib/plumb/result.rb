@@ -1,14 +1,38 @@
 # frozen_string_literal: true
 
 module Plumb
+  # The value + validity + errors triple that flows through a composition.
+  #
+  # There are two ways to derive one result from another:
+  #
+  #   - #valid / #invalid ALLOCATE a fresh Result and leave the receiver
+  #     untouched. This is the safe, functional form: use it in custom types, and
+  #     anywhere a result may outlive the call or be captured (Streams close over
+  #     it lazily; concurrent Arrays hand results between threads). This is the
+  #     public API for user-defined steps.
+  #
+  #   - #valid! / #invalid! FLIP THE RECEIVER in place and return it (no
+  #     allocation). Plumb's own built-in steps use these on the hot path to
+  #     avoid a Result per node — but only where the input cursor is theirs to
+  #     mutate: never on a shared/constant Result, never when the result escapes
+  #     into a closure or another thread. The one fork point (Or) snapshots the
+  #     value and #resets before retrying its second branch.
+  #
+  # So built-ins stay allocation-lean while user code (and the concurrency- and
+  # laziness-sensitive built-ins) keep the footgun-free copying semantics, at the
+  # cost of a few extra allocations there.
+  #
+  # Valid and Invalid were once separate subclasses; collapsing them into one
+  # class with a boolean is what makes the in-place valid<->invalid flip possible
+  # (Ruby can't change an object's class).
   class Result
     class << self
-      def valid(value)
-        Valid.new(value)
+      def valid(value = nil)
+        new(value, valid: true)
       end
 
       def invalid(value = nil, errors: nil)
-        Invalid.new(value, errors:)
+        new(value, valid: false, errors:)
       end
 
       def wrap(value)
@@ -20,31 +44,20 @@ module Plumb
 
     attr_reader :value, :errors
 
-    def initialize(value, errors: nil)
+    def initialize(value, valid: true, errors: nil)
       @value = value
+      @valid = valid
       @errors = errors
     end
 
-    def valid? = true
-    def invalid? = false
+    def valid? = @valid
+    def invalid? = !@valid
 
     def inspect
-      %(<#{self.class}##{object_id} value:#{value.inspect} errors:#{errors.inspect}>)
+      %(<#{self.class}##{object_id} valid:#{@valid} value:#{value.inspect} errors:#{errors.inspect}>)
     end
 
-    def reset(val)
-      @value = val
-      @errors = nil
-      self
-    end
-
-    # Replace this result's errors in place and return self. For reusing an
-    # already-allocated Invalid instead of building a fresh one (see Or#call).
-    def with_errors(errs)
-      @errors = errs
-      self
-    end
-
+    # Allocating, copy-returning form. Safe everywhere: the receiver is untouched.
     def valid(val = value)
       Result.valid(val)
     end
@@ -53,19 +66,31 @@ module Plumb
       Result.invalid(val, errors:)
     end
 
-    class Valid < self
-      def map(callable)
-        callable.call(self)
-      end
+    # In-place form: flip THIS result and return self. No allocation. Only for
+    # code that owns the cursor (see the class docstring).
+    def valid!(val = value)
+      @value = val
+      @valid = true
+      @errors = nil
+      self
     end
 
-    class Invalid < self
-      def valid? = false
-      def invalid? = true
+    def invalid!(val = value, errors: nil)
+      @value = val
+      @valid = false
+      @errors = errors
+      self
+    end
 
-      def map(_)
-        self
-      end
+    # Reset the cursor to a fresh VALID state carrying `val`, in place. The
+    # mutating scratch-reuse primitive behind the HashClass/ArrayClass element
+    # loops (same as #valid!(val)).
+    def reset(val)
+      valid!(val)
+    end
+
+    def map(callable)
+      @valid ? callable.call(self) : self
     end
   end
 end

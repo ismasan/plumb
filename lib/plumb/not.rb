@@ -41,7 +41,8 @@ module Plumb
 
     def call(result)
       result = @step.call(result)
-      result.valid? ? result.invalid(errors: @errors) : result.valid
+      # In-place inversion — no fork here, the cursor is ours to flip.
+      result.valid? ? result.invalid!(errors: @errors) : result.valid!
     end
   end
 end

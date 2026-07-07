@@ -51,12 +51,21 @@ module Plumb
       return result unless result.valid?
       # return result.invalid(errors: 'is not an Enumerable') unless result.value.respond_to?(:each)
 
+      # Snapshot the source enumerable into a local so the lazy Enumerator closes
+      # over IT, not the result cursor. The cursor may be reused/mutated after we
+      # return (eg. a Stream nested in an Array, whose cursor is reset per
+      # element) — closing over the snapshot keeps each stream bound to its own
+      # input regardless.
+      source = result.value
       enum = Enumerator.new do |y|
-        result.value.each do |e|
+        source.each do |e|
           y << @element_type.resolve(e)
         end
       end
 
+      # Copying #valid (not #valid!): the returned result's value IS the lazy
+      # enum, so the result must be a fresh object the caller can hold while its
+      # own cursor moves on.
       result.valid(enum)
     end
 

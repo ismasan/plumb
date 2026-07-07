@@ -58,7 +58,7 @@ module Plumb
     def call(result)
       return result if value === result.value.public_send(attr_name)
 
-      result.invalid(errors: @error)
+      result.invalid!(errors: @error)
     end
 
     private def _inspect = @inspect_line

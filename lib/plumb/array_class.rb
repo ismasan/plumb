@@ -38,17 +38,19 @@ module Plumb
           r = element_type.resolve(e)
           memo << r.value if r.valid?
         end
-        result.valid(arr)
+        result.valid!(arr)
       end
     end
 
     def call(result)
-      return result.invalid(errors: 'is not an Array') unless ::Array === result.value
+      return result.invalid!(errors: 'is not an Array') unless ::Array === result.value
 
+      # map_array_elements uses its own element scratch (below), so `result` is
+      # untouched until here — flip it in place rather than allocating a fresh one.
       values, errors = map_array_elements(result)
-      return result.valid(values) unless errors.any?
+      return result.valid!(values) unless errors.any?
 
-      result.invalid(values, errors:)
+      result.invalid!(values, errors:)
     end
 
     private
@@ -60,14 +62,19 @@ module Plumb
     end
 
     def map_array_elements(result)
-      # Reuse the same result object for each element
-      # to decrease object allocation.
-      # Steps might return the same result instance, so we map the values directly
-      # separate from the errors.
-      element_result = result.dup
-      errors = Hash.new(capacity: result.value.size)
-      values = result.value.map.with_index do |e, idx|
-        re = element_type.call(element_result.reset(e))
+      # Reuse the INCOMING cursor as the per-element scratch (capturing the array
+      # first): each element flips it in place via #reset, and #call flips it a
+      # final time to the collected values — so a sequential Array validates with
+      # zero Result allocations of its own. Steps may return the same result
+      # instance, so map values/errors out immediately rather than holding `re`.
+      #
+      # Element types that produce a value which is lazily consumed later (a
+      # Stream) must not close over this reused cursor — StreamClass#call
+      # snapshots its source for exactly this reason (see there).
+      array = result.value
+      errors = Hash.new(capacity: array.size)
+      values = array.map.with_index do |e, idx|
+        re = element_type.call(result.reset(e))
         errors[idx] = re.errors unless re.valid?
         re.value
       end

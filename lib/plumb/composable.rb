@@ -23,7 +23,6 @@ module Plumb
   BLANK_STRING = ''
   BLANK_ARRAY = [].freeze
   BLANK_HASH = {}.freeze
-  BLANK_RESULT = Result.wrap(Undefined)
   NOOP = ->(result) { result }
 
   # Ruby's explicit conversion methods and the type each produces. Lets
@@ -629,8 +628,11 @@ module Plumb
     # callable, and declares `target_type` as the (validated) output type.
     private def transform_step(target_type, callable, guaranteed: false)
       klass = guaranteed ? GuaranteedTransform : Transform
+      # Flip the cursor in place with the transformed value — the transform owns
+      # the result it is handed (the argument is evaluated first, reading the
+      # pre-transform value), so no fresh Result is needed.
       klass.new(self, Composable.wrap(target_type),
-                ->(result) { result.valid(callable.call(result.value)) })
+                ->(result) { result.valid!(callable.call(result.value)) })
     end
 
     # Expand `#transform(:to_i)` into a typed transform to `output_type`, using

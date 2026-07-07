@@ -89,22 +89,24 @@ module Plumb
     # participates in subtyping (see FilteredHash).
     def filtered
       op = lambda do |result|
-        return result.invalid(errors: 'must be a Hash') unless result.value.is_a?(::Hash)
+        return result.invalid!(errors: 'must be a Hash') unless result.value.is_a?(::Hash)
         return result unless _schema.any?
 
         input = result.value
-        field_result = BLANK_RESULT.dup
+        # Reuse the incoming cursor as the per-field scratch (see #call): `input`
+        # is captured above and `result` is only flipped at the end, so fields
+        # reset it in place with no scratch allocation.
         output = _schema.each.with_object({}) do |(key, field), ret|
           key_s = key.to_sym
           if input.key?(key_s)
-            r = field.call(field_result.reset(input[key_s]))
+            r = field.call(result.reset(input[key_s]))
             ret[key_s] = r.value if r.valid?
           elsif !key.optional?
-            r = field.call(BLANK_RESULT)
+            r = field.call(result.reset(Undefined))
             ret[key_s] = r.value if r.valid?
           end
         end
-        result.valid(output)
+        result.valid!(output)
       end
       FilteredHash.new(self, relaxed_to_optional, op)
     end
@@ -119,25 +121,32 @@ module Plumb
     end
 
     def call(result)
-      return result.invalid(errors: NOT_A_HASH) unless result.value.is_a?(::Hash)
+      return result.invalid!(errors: NOT_A_HASH) unless result.value.is_a?(::Hash)
       return result unless _schema.any?
 
       input = result.value
       errors = nil # Do not allocate errors unless needed
       output = @inclusive ? input.dup : {}
-      field_result = Result.valid(nil)
 
+      # Reuse the incoming cursor as the per-field scratch: `input` is captured
+      # above and `result` is not read again until the final flip below, so each
+      # field can reset it in place — a Hash validates with zero Result
+      # allocations of its own. `output`/`errors` hold the fields' values/errors
+      # by reference (read out immediately per field), and #reset only reassigns
+      # the cursor's slots, so previously stored entries are never mutated. This
+      # mirrors ArrayClass's element-cursor reuse; a field whose value is lazily
+      # consumed later (a Stream) snapshots its own source, so it stays correct.
       _schema.each do |key, field|
         key_s = key.to_key
         if input.key?(key_s)
-          r = field.call(field_result.reset(input[key_s]))
+          r = field.call(result.reset(input[key_s]))
           output[key_s] = r.value
           unless r.valid?
             errors ||= {}
             errors[key_s] = r.errors
           end
         elsif !key.optional?
-          r = field.call(BLANK_RESULT)
+          r = field.call(result.reset(Undefined))
           output[key_s] = r.value unless r.value == Undefined
           unless r.valid?
             errors ||= {}
@@ -146,7 +155,7 @@ module Plumb
         end
       end
 
-      errors ? result.invalid(output, errors:) : result.valid(output)
+      errors ? result.invalid!(output, errors:) : result.valid!(output)
     end
 
     def ==(other)

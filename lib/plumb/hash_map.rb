@@ -27,7 +27,7 @@ module Plumb
     end
 
     def call(result)
-      return result.invalid(errors: 'must be a Hash') unless result.value.is_a?(::Hash)
+      return result.invalid!(errors: 'must be a Hash') unless result.value.is_a?(::Hash)
 
       errors = {}
 
@@ -41,7 +41,7 @@ module Plumb
         memo[key_r.value] = value_r.value
       end
 
-      errors.empty? ? result.valid(parsed) : result.invalid(errors:)
+      errors.empty? ? result.valid!(parsed) : result.invalid!(errors:)
     end
 
     def filtered
@@ -78,7 +78,7 @@ module Plumb
           memo[key_r.value] = value_r.value if key_r.valid? && value_r.valid?
         end
 
-        result.valid(hash)
+        result.valid!(hash)
       end
 
       private def _inspect = "HashMap[#{@key_type.inspect}, #{@value_type.inspect}].filtered"
