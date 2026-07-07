@@ -362,6 +362,14 @@ module Plumb
       props.merge(PATTERN => node.source, TYPE => props[TYPE] || 'string')
     end
 
+    # A Set is a membership matcher (`Set#===` is `include?`), so it maps to
+    # `enum` — the same shape the :options_policy handler produces for an Array
+    # argument. `Integer[1, 2, 3]` / `Integer[Set[1, 2, 3]]` build a Constraint
+    # whose base sets `type` and whose Set matcher folds in the members here.
+    on(::Set) do |node, props|
+      props.merge(ENUM => node.to_a)
+    end
+
     on(::Range) do |node, props|
       element = node.begin || node.end
       opts = visit(element.class)

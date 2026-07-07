@@ -408,6 +408,24 @@ RSpec.describe Plumb::JSONSchemaVisitor do
     end
   end
 
+  describe 'Set membership matchers map to enum' do
+    specify 'a splatted list of values' do
+      type = Types::Integer[1, 2, 3]
+      expect(described_class.call(type, root: false)).to eq(
+        'type' => 'integer',
+        'enum' => [1, 2, 3]
+      )
+    end
+
+    specify 'an explicit Set argument' do
+      type = Types::Integer[Set[1, 2, 3]]
+      expect(described_class.call(type, root: false)).to eq(
+        'type' => 'integer',
+        'enum' => [1, 2, 3]
+      )
+    end
+  end
+
   describe 'non-JSON values in the output' do
     specify 'Symbols are normalized to strings' do
       type = Types::String.options(%i[ok error])
