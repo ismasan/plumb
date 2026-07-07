@@ -64,7 +64,7 @@ data = {
       name: 'Phone 1',
       description: 'Phone 1 description',
       discount_price: 100,
-      disount_period: 12,
+      discount_period: 12,
       ongoing_price: 100,
       contract_length: 12,
       upfront_cost: 100,

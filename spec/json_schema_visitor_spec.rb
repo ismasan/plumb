@@ -231,7 +231,7 @@ RSpec.describe Plumb::JSONSchemaVisitor do
     expect(described_class.visit(type)).to eq('not' => { 'type' => 'number' })
   end
 
-  specify 'Types::Match with RegExp' do
+  specify 'Types::Constraint with RegExp' do
     type = Types::String[/[a-z]+/]
     expect(described_class.visit(type)).to eq('type' => 'string', 'pattern' => '[a-z]+')
   end
@@ -241,7 +241,7 @@ RSpec.describe Plumb::JSONSchemaVisitor do
     expect(described_class.visit(type)).to eq('type' => 'string', 'pattern' => '[a-z]+')
   end
 
-  specify 'Types::Match with Range' do
+  specify 'Types::Constraint with Range' do
     type = Types::Integer[10..100]
     expect(described_class.visit(type)).to eq('type' => 'integer', 'minimum' => 10, 'maximum' => 100)
 
@@ -296,10 +296,17 @@ RSpec.describe Plumb::JSONSchemaVisitor do
     expect(described_class.visit(type)).to eq('type' => 'string')
   end
 
-  specify 'Types::String >> Types::Integer' do
+  specify 'Types::String.transform(::Integer)' do
     # The schema describes the input type (String), not the output (Integer).
-    type = Types::String >> Types::Integer
+    type = Types::String.transform(::Integer, &:to_i)
     expect(described_class.visit(type)).to eq('type' => 'string')
+  end
+
+  specify '#build with a custom output class describes the input and does not visit the output' do
+    klass = Data.define(:name)
+    type = Types::String[/^Is/].build(klass)
+    # The output (a custom class with no schema handler) must NOT be visited.
+    expect(described_class.visit(type)).to eq('type' => 'string', 'pattern' => '^Is')
   end
 
   specify 'Types::String | Types::Integer' do
@@ -369,7 +376,7 @@ RSpec.describe Plumb::JSONSchemaVisitor do
   end
 
   describe ':options policy with a non-Array argument' do
-    specify 'a Range delegates to a Match constraint (minimum/maximum)' do
+    specify 'a Range delegates to a Constraint (minimum/maximum)' do
       type = Types::Integer.options(10..20)
       expect(described_class.call(type, root: false)).to eq(
         'type' => 'integer',

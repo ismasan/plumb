@@ -19,9 +19,26 @@ module Plumb
     # (A | B).output_type == A.output_type | B.output_type
     # Computed lazily: building these eagerly in #initialize would recurse
     # forever, since each Or.new would build its own input/output types.
-    # TODO: cache these?
-    def input_type = Or.new(@left.input_type, @right.input_type)
-    def output_type = Or.new(@left.output_type, @right.output_type)
+    # When both children are their own io type (the common leaf case) return
+    # self rather than a structurally-equal copy, so Subtyping.resolved_*
+    # converges on identity without allocating. Results are memoized per node
+    # at the consuming end (Subtyping.resolved_input/resolved_output).
+    def input_type
+      l = @left.input_type
+      r = @right.input_type
+      l.equal?(@left) && r.equal?(@right) ? self : Or.new(l, r)
+    end
+
+    def output_type
+      l = @left.output_type
+      r = @right.output_type
+      l.equal?(@left) && r.equal?(@right) ? self : Or.new(l, r)
+    end
+
+    # A disjunction preserves the value only if EVERY branch does — a branch
+    # that transforms (a coercion) changes it when taken. Recurses through the
+    # cached accessor so shared subtrees are memoized once.
+    def value_preserving? = children.all? { |c| Plumb::Subtyping.value_preserving?(c) }
 
     private def _inspect
       %((#{@left.inspect} | #{@right.inspect}))
@@ -41,7 +58,9 @@ module Plumb
         right_errors = right_result.errors.is_a?(Array) ? right_result.errors.first : right_result.errors
         left_errors << right_errors
 
-        right_result.invalid(errors: left_errors)
+        # right_result is a fresh Invalid we own — reuse it instead of allocating
+        # another just to swap in the merged errors.
+        right_result.with_errors(left_errors)
       end
     end
   end

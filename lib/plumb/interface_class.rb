@@ -17,6 +17,25 @@ module Plumb
       other.is_a?(self.class) && other.method_names == method_names
     end
 
+    # Interface <= Interface: self is a subtype of a *looser* interface — one
+    # that requires a subset of self's methods (more methods = narrower type).
+    def subtype_of?(other)
+      return (other.method_names - method_names).empty? if other.is_a?(self.class)
+
+      super
+    end
+
+    # An Interface is a *supertype* of any type whose underlying Ruby class(es)
+    # define all of its methods — the duck-typing rule, driven by the interface
+    # (the right side of `a <= self`). Consulted by Plumb::Subtyping.subtype? via
+    # the #supertype_of? hook, so eg. `Types::String <= Types::Interface[:to_s]`.
+    def supertype_of?(other)
+      classes = Plumb.resolve_base_types(other)
+      classes.any? && classes.all? do |klass|
+        klass.is_a?(::Module) && method_names.all? { |m| klass.method_defined?(m) }
+      end
+    end
+
     def of(*args)
       case args
       in Array => symbols if symbols.all? { |s| s.is_a?(::Symbol) }

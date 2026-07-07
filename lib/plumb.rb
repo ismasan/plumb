@@ -71,9 +71,13 @@ module Plumb
     case node.node_name
     when :or
       node.children.flat_map { |child| resolve_base_types(child) }
-    when :and
+    when :and, :transform
       resolve_base_types(node.output_type)
-    when :match
+    when :constraint
+      # A refinement matcher carries its base type — resolve that (eg.
+      # `Integer[1..10]` => [Integer], `User.check {}` => the User's base types).
+      return resolve_base_types(node.base) if node.base
+
       matcher = node.children.first
       case matcher
       when ::Class then [matcher]
@@ -82,7 +86,7 @@ module Plumb
       else [matcher.class]
       end
     when :array, :tuple then [::Array]
-    when :hash, :hash_map, :tagged_hash then [::Hash]
+    when :hash, :hash_map, :tagged_hash, :filtered_hash, :filtered_hash_map then [::Hash]
     when :stream then [::Enumerator]
     when :static
       value = node.children.first
@@ -103,10 +107,11 @@ require 'plumb/composable'
 require 'plumb/any_class'
 require 'plumb/step'
 require 'plumb/and'
+require 'plumb/transform'
 require 'plumb/pipeline'
 require 'plumb/static_class'
 require 'plumb/value_class'
-require 'plumb/match_class'
+require 'plumb/constraint'
 require 'plumb/not'
 require 'plumb/or'
 require 'plumb/tuple_class'
@@ -115,6 +120,7 @@ require 'plumb/stream_class'
 require 'plumb/hash_class'
 require 'plumb/interface_class'
 require 'plumb/attributes'
+require 'plumb/subtyping'
 require 'plumb/types'
 require 'plumb/json_schema_visitor'
 require 'plumb/schema'

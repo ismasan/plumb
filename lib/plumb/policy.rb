@@ -28,6 +28,11 @@ module Plumb
         arg == other.arg
     end
 
+    # A Policy is a transparent wrapper: it delegates type-flow to the wrapped
+    # step.
+    def input_type = @step.input_type
+    def output_type = @step.output_type
+
     # The standard Step interface.
     # @param result [Result::Valid]
     # @return [Result::Valid, Result::Invalid]

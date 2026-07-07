@@ -15,5 +15,8 @@ module Plumb
     end
 
     def call(result) = result
+
+    # The identity type — accepts anything, changes nothing.
+    def value_preserving? = true
   end
 end

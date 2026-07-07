@@ -24,6 +24,11 @@ module Plumb
       end
     end
 
+    # Metadata is a transparent wrapper: it delegates type-flow to the wrapped
+    # type.
+    def input_type = type.input_type
+    def output_type = type.output_type
+
     def call(result) = type.call(result)
 
     private def _inspect = "Metadata[#{type}, #{@metadata.inspect}]"

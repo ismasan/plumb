@@ -112,13 +112,21 @@ module Plumb
       visit_name :hash, node._schema, props
     end
 
+    # A refinement (`And`): both sides describe the SAME value. Build from the
+    # input side and fold in the output side when it shares the input's type (a
+    # constraint such as `pattern`/`minimum`/`format`), or when the input is
+    # untyped. Both sides are validators over one value, so both are visited.
+    # A factored union `And(base, Or(suffix, …))` (built by Composable#| when
+    # branches share a base type). Unlike the generic `:and` handler, the
+    # disjunction is a *refinement* of the base, not a different type: render the
+    # base, then fold the (type-less) disjunction's `anyOf` into that same spec.
+    on(:refined_union) do |node, props|
+      and_node = node.type
+      props = visit(and_node.input_type, props) # base -> {type: …}
+      visit(and_node.output_type, props)        # Or(suffixes) -> merge anyOf into it
+    end
+
     on(:and) do |node, props|
-      # A JSON Schema describes the *inputs* a type accepts, so the schema is
-      # built from the input side (left == #input_type). The output side (right)
-      # is only folded in when it refines the same value — ie. it shares the
-      # input's type (a constraint such as `pattern`/`minimum`/`format`) or the
-      # input is untyped. A genuine type change (transform/build, eg.
-      # `String >> Integer` or `String.split`) describes an output and is dropped.
       left, right = node.children.map { |c| visit(c) }
       if !left.key?(TYPE) || left[TYPE] == right[TYPE]
         type = left[TYPE] || right[TYPE]
@@ -127,6 +135,25 @@ module Plumb
       else
         props.merge(left)
       end
+    end
+
+    # A conversion (`Transform`) produces a genuinely different value. A JSON
+    # Schema describes accepted *inputs*, so it is built from the input side and
+    # the output is dropped — and crucially NOT visited, so a transform whose
+    # output type has no schema handler (eg. a custom class via #build) is fine.
+    # Only when the input is untyped (eg. `Any.transform(::Integer)`) do we fall
+    # back to the output type, since that is then all we know.
+    on(:transform) do |node, props|
+      left = visit(node.input_type)
+      return props.merge(left) if left.key?(TYPE)
+
+      props.merge(left).merge(visit(node.output_type))
+    end
+
+    # A filtered Hash may drop any field, so its schema is its relaxed
+    # (all-optional) output.
+    on(:filtered_hash) do |node, props|
+      props.merge(visit(node.output_type))
     end
 
     # A "default" value is usually an "or" of expected_value | (undefined >> static_value)
@@ -139,7 +166,12 @@ module Plumb
         val = any_of[defidx.zero? ? 1 : 0]
         props.merge(val).merge(DEFAULT => any_of[defidx][DEFAULT])
       else
-        props.merge(ANY_OF => any_of)
+        # anyOf is associative, so splice a child that is itself a BARE `anyOf`
+        # (a nested Or from an n-ary factored union) into this level to keep the
+        # schema flat. Only when it is pure anyOf — other keys would be lost, and
+        # the default-bearing branches above are deliberately left un-spliced.
+        flat = any_of.flat_map { |s| s.keys == [ANY_OF] ? s[ANY_OF] : [s] }.uniq
+        props.merge(ANY_OF => flat)
       end
     end
 
@@ -198,7 +230,7 @@ module Plumb
 
     on(:options_policy) do |node, props|
       # Only an Array argument maps to `enum`. Any other argument was delegated
-      # to a Match constraint by the policy, so its schema (eg. `minimum`/
+      # to a Constraint by the policy, so its schema (eg. `minimum`/
       # `maximum` for a Range) has already been built by visiting the children.
       node.arg.is_a?(::Array) ? props.merge(ENUM => node.arg) : props
     end
@@ -239,7 +271,12 @@ module Plumb
       props
     end
 
-    on(:match) do |node, props|
+    on(:constraint) do |node, props|
+      # A refinement matcher describes its base first (eg. `Integer[1..10]` gets
+      # `type: integer` from the base Integer), then folds in the matcher's own
+      # constraint (`minimum`/`maximum`/`pattern`/`const`).
+      props = visit(node.base, props) if node.base
+
       # Set const if primitive
       matcher = node.children.first
       props = case matcher
@@ -418,5 +455,6 @@ module Plumb
 
       result.merge(REQUIRED => required.to_a)
     end
+
   end
 end

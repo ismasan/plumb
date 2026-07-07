@@ -44,6 +44,15 @@ RSpec.describe Plumb::Types do
       assert_result(Types::Any['a'..'f'].resolve('c'), 'c', true)
       assert_result(Types::Any['a'..'f'].resolve('z'), 'z', false)
     end
+
+    it 'wraps a splatted list of values as a Set membership matcher' do
+      expect(Types::Integer[1, 2, 3, 4]).to eq(Types::Integer[Set[1, 2, 3, 4]])
+      assert_result(Types::Integer[1, 2, 3].resolve(2), 2, true)
+      assert_result(Types::Integer[1, 2, 3].resolve(9), 9, false)
+      # a single argument is used as-is (value / Range / Set), not wrapped
+      expect(Types::Integer[5].matcher).to eq(5)
+      expect(Types::Integer[0..100].matcher).to eq(0..100)
+    end
   end
 
   specify '#>>' do
@@ -79,6 +88,47 @@ RSpec.describe Plumb::Types do
     it 'is a noop without a block' do
       to_i = Types::Any.transform(::Integer)
       assert_result(to_i.resolve(10), 10, true)
+    end
+
+    context 'with a single conversion symbol' do
+      it 'expands to a typed transform to the method result type' do
+        str_to_i = Types::String.transform(:to_i)
+        expect(str_to_i.output_type).to eq(Types::Integer)
+        assert_result(str_to_i.resolve('10'), 10, true)
+
+        int_to_s = Types::Integer.transform(:to_s)
+        expect(int_to_s.output_type).to eq(Types::String)
+        assert_result(int_to_s.resolve(10), '10', true)
+      end
+
+      it 'validates the input base type supports the method' do
+        expect { Types::Integer.transform(:to_sym) }.to raise_error(Plumb::TypeError)
+        expect { Types::Integer.transform(:to_a) }.to raise_error(Plumb::TypeError)
+        # unknown base (Any) is allowed
+        expect { Types::Any.transform(:to_i) }.not_to raise_error
+      end
+    end
+
+    context 'with an explicit output type and a conversion symbol' do
+      it 'allows the symbol result type to be within the declared output' do
+        # :to_f produces a Float, which is a Numeric — the output check is provably
+        # redundant, so this builds a guaranteed (output-check-free) transform.
+        to_num = Types::Any.transform(::Numeric, :to_f)
+        assert_result(to_num.resolve('2.5'), 2.5, true)
+
+        # declared type equal to the symbol's result type is fine too
+        to_i = Types::Any.transform(::Integer, :to_i)
+        assert_result(to_i.resolve('10'), 10, true)
+      end
+
+      it 'raises at composition time when the symbol result type is disjoint from the output' do
+        # :to_s always produces a String, which can never be an Integer, so this
+        # transform would reject every input — a composition error, not a runtime one.
+        expect { Types::String.transform(::Integer, :to_s) }
+          .to raise_error(ArgumentError, /:to_s produces a String, which is never a Integer/)
+        # disjoint siblings under Numeric are caught too
+        expect { Types::Any.transform(::Integer, :to_f) }.to raise_error(ArgumentError)
+      end
     end
   end
 
@@ -201,18 +251,21 @@ RSpec.describe Plumb::Types do
     end
 
     it 'exposes the two sides of a chain (A >> B)' do
-      chain = Types::String >> Types::Integer
-      expect(chain.input_type).to eq(Types::String)
-      expect(chain.output_type).to eq(Types::Integer)
+      # A value-changing (transform) step keeps the chain as an And. Refinement-
+      # only chains collapse via reduction instead (see reduction_spec.rb).
+      b = Types::Integer.transform(::String, :to_s)
+      chain = Types::Integer >> b
+      expect(chain).to be_a(Plumb::And)
+      expect(chain.input_type).to eq(Types::Integer)
+      expect(chain.output_type).to eq(b)
     end
 
     it 'is shallow for longer chains: input_type is everything but the last step' do
-      # (A >> B >> C) == ((A >> B) >> C)
-      # The input type is the whole left-hand sub-chain, not just the leftmost leaf,
-      # because the chain only accepts values that satisfy every step up to the last.
-      a = Types::String
-      b = Types::String[/\d+/]
-      c = Types::Integer
+      # (A >> B >> C) == ((A >> B) >> C). Transform steps keep the And nesting;
+      # each step's output must be a subtype of the next step's input.
+      a = Types::Integer[1..5]
+      b = Types::Integer.transform(::String, :to_s)
+      c = Types::String.transform(::Integer, :to_i)
       chain = a >> b >> c
       expect(chain.input_type).to eq(a >> b)
       expect(chain.output_type).to eq(c)
@@ -220,7 +273,7 @@ RSpec.describe Plumb::Types do
 
     it 'preserves the constrained input type of a transform' do
       # Types::String[/\d+/].transform(Integer, &:to_i)
-      #   == ((Types::String >> Match(/\d+/)) >> Integer)
+      #   == ((Types::String >> Constraint(/\d+/)) >> Integer)
       # so it only accepts digit strings, not any String.
       constrained = Types::String[/\d+/]
       type = constrained.transform(::Integer, &:to_i)
@@ -235,13 +288,13 @@ RSpec.describe Plumb::Types do
     end
 
     it 'combines the input/output types of each branch of a union of chains' do
-      # ((A >> B) | (C >> D)).input_type  == (A | C)
-      # ((A >> B) | (C >> D)).output_type == (B | D)
-      left = Types::String >> Types::Integer
-      right = Types::Integer >> Types::String
+      # (A.transform(B) | C.transform(D)).input_type  == (A | C)
+      # (A.transform(B) | C.transform(D)).output_type == (B | D)
+      left = Types::String.transform(::Integer, &:to_i)
+      right = Types::Integer.transform(::String, &:to_s)
       union = left | right
       expect(union.input_type).to eq(Types::String | Types::Integer)
-      expect(union.output_type).to eq(Types::Integer | Types::String)
+      expect(union.output_type).to eq(Plumb::Composable.wrap(::Integer) | Plumb::Composable.wrap(::String))
     end
   end
 
@@ -256,7 +309,7 @@ RSpec.describe Plumb::Types do
 
   describe '#metadata as a getter' do
     specify 'AND (>>) chains' do
-      type = Types::String >> Types::Integer.metadata(foo: 'bar')
+      type = Types::Integer >> Types::Numeric.metadata(foo: 'bar')
       expect(type.metadata).to eq({ foo: 'bar' })
     end
 
@@ -266,10 +319,10 @@ RSpec.describe Plumb::Types do
     end
 
     specify 'AND (>>) with OR (|)' do
-      type = Types::String >> (Types::Integer | Types::Boolean).metadata(foo: 'bar')
+      type = Types::Integer >> (Types::Integer | Types::Boolean).metadata(foo: 'bar')
       expect(type.metadata).to eq({ foo: 'bar' })
 
-      type = Types::String | (Types::Integer >> Types::Boolean).metadata(foo: 'bar')
+      type = Types::String | (Types::Integer >> Types::Numeric).metadata(foo: 'bar')
       expect(type.metadata).to eq({ foo: 'bar' })
     end
   end
@@ -397,11 +450,11 @@ RSpec.describe Plumb::Types do
       expect(type.parse).to eq(10)
     end
 
-    it 'no longer checks type consistency at composition time (runtime validation still applies)' do
-      # The composition-time type check was removed; an inconsistent static value
-      # is now caught at runtime by the downstream type instead of raising on build.
-      type = Types::Integer.static('nope')
-      assert_result(type.resolve(10), 'nope', false)
+    it 'checks type consistency at composition time' do
+      # The static value flows into the downstream type, so an inconsistent
+      # value (a String where an Integer is expected) is a dead chain.
+      expect { Types::Integer.static('nope') }.to raise_error(Plumb::TypeError)
+      expect { Types::Integer.static(10) }.not_to raise_error
     end
 
     it 'does not check type for Types::Any' do
@@ -428,6 +481,16 @@ RSpec.describe Plumb::Types do
       assert_result(Types::String.where(size: 2).resolve('ab'), 'ab', true)
       assert_result(Types::Array.where(size: 1..2).resolve([1, 2]), [1, 2], true)
       assert_result(Types::Array.where(size: 1..2).resolve([1, 2, 3]), [1, 2, 3], false)
+    end
+
+    it 'requires a non-empty Hash of attribute => matcher (not a bare matcher)' do
+      expect { Types::String.where(3..45) }.to raise_error(ArgumentError, /Hash of attribute/)
+      expect { Types::String.where(3) }.to raise_error(ArgumentError, /Hash of attribute/)
+      expect { Types::String.where({}) }.to raise_error(ArgumentError, /Hash of attribute/)
+    end
+
+    it 'rejects a non-Symbol/String attribute name' do
+      expect { Types::String.where(3 => nil) }.to raise_error(ArgumentError, /Symbol or String/)
     end
   end
 
@@ -1020,6 +1083,30 @@ RSpec.describe Plumb::Types do
 
       expect(hash.parse(name: 'Ismael', age: 'nope'))
         .to eq(name: 'Ismael')
+    end
+
+    specify '#symbolized symbolizes keys, then validates against the schema' do
+      schema = Types::Hash[name: Types::String, age: Types::Integer]
+      sym = schema.symbolized
+      expect(sym.input_type).to eq(Types::SymbolizedHash)
+      expect(sym.output_type).to eq(schema)
+      expect(sym.parse('name' => 'Joe', 'age' => 20)).to eq(name: 'Joe', age: 20)
+      expect(Types::Hash[user: Types::Hash[name: Types::String]].symbolized.parse('user' => { 'name' => 'Jane' }))
+        .to eq(user: { name: 'Jane' })
+      assert_result(sym.resolve('name' => 'Joe', 'age' => 'nope'), { name: 'Joe', age: 'nope' }, false)
+    end
+
+    specify '#filtered is typed: input is the schema, output is it relaxed to optional' do
+      schema = Types::Hash[name: Types::String, age: Types::Integer]
+      filtered = schema.filtered
+      expect(filtered.node_name).to eq(:filtered_hash)
+      expect(filtered.input_type).to eq(schema)
+      expect(filtered.output_type).to eq(Types::Hash[name?: Types::String, age?: Types::Integer])
+      expect(filtered.to_json_schema).to eq(
+        'type' => 'object',
+        'properties' => { 'name' => { 'type' => 'string' }, 'age' => { 'type' => 'integer' } },
+        'required' => []
+      )
     end
 
     specify '#defer' do

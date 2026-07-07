@@ -43,6 +43,39 @@ module Tests
 end
 
 RSpec.describe Plumb::Pipeline do
+  specify '#step(output_type, &block) adds a Transform step' do
+    user = Data.define(:name)
+    pipeline = Types::Any.pipeline do |pl|
+      pl.step Types::Hash[name: Types::String]
+      pl.step(user) { |r| r.valid(user.new(r.value[:name])) }
+    end
+
+    expect(pipeline.output_type).to eq(Plumb::Composable.wrap(user))
+    result = pipeline.resolve({ name: 'Joe' })
+    expect(result.valid?).to be(true)
+    expect(result.value).to eq(user.new('Joe'))
+    # the declared output type lets the chain keep type-checking from `user`
+    expect { pipeline.output_type >> Types::String }.to raise_error(Plumb::TypeError)
+  end
+
+  specify '#step is non-strict; #step! type-checks the composition' do
+    # #step allows a narrowing — a later step may narrow what an earlier one produced
+    expect do
+      Types::Any.pipeline do |pl|
+        pl.step Types::Hash                       # any hash
+        pl.step Types::Hash[name: Types::String]  # narrower — fine, non-strict
+      end
+    end.not_to raise_error
+
+    # #step! enforces the strict #>> check at build time
+    expect do
+      Types::Any.pipeline do |pl|
+        pl.step! Types::String
+        pl.step! Types::Integer                   # a String can never feed an Integer
+      end
+    end.to raise_error(Plumb::TypeError)
+  end
+
   specify '#around' do
     list = []
     counts = 0
@@ -80,8 +113,10 @@ RSpec.describe Plumb::Pipeline do
           currency: Types::String.options(%w[USD EUR]).default('USD')
         )
 
+        # #step is non-strict, so this composes even though step 1's output
+        # ({q, currency}) doesn't provide :country — a later step may narrow.
         pl.step(Tests::CustomPipeline.new do |pl2|
-          pl2.input(country: String)
+          pl2.input(country?: String)
         end)
       end
 

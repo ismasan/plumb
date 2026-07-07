@@ -30,7 +30,24 @@ module Plumb
       props
     end
 
+    # A refinement matcher carries its base; any user metadata lives on the base
+    # (the matcher itself is type-bound info we don't collect), so follow it.
+    on(:constraint) do |node, props|
+      node.base ? visit(node.base, props) : props
+    end
+
     on(:and) do |node, props|
+      left, right = node.children.map { |child| visit(child) }
+      props.merge(left).merge(right)
+    end
+
+    # A factored union is transparent for metadata — its wrapped And carries the
+    # base + disjunction, so delegate to it.
+    on(:refined_union) do |node, props|
+      visit(node.type, props)
+    end
+
+    on(:transform) do |node, props|
       left, right = node.children.map { |child| visit(child) }
       props.merge(left).merge(right)
     end
