@@ -6,6 +6,16 @@ module Plumb
   class Constraint
     include Composable
 
+    # Sentinel returned by `merge_matchers`/`intersect_ranges` when two same-kind
+    # matchers have a PROVABLY-EMPTY overlap (disjoint Ranges, empty Set
+    # intersection). Distinct from `nil`, which means "not the same knowable kind,
+    # or an incomputable overlap — leave the two matchers stacked". Callers map
+    # EMPTY to `Types::Never`, so `Integer[0..5][10..]` == `Integer[0..5] & Integer[10..]`
+    # == `Types::Never` (see .narrow and Subtyping.intersect_constraints).
+    EMPTY = ::Object.new
+    def EMPTY.inspect = 'Plumb::Constraint::EMPTY'
+    EMPTY.freeze
+
     attr_reader :children, :base, :matcher
 
     # @param matcher [#===] the value/type/predicate to match against
@@ -38,26 +48,31 @@ module Plumb
     def self.narrow(base, matcher)
       if base.is_a?(Constraint)
         merged = merge_matchers(base.matcher, matcher)
+        return Types::Never if merged.equal?(EMPTY) # provably-empty overlap ⇒ bottom
         return narrow(base.base, merged) if merged # recurse: base.base may be a type gate
       end
       new(matcher, base:)
     end
 
-    # Intersection of two knowable matchers of the same kind, or nil to not merge.
-    # Sets always intersect (an empty Set is representable); an empty Range is not,
-    # so intersect_ranges returns nil and the two Ranges stay stacked instead.
-    # Public because AttributeValueMatch narrowing reuses it (see Subtyping) — an
-    # attribute constraint intersects its Range/Set values just like a Constraint.
+    # Intersection of two knowable matchers of the same kind. Returns the merged
+    # matcher on a non-empty overlap, `EMPTY` when the overlap is provably empty
+    # (disjoint Ranges / empty Set intersection — callers reduce it to Never), or
+    # `nil` to not merge (different kinds, or an incomputable Range overlap — leave
+    # the two matchers stacked). Public because AttributeValueMatch narrowing
+    # reuses it (see Subtyping) — an attribute constraint intersects its Range/Set
+    # values just like a Constraint.
     def self.merge_matchers(a, b)
       if a.is_a?(::Range) && b.is_a?(::Range)
         intersect_ranges(a, b)
       elsif a.is_a?(::Set) && b.is_a?(::Set)
-        a & b
+        merged = a & b
+        merged.empty? ? EMPTY : merged
       end
     end
 
-    # Intersection of two Ranges as a Range, or nil when empty / incomputable
-    # (incomparable endpoints — left to #new's incompatibility check to reject).
+    # Intersection of two Ranges as a Range, `EMPTY` when provably empty (disjoint,
+    # or a single-point exclusive overlap), or `nil` when incomputable (incomparable
+    # endpoints — left to #new's incompatibility check to reject).
     def self.intersect_ranges(a, b)
       ab = a.begin
       bb = b.begin
@@ -72,8 +87,8 @@ module Plumb
         else [ae, a.exclude_end? || b.exclude_end?]
         end
       unless new_begin.nil? || new_end.nil?
-        return nil if new_begin > new_end
-        return nil if new_begin == new_end && new_exclude
+        return EMPTY if new_begin > new_end
+        return EMPTY if new_begin == new_end && new_exclude
       end
       ::Range.new(new_begin, new_end, new_exclude)
     rescue ::ArgumentError, ::TypeError

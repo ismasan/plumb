@@ -51,9 +51,10 @@ RSpec.describe 'composition reduction (>>)' do
       expect(RTypes::String['a'..'m']['c'..'z']).to eq(RTypes::String['c'..'m'])
     end
 
-    it 'leaves an empty intersection stacked (still rejects every value)' do
+    it 'reduces a disjoint intersection to Never (as #& does)' do
       empty = RTypes::Integer[0..5][10..]
-      expect(matcher_chain(empty)).to eq([10.., 0..5, ::Integer]) # not merged
+      expect(empty).to eq(RTypes::Never)
+      expect(empty).to eq(RTypes::Integer[0..5] & RTypes::Integer[10..])
       expect(empty.resolve(3).valid?).to be(false)
     end
 
@@ -88,9 +89,10 @@ RSpec.describe 'composition reduction (>>)' do
         .to raise_error(Plumb::TypeError)
     end
 
-    it 'merges an empty intersection to Set[] (matches nothing)' do
+    it 'reduces an empty set intersection to Never (as #& does)' do
       empty = RTypes::Integer[Set[1, 2]][Set[3, 4]]
-      expect(empty).to eq(RTypes::Integer[Set[]])
+      expect(empty).to eq(RTypes::Never)
+      expect(empty).to eq(RTypes::Integer[Set[1, 2]] & RTypes::Integer[Set[3, 4]])
       expect(empty.resolve(1).valid?).to be(false)
     end
 
@@ -164,8 +166,9 @@ RSpec.describe 'composition reduction (>>)' do
       expect(reduced.resolve('x' * 9).valid?).to be(false) # length 9 out of 4..8
     end
 
-    it 'stacks disjoint same-attribute clauses (unsatisfiable, like Constraints)' do
+    it 'reduces disjoint same-attribute clauses to Never (unsatisfiable, like Constraints)' do
       reduced = RTypes::String.where(size: 0..5) / RTypes::String.where(size: 10..20)
+      expect(reduced).to eq(RTypes::Never)
       expect(reduced.resolve('xxx').valid?).to be(false)    # size 3 fails 10..20
       expect(reduced.resolve('x' * 12).valid?).to be(false) # size 12 fails 0..5
     end

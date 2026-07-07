@@ -219,12 +219,16 @@ module Plumb
         return nil unless left.attr_name == avm.attr_name && compatible_base?(left.type, avm.type)
 
         merged = intersect_attribute_values(left.value, avm.value)
-        merged.nil? ? nil : AttributeValueMatch.new(left.type, left.attr_name, merged)
+        return nil if merged.nil?
+        return Types::Never if merged.equal?(Constraint::EMPTY) # unsatisfiable clause ⇒ bottom
+
+        AttributeValueMatch.new(left.type, left.attr_name, merged)
       when And
+        # A conjunct that folds to Never makes the whole And uninhabitable ⇒ Never.
         if (right = merge_attribute_into(left.children[1], avm))
-          And.new(left.children[0], right)
+          right.is_a?(NeverClass) ? right : And.new(left.children[0], right)
         elsif (leftc = merge_attribute_into(left.children[0], avm))
-          And.new(leftc, left.children[1])
+          leftc.is_a?(NeverClass) ? leftc : And.new(leftc, left.children[1])
         end
       end
     end
@@ -246,11 +250,13 @@ module Plumb
       end
     end
 
-    # Intersect two attribute-constraint values into a single value, or nil to
-    # keep the two clauses stacked. Raw Ranges/Sets intersect to their (possibly
-    # narrower) overlap via Constraint.merge_matchers; a Plumb-typed value reduces
-    # only by subsumption — keeping the narrower — and otherwise stays stacked
-    # (intersecting two arbitrary Plumb types into one clause isn't representable).
+    # Intersect two attribute-constraint values into a single value, `nil` to keep
+    # the two clauses stacked, or `Constraint::EMPTY` when the overlap is provably
+    # empty (the caller turns that into Never). Raw Ranges/Sets intersect to their
+    # (possibly narrower, possibly empty) overlap via Constraint.merge_matchers; a
+    # Plumb-typed value reduces only by subsumption — keeping the narrower — and
+    # otherwise stays stacked (intersecting two arbitrary Plumb types into one
+    # clause isn't representable).
     def intersect_attribute_values(a, b)
       return a if a == b
 
@@ -408,15 +414,11 @@ module Plumb
       return nil unless a.is_a?(Constraint) && b.is_a?(Constraint)
       return nil unless a.base && b.base && a.base == b.base
 
-      am = a.matcher
-      bm = b.matcher
-      if am.is_a?(::Range) && bm.is_a?(::Range)
-        merged = Constraint.merge_matchers(am, bm) # nil == empty overlap
-        merged ? Constraint.narrow(a.base, merged) : Types::Never
-      elsif am.is_a?(::Set) && bm.is_a?(::Set)
-        merged = am & bm
-        merged.empty? ? Types::Never : Constraint.narrow(a.base, merged)
-      end
+      merged = Constraint.merge_matchers(a.matcher, b.matcher)
+      return nil if merged.nil? # not the same knowable kind, or an incomputable overlap
+      return Types::Never if merged.equal?(Constraint::EMPTY) # provably empty ⇒ Never
+
+      Constraint.narrow(a.base, merged)
     end
 
     # Intersect two covariant containers of the same class (Array/Tuple/HashMap)

@@ -242,6 +242,13 @@ Types::String & Types::Integer                 # => Types::Never  (no value is b
 Types::Integer[2..10] & Types::Integer[11..100] # => Types::Never  (disjoint ranges)
 ```
 
+Chaining refinements with `#[]` (or `#where`) is the same intersection, so a provably-empty chain reduces to `Types::Never` too:
+
+```ruby
+Types::Integer[0..5][10..]                       # => Types::Never  (== Integer[0..5] & Integer[10..])
+Types::String.where(size: 0..5).where(size: 10..) # => Types::Never  (unsatisfiable clause)
+```
+
 When it can neither narrow nor prove emptiness, `#&` falls back to a runtime intersection that validates the value through both sides.
 
 `Types::Hash#&` ([Hash intersections](#hash-intersections)) and `Types::Interface#&` ([Intersecting interfaces](#intersecting-interfaces)) are the record- and interface-specific cases of the same operator.
