@@ -444,4 +444,48 @@ RSpec.describe 'subtyping: Plumb::Subtyping.subtype? and #<=' do
       expect(Plumb::Subtyping.subtype?(5, STypes::String)).to be(false)
     end
   end
+
+  describe 'Deferred' do
+    it 'unwraps a non-recursive Deferred to its materialized type on either side' do
+      deferred_int = STypes::Any.defer { STypes::Integer }
+      expect(deferred_int <= STypes::Numeric).to be(true)
+      expect(STypes::Integer <= deferred_int).to be(true)
+      expect(deferred_int <= STypes::String).to be(false)
+      # Deferred on both sides
+      expect(deferred_int <= STypes::Any.defer { STypes::Numeric }).to be(true)
+    end
+
+    # Two distinct but structurally identical self-referential definitions: the
+    # recursion re-encounters the same Deferred pair and must terminate rather
+    # than materialize forever.
+    it 'compares self-referential (recursive) types without looping' do
+      list_a = nil
+      list_a = STypes::Hash[value: STypes::Integer, next: STypes::Any.defer { list_a } | STypes::Nil]
+      list_b = nil
+      list_b = STypes::Hash[value: STypes::Integer, next: STypes::Any.defer { list_b } | STypes::Nil]
+
+      expect(list_a <= list_b).to be(true)
+      expect(list_b <= list_a).to be(true)
+    end
+
+    it 'is covariant through the recursive field' do
+      ints = nil
+      ints = STypes::Hash[value: STypes::Integer, next: STypes::Any.defer { ints } | STypes::Nil]
+      nums = nil
+      nums = STypes::Hash[value: STypes::Numeric, next: STypes::Any.defer { nums } | STypes::Nil]
+
+      expect(ints <= nums).to be(true)  # Integer <= Numeric, recursively
+      expect(nums <= ints).to be(false) # Numeric </= Integer
+    end
+
+    it 'leaves no leftover cycle state between independent queries' do
+      list = nil
+      list = STypes::Hash[value: STypes::Integer, next: STypes::Any.defer { list } | STypes::Nil]
+
+      expect(list <= list).to be(true)
+      # a subsequent, unrelated query on the same fiber must be unaffected
+      expect(STypes::String <= STypes::Integer).to be(false)
+      expect(Thread.current[:plumb_subtype_seen]).to satisfy { |s| s.nil? || s.empty? }
+    end
+  end
 end

@@ -14,13 +14,13 @@ module Plumb
     end
 
     def call(result)
-      cached_type.call(result)
+      type.call(result)
     end
 
-    private def cached_type
+    def type
       @lock.synchronize do
         @cached_type = @definition.call
-        self.define_singleton_method(:cached_type) do
+        self.define_singleton_method(:type) do
           @cached_type
         end
         @cached_type
