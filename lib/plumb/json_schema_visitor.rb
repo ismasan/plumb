@@ -30,6 +30,7 @@ module Plumb
     MIN_LENGTH = 'minLength'
     MAX_LENGTH = 'maxLength'
     FORMAT = 'format'
+    EXCLUSIVE_MAXIMUM = 'exclusiveMaximum'
     FORMAT_MINIMUM = 'formatMinimum'
     FORMAT_MAXIMUM = 'formatMaximum'
     FORMAT_EXCLUSIVE_MAXIMUM = 'formatExclusiveMaximum'
@@ -458,6 +459,33 @@ module Plumb
     on(:tuple) do |node, _props|
       items = node.children.map { |t| visit(t) }
       { TYPE => 'array', 'prefixItems' => items }
+    end
+
+    # A Types::Range whose member type pins the bounds (`Types::Range[0...100]`)
+    # maps to the member's scalar schema plus JSON Schema's native bound
+    # keywords. Unlike the range-*matcher* handler below (`on(::Range)`), this
+    # preserves an exclusive end as `exclusiveMaximum` rather than approximating
+    # it as `maximum - 1` (which also can't be computed for float ranges).
+    # A member with no bounds (`Types::Range[Integer]`) falls back to its own
+    # schema.
+    on(:range) do |node, _props|
+      member = node.children.first
+      matcher = member.respond_to?(:children) ? member.children.first : nil
+      next visit(member) unless matcher.is_a?(::Range)
+
+      element = matcher.begin || matcher.end
+      opts = visit(element.class)
+      case element
+      when ::Numeric
+        opts[MINIMUM] = matcher.begin if matcher.begin
+        opts[matcher.exclude_end? ? EXCLUSIVE_MAXIMUM : MAXIMUM] = matcher.end if matcher.end
+      when ::Date, ::Time # also covers ::DateTime
+        opts[FORMAT_MINIMUM] = matcher.begin.iso8601 if matcher.begin
+        if matcher.end
+          opts[matcher.exclude_end? ? FORMAT_EXCLUSIVE_MAXIMUM : FORMAT_MAXIMUM] = matcher.end.iso8601
+        end
+      end
+      opts
     end
 
     on(:tagged_hash) do |node, _props|
