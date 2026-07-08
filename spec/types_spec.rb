@@ -976,6 +976,27 @@ RSpec.describe Plumb::Types do
     assert_result(Types::SymbolizedHash.resolve(input), output, true)
   end
 
+  describe Types::Range do
+    specify 'any member_type' do
+      assert_result(Types::Range.resolve(1..10), 1..10, true)
+    end
+
+    specify 'specific' do
+      assert_result(Types::Range[Integer].resolve(1..10), 1..10, true)
+      assert_result(Types::Range[Integer].resolve('a'..'b'), 'a'..'b', false)
+    end
+
+    specify 'a union absorbs a narrower member (covariant, value-preserving)' do
+      expect((Types::Range[Integer] | Types::Range[Integer][1..10])).to eq(Types::Range[Integer])
+      expect((Types::Range[Integer][1..10] | Types::Range[Integer])).to eq(Types::Range[Integer])
+    end
+
+    specify 'a union of disjoint members is preserved' do
+      type = Types::Range[Integer] | Types::Range[String]
+      expect(type).to be_a(Plumb::Or)
+    end
+  end
+
   describe Types::Hash do
     specify 'no schema' do
       assert_result(Types::Hash.resolve({ foo: 1 }), { foo: 1 }, true)
