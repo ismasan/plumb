@@ -286,6 +286,7 @@ You rarely write `Types::Never` by hand — it's what an impossible intersection
 * `Types::Numeric`
 * `Types::String`
 * `Types::Hash`
+* `Types::Range`
 * `Types::SymbolizedHash`
 * `Types::UUID::V4`
 * `Types::Email`
@@ -1075,6 +1076,79 @@ The `#filtered` modifier returns a valid Hash with the subset of values that wer
 User = Types::Hash[name: String, age: Integer].filtered
 User.parse(name: 'Joe', age: 40) # => { name: 'Joe', age: 40 }
 User.parse(name: 'Joe', age: 'nope') # => { name: 'Joe' }
+```
+
+### `Types::Range`
+
+`Types::Range` validates that a value is a Ruby `Range`. On its own it accepts any range:
+
+```ruby
+Types::Range.resolve(1..10)     # valid
+Types::Range.resolve('a'..'z')  # valid
+Types::Range.resolve(5)         # invalid ("must be a Range")
+```
+
+Specialize it with `#[]` to constrain the range's endpoints. The member type is matched against both the range's `#begin` and `#end` (a `nil` bound — an open-ended range — is skipped):
+
+```ruby
+IntRange = Types::Range[Integer]
+IntRange.resolve(1..10)     # valid
+IntRange.resolve('a'..'z')  # invalid (endpoints aren't Integers)
+IntRange.resolve(1..)       # valid (only the present bound is checked)
+```
+
+The member type is any `#===` interface, so a `Range` itself works as the member matcher to bound where the endpoints may fall:
+
+```ruby
+# A range whose endpoints both lie within 1..100
+Percent = Types::Range[1..100]
+Percent.resolve(10..20)   # valid
+Percent.resolve(10..200)  # invalid (200 is outside 1..100)
+```
+
+#### Open-ended ranges with `#where`
+
+Use `#where` with the `begin`/`end` attributes to constrain the range's own endpoints. Passing `end: nil` matches only endless ranges, and `begin: nil` only beginless ranges:
+
+```ruby
+# Endless ranges only, eg. (1..)
+Endless = Types::Range[Integer].where(end: nil)
+Endless.resolve(1..)    # valid
+Endless.resolve(1..10)  # invalid ("must have attribute end === nil")
+
+# Beginless ranges only, eg. (..10)
+Beginless = Types::Range[Integer].where(begin: nil)
+Beginless.resolve(..10)   # valid
+Beginless.resolve(1..10)  # invalid
+```
+
+`#where` values are also full `#===` matchers, so an endpoint can be constrained by a type or another range:
+
+```ruby
+# A range that starts at zero or above
+NonNegativeStart = Types::Range.where(begin: Types::Integer[0..])
+NonNegativeStart.resolve(5..10)   # valid
+NonNegativeStart.resolve(-5..10)  # invalid
+```
+
+#### Composition
+
+`Types::Range` is covariant in its member type and preserves its input value (it validates endpoints without coercing them), so it composes like the other containers. A union absorbs a narrower member into a wider one:
+
+```ruby
+Types::Range[1..10] <= Types::Range[Integer]  # true (covariant)
+
+# The narrower branch is absorbed
+Types::Range[Integer] | Types::Range[1..10]   # => Range[Integer]
+```
+
+#### JSON Schema
+
+A `Types::Range` whose member pins numeric bounds maps to JSON Schema's native keywords, preserving an exclusive end as `exclusiveMaximum`:
+
+```ruby
+Plumb::JSONSchemaVisitor.call(Types::Range[0...100], root: false)
+# => { "type" => "integer", "minimum" => 0, "exclusiveMaximum" => 100 }
 ```
 
 ### `Types::SymbolizedHash`
