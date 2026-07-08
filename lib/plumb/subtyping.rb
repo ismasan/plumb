@@ -62,12 +62,22 @@ module Plumb
       return true if b.is_a?(AnyClass)  # X <= Top
       return false if a.is_a?(AnyClass) # Top <= X only when X is Top (handled above)
 
-      # A Transform changes the value, so its identity for subtyping is what it
-      # *produces* — its output_type. Input constraints don't carry through.
-      # TODO: do we need to pin this to Transform?
-      # why not to any type where #value_preserving? == false ?
-      return subtype?(a.output_type, b) if a.is_a?(Transform)
-      return subtype?(a, b.output_type) if b.is_a?(Transform)
+      # A value-converting type (Transform, or any custom type that opts in) is
+      # identified for subtyping by what it *produces*, not what it consumes, so we
+      # reduce `a <= b` to `produced(a) <= b` before consulting the leaf hooks. A
+      # type declares its produced identity via #subtype_identity (default: self).
+      #
+      # The `!equal?` guard is the safety rail: we only reduce when the projection
+      # is a DISTINCT node. This makes the "distinct output type" invariant
+      # structural rather than a convention — a type that projects to itself (the
+      # default, and value-preserving types like FilteredHashMap/Static) simply
+      # doesn't reduce and falls through to its #subtype_of? leaf, instead of
+      # recursing into subtype?(self, b) forever.
+      ai = a.subtype_identity
+      return subtype?(ai, b) unless ai.equal?(a)
+
+      bi = b.subtype_identity
+      return subtype?(a, bi) unless bi.equal?(b)
 
       # Unions
       return a.children.all? { |m| subtype?(m, b) } if a.is_a?(Or) # (A|B) <= C

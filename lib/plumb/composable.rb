@@ -243,6 +243,20 @@ module Plumb
     def input_type = self
     def output_type = self
 
+    # The type that carries this node's identity for the subtype relation. A
+    # value-preserving type IS its own identity (the default). A value-converting
+    # type is identified by what it *produces*, so it projects onto a DISTINCT
+    # type (see Transform#subtype_identity => output_type): Plumb::Subtyping.subtype?
+    # reduces `a <= b` to `produced(a) <= b` before consulting the leaf hooks.
+    #
+    # CONTRACT: only return a value other than `self` when that value is a
+    # genuinely different node. Returning `self` here is a no-op (subtype? guards
+    # with `!equal?(self)`, so it simply won't reduce); returning a node whose own
+    # #subtype_identity loops back would recurse forever. This is the extension
+    # point for building custom transforming types that play well with subtyping
+    # WITHOUT subclassing Transform.
+    def subtype_identity = self
+
     # The type this step accepts as the consumer of a `left >> self` chain — the
     # values its #call processes without rejecting outright. Defaults to what it
     # takes as input (its resolved #input_type): right for plain matchers and for
