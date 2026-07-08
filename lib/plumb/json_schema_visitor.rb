@@ -88,20 +88,23 @@ module Plumb
     # hoisted to the document root by `.call`. Empty unless a Deferred was visited.
     def defs = @defs || BLANK_HASH
 
-    # Register a Deferred under a stable `$defs` name and return that name. The
-    # name is assigned and recorded BEFORE the body is visited, so a self-reference
-    # encountered while materializing the body finds the name already present and
-    # emits a `$ref` instead of recursing forever. Keyed by the Deferred's identity
-    # so the same node always maps to the same `$ref`.
+    # Register a Deferred under a stable `$defs` name and return that name. Keyed
+    # by the RESOLVED target type's identity (not the Deferred wrapper's), so
+    # distinct `defer { … }` wrappers pointing at the same type share one def.
+    # Resolving via #type is cheap (memoized) and does no visitor recursion, so we
+    # can key on it up front. The name is recorded BEFORE the body is visited, so a
+    # self-reference encountered while visiting finds the name already present and
+    # emits a `$ref` instead of recursing forever.
     private def deferred_ref(node)
       @defs ||= {}
       @deferred_names ||= {}.compare_by_identity
-      existing = @deferred_names[node]
+      target = node.type
+      existing = @deferred_names[target]
       return existing if existing
 
       name = "Deferred#{@deferred_names.size + 1}"
-      @deferred_names[node] = name
-      @defs[name] = visit(node.type)
+      @deferred_names[target] = name
+      @defs[name] = visit(target)
       name
     end
 

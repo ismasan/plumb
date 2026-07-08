@@ -85,6 +85,9 @@ RSpec.describe Plumb::JSONSchemaVisitor do
     })
   end
 
+  # Two distinct `defer { list }` wrappers (the root and the one inside `next`)
+  # resolve to the SAME `list` type, so they share a single $defs entry rather
+  # than producing identical Deferred1/Deferred2 copies.
   specify '#defer at the document root references itself; envelope + $defs via .call' do
     list = nil
     list = Types::Hash[
@@ -101,20 +104,31 @@ RSpec.describe Plumb::JSONSchemaVisitor do
           'type' => 'object',
           'properties' => {
             'value' => { 'type' => 'integer' },
-            'next' => { 'anyOf' => [{ '$ref' => '#/$defs/Deferred2' }, { 'type' => 'null' }] }
-          },
-          'required' => %w[value]
-        },
-        'Deferred2' => {
-          'type' => 'object',
-          'properties' => {
-            'value' => { 'type' => 'integer' },
-            'next' => { 'anyOf' => [{ '$ref' => '#/$defs/Deferred2' }, { 'type' => 'null' }] }
+            'next' => { 'anyOf' => [{ '$ref' => '#/$defs/Deferred1' }, { 'type' => 'null' }] }
           },
           'required' => %w[value]
         }
       }
     })
+  end
+
+  # Distinct Deferreds resolving to distinct (even if structurally equal) targets
+  # keep separate defs — dedup is by target IDENTITY, not structural equality.
+  specify '#defer dedups by resolved-target identity, not structure' do
+    shared = Types::Hash[id: Types::Integer]
+    type = Types::Hash[
+      a: Types::Any.defer { shared },
+      b: Types::Any.defer { shared },              # same object as a's target -> shared def
+      c: Types::Any.defer { Types::Hash[id: Types::Integer] } # distinct object -> own def
+    ]
+
+    schema = type.to_json_schema
+    expect(schema['properties']).to eq({
+      'a' => { '$ref' => '#/$defs/Deferred1' },
+      'b' => { '$ref' => '#/$defs/Deferred1' },
+      'c' => { '$ref' => '#/$defs/Deferred2' }
+    })
+    expect(schema['$defs'].keys).to eq(%w[Deferred1 Deferred2])
   end
 
   specify 'Hash with key and value types (Hash Map)' do
