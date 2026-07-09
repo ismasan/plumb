@@ -6,6 +6,17 @@ module Plumb
   class And
     include Composable
 
+    # Normalize the right operand of a sequence composition (`left >> other`):
+    # let it resolve itself against the composition context, then wrap it as a
+    # Composable (see Composable.to_plumb_type — an Encoder picks a direction,
+    # a Codec builds a rewrite of `left`). Every #>> implementation should
+    # route its operand through here.
+    def self.wrap_left(other, left:) = Composable.to_plumb_type(other, op: :>>, left:)
+
+    # The intersection (`left & other`) equivalent of .wrap_left — `#&` also
+    # builds And nodes, but the hook receives the operator it is resolving for.
+    def self.wrap_intersection(other, left:) = Composable.to_plumb_type(other, op: :&, left:)
+
     attr_reader :children, :input_type, :output_type
 
     # A refinement/sequencing join, built by `Composable#>>`. Both sides

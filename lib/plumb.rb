@@ -71,7 +71,7 @@ module Plumb
     case node.node_name
     when :or
       node.children.flat_map { |child| resolve_base_types(child) }
-    when :and, :function
+    when :and, :function, :encoder
       resolve_base_types(node.output_type)
     when :constraint
       # A refinement matcher carries its base type — resolve that (eg.
@@ -109,6 +109,7 @@ require 'plumb/never_class'
 require 'plumb/step'
 require 'plumb/and'
 require 'plumb/function'
+require 'plumb/encoder'
 require 'plumb/pipeline'
 require 'plumb/static_class'
 require 'plumb/value_class'
@@ -124,6 +125,7 @@ require 'plumb/interface_class'
 require 'plumb/attributes'
 require 'plumb/subtyping'
 require 'plumb/types'
+require 'plumb/codec'
 require 'plumb/json_schema_visitor'
 require 'plumb/schema'
 require 'plumb/decorator'

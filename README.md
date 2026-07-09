@@ -1870,6 +1870,118 @@ LinkedList = Types::Hash[
 
 
 
+### Encoders and Codecs
+
+Coercions like `Types::Forms::Date` parse an external representation (a string) into an internal value (a `Date`), one way only. **Encoders** generalize that into pluggable, two-way serialization, and **Codecs** group encoders and apply them to whole schemas — Ruby data structures to JSON-ready structures and back, for example.
+
+#### Defining encoders
+
+An encoder is a class declaring a wire (input) and an internal (output) type, with `#decode` (wire ⇒ internal) and `#encode` (internal ⇒ wire) methods:
+
+```ruby
+DateRange = Types::Range[Types::Date]
+JSONDateRange = Types::Hash[from: Types::Date, to: Types::Date]
+
+class JSONDateRangeEncoder < Plumb::Encoder[JSONDateRange => DateRange]
+  def encode(range) = { from: range.begin, to: range.end }
+  def decode(hash) = hash[:from]..hash[:to]
+end
+```
+
+By default an encoder behaves exactly like a transform in its declared direction (`JSONDateRange -> DateRange`, running `#decode`). But it is reversible: composed next to a type that matches its *output* side, it transparently runs the inverse.
+
+```ruby
+# Decode: the declared direction.
+FromJSON = JSONDateRange >> JSONDateRangeEncoder >> DateRange
+FromJSON.parse({ from: Date.new(2024, 1, 1), to: Date.new(2024, 2, 1) }) # => Date..Date range
+
+# Encode: inferred from the DateRange on the left.
+ToJSON = DateRange >> JSONDateRangeEncoder >> JSONDateRange
+ToJSON.parse(Date.new(2024, 1, 1)..Date.new(2024, 2, 1)) # => { from: ..., to: ... }
+```
+
+Each direction is a normal Plumb step: it validates its input type, runs your method, and validates the produced value against its output type (a wrong return value is an invalid `Result`, and an exception raised inside `#encode`/`#decode` becomes an invalid `Result` too). Composition is type-checked as usual — `Types::Symbol >> JSONDateRangeEncoder` raises `Plumb::TypeError`.
+
+Where the context gives no signal — schema literals (`Types::Hash[dates: SomeEncoder]`), `#/`, `.parse`, or an `Any`/opaque neighbour — the declared direction is used. `.decoding` (the declared direction) and `.encoding` (the inverse, input/output swapped) are the explicit forms:
+
+```ruby
+JSONDateRangeEncoder.decoding # JSONDateRange -> DateRange, runs #decode
+JSONDateRangeEncoder.encoding # DateRange -> JSONDateRange, runs #encode
+
+JSONDateRangeEncoder.decode(from: Date.new(2024, 1, 1), to: Date.new(2024, 2, 1)) # => a Range
+JSONDateRangeEncoder.encode(Date.new(2024, 1, 1)..Date.new(2024, 2, 1))           # => a Hash
+```
+
+Encoders also upgrade the `Types::Forms::Date` pattern to two-way — `Types::Date | ISODateEncoder` accepts a `Date` or decodes a wire string into one.
+
+#### Codecs
+
+A codec groups encoders and applies them to whole types at composition time. Codecs know nothing about any particular format — only their encoders. Types that are already valid in the target format are declared with `.noop`:
+
+```ruby
+# Plumb::Codec::JSON ships noops for String, Numeric, booleans, Nil and bare
+# Hash/Array, plus a built-in Date <=> ISO 8601 string encoder.
+class JSONCodec < Plumb::Codec::JSON
+  encoder JSONDateRangeEncoder
+end
+```
+
+(A subclass encoder registered for an equivalent type — eg. your own Date encoder — takes precedence over an inherited built-in.)
+
+Composing a codec with a type rewrites the type deeply, in either direction:
+
+```ruby
+Person = Types::Hash[name: Types::String, dates: DateRange]
+
+JSONPerson = JSONCodec >> Person # decode: JSON structures -> Person
+JSONPerson.parse({ name: 'Joe', dates: { from: '2024-01-01', to: '2024-02-01' } })
+# => { name: 'Joe', dates: Date(2024-01-01)..Date(2024-02-01) }
+
+WirePerson = Person >> JSONCodec # encode: Person -> JSON structures
+WirePerson.parse({ name: 'Joe', dates: Date.new(2024, 1, 1)..Date.new(2024, 2, 1) })
+# => { name: 'Joe', dates: { from: '2024-01-01', to: '2024-02-01' } }
+```
+
+`Codec.for(type)` returns both directions as a `[decoding, encoding]` pair:
+
+```ruby
+decoder, encoder = JSONCodec.for(Person)
+decoder.parse(json_data)   # => a Person hash
+encoder.parse(person_hash) # => JSON structures
+```
+
+Note how the `Date` values *inside* `JSONDateRange` were resolved too: an encoder's wire type is itself rewritten through the same codec, so nested non-native values are handled by other encoders in the group (here, the built-in `Date` encoder). The rewrite recurses into nested hashes, arrays, tuples, hash maps, union branches, metadata/policy wrappers and `.defer`red recursive types. Matching is by subtyping against each encoder's internal type, most-specific encoder first.
+
+Codecs work with any type, not just schemas:
+
+```ruby
+(JSONCodec >> Types::Date).parse('2024-01-01') # => Date
+(Types::Date >> JSONCodec).parse(Date.new(2024, 1, 1)) # => '2024-01-01'
+JSONCodec >> Types::String # => Types::String, unchanged (noop)
+```
+
+A field that matches no encoder and no noop is a composition-time error naming the field path:
+
+```ruby
+JSONCodec >> Types::Hash[profile: Types::Hash[joined: Types::Any[Time]]]
+# raises Plumb::TypeError: ... field `profile.joined` (Any[Time]) matches no encoder ...
+```
+
+The result of a codec composition is ordinary Plumb algebra — the codec leaves no runtime node behind — so JSON Schema generation works, describing the wire side of a decoded schema:
+
+```ruby
+JSONPerson.to_json_schema
+# "dates" is described as { "type" => "object", "properties" => { "from" => { "type" => "string" }, ... } }
+```
+
+Things to know:
+
+* Direction inference needs a typed neighbour. Opaque contexts fall back to the declared direction — use `.decoding`/`.encoding` to be explicit.
+* The JSON Schema of an *encode* pipeline describes its (internal) input side, per the library convention that schemas describe accepted inputs. Visit the decode direction for the wire schema.
+* `.defer`red fields rewrite lazily, so an unmatched type inside one surfaces at first resolution rather than at composition.
+* Registering `noop Types::Hash` / `Types::Array` only covers *untyped* containers — structured schemas are always recursed into, so a generic noop can't accidentally skip encoding of nested fields.
+* `Types::Data` / `Plumb::Attributes` classes are not yet supported as codec targets.
+
 ### Custom types
 
 Every Plumb type exposes the following one-method interface:

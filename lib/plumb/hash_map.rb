@@ -37,6 +37,12 @@ module Plumb
     # the hash).
     def value_preserving? = children.all? { |c| Plumb::Subtyping.value_preserving?(c) }
 
+    # As a consumer, a HashMap accepts keys/values relaxed to what its key and
+    # value types accept (see HashClass#accepted_type).
+    def accepted_type
+      self.class.new(Plumb::Subtyping.accepted_type(@key_type), Plumb::Subtyping.accepted_type(@value_type))
+    end
+
     def call(result)
       return result.invalid!(errors: 'must be a Hash') unless result.value.is_a?(::Hash)
 

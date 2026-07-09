@@ -6,6 +6,12 @@ module Plumb
   class Or
     include Composable
 
+    # Normalize the right operand of a union (`left | other`): let it resolve
+    # itself against the composition context, then wrap it as a Composable
+    # (see Composable.to_plumb_type). Every #| implementation should route its
+    # operand through here. Mirrors And.wrap_left.
+    def self.wrap_left(other, left:) = Composable.to_plumb_type(other, op: :|, left:)
+
     attr_reader :children
 
     def initialize(left, right)
