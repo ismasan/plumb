@@ -535,6 +535,26 @@ RSpec.describe Plumb::JSONSchemaVisitor do
     )
   end
 
+  describe 'Types::Range' do
+    specify 'a bounded numeric Range keeps exclusive ends native' do
+      expect(described_class.visit(Types::Range[0...100])).to eq(
+        'type' => 'integer', 'minimum' => 0, 'exclusiveMaximum' => 100
+      )
+      expect(described_class.visit(Types::Range[0.0..100.0])).to eq(
+        'type' => 'number', 'minimum' => 0.0, 'maximum' => 100.0
+      )
+    end
+
+    specify 'an open-ended Range emits only the present bound' do
+      expect(described_class.visit(Types::Range[10..])).to eq('type' => 'integer', 'minimum' => 10)
+      expect(described_class.visit(Types::Range[...100])).to eq('type' => 'integer', 'exclusiveMaximum' => 100)
+    end
+
+    specify 'an unbounded member type falls back to its own schema' do
+      expect(described_class.visit(Types::Range[Types::Integer])).to eq('type' => 'integer')
+    end
+  end
+
   specify 'Types::Hash.tagged_by' do
     t1 = Types::Hash[
       kind: 't1',
