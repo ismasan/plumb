@@ -56,11 +56,6 @@ module Plumb
       props.merge(left).merge(right)
     end
 
-    on(:encoder) do |node, props|
-      left, right = node.children.map { |child| visit(child) }
-      props.merge(left).merge(right)
-    end
-
     on(:or) do |node, props|
       node.children
           .map { |child| visit(child) }

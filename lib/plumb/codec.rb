@@ -21,7 +21,8 @@ module Plumb
   #
   # Composing rewrites the type deeply: every field (at any depth) whose type
   # matches an encoder's output (internal) type is replaced with the oriented
-  # {Encoder::Step}; noop-matched types pass through unchanged; anything else
+  # encoder step (a plain Function, see Encoder.step); noop-matched types
+  # pass through unchanged; anything else
   # raises Plumb::TypeError at composition time, naming the field path. An
   # encoder's wire (input) type is itself rewritten through the same codec, so
   # nested non-native values resolve via other encoders in the group.
@@ -280,13 +281,13 @@ module Plumb
 
         narrowed = narrowed_side(type, enc)
         if @direction == :decode
-          Encoder::Step.new(enc, :decode,
-                            input_type: (rewritten_wire unless rewritten_wire.equal?(wire)),
-                            output_type: narrowed)
+          enc.step(:decode,
+                   input_type: (rewritten_wire unless rewritten_wire.equal?(wire)),
+                   output_type: narrowed)
         else
-          Encoder::Step.new(enc, :encode,
-                            input_type: narrowed,
-                            output_type: (rewritten_wire unless rewritten_wire.equal?(wire)))
+          enc.step(:encode,
+                   input_type: narrowed,
+                   output_type: (rewritten_wire unless rewritten_wire.equal?(wire)))
         end
       end
 

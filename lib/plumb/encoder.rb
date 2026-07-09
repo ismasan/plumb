@@ -28,10 +28,10 @@ module Plumb
   #
   # When the context gives no signal (schema literals, `#/`, `.parse`, an
   # opaque/Any neighbour) the default direction is used; `.decoding` /
-  # `.encoding` are the explicit escape hatches. Each direction is an
-  # {Encoder::Step} — a Function subclass — so subtyping, `#>>` composition
-  # checks and reductions, visitors and the JSON Schema all work on it as on
-  # any Function.
+  # `.encoding` are the explicit escape hatches. Each direction is a plain
+  # {Function} whose proc runs the encoder's method — so subtyping, `#>>`
+  # composition checks and reductions, visitors and the JSON Schema all work
+  # on it with no encoder-specific machinery.
   class Encoder
     # Build the parameterized superclass: `Encoder[Input => Output]`.
     # The pair is a one-pair Hash literal; both sides are wrapped as Plumb
@@ -71,16 +71,31 @@ module Plumb
       def noop? = false
 
       # The default step: the declared `input_type -> output_type` direction,
-      # running #decode. Memoized per subclass (steps are frozen).
-      # @return [Encoder::Step]
+      # running #decode. A plain Function — #call validates the input type,
+      # runs the encoder's method, and validates the produced value against
+      # the output type (a wrong return value becomes an invalid Result, not
+      # silent corruption); subtyping identity, accepted type and `#>>` checks
+      # all come with Function. Memoized per subclass (steps are frozen).
+      # @return [Function]
       def decoding
-        @decoding ||= Step.new(self, :decode)
+        @decoding ||= build_step(:decode, input_type, output_type)
       end
 
       # The inverse step: `output_type -> input_type`, running #encode.
-      # @return [Encoder::Step]
+      # @return [Function]
       def encoding
-        @encoding ||= Step.new(self, :encode)
+        @encoding ||= build_step(:encode, output_type, input_type)
+      end
+
+      # A direction step with one or both sides substituted — used by
+      # Codec::Rewriter to splice in a rewritten wire type or a narrowed
+      # internal type, keeping each rewritten field a single Function node.
+      # @return [Function]
+      def step(direction, input_type: nil, output_type: nil)
+        base = direction == :decode ? decoding : encoding
+        return base unless input_type || output_type
+
+        Function.new(input_type || base.input_type, output_type || base.output_type, base.fn)
       end
 
       # Composition-context direction pick when the encoder is the RIGHT
@@ -128,6 +143,24 @@ module Plumb
 
       private
 
+      # Build one direction as a plain Function. The transform proc wraps the
+      # encoder's method: exceptions raised inside #encode/#decode become
+      # invalid Results.
+      def build_step(direction, in_type, out_type)
+        if instance_method(direction).owner == Encoder
+          raise ArgumentError, "#{inspect} must implement ##{direction} to be used in this direction"
+        end
+
+        instance = new.freeze
+        encoder_class = self
+        step_proc = lambda do |result|
+          result.valid!(instance.public_send(direction, result.value))
+        rescue StandardError => e
+          result.invalid!(errors: "#{encoder_class.inspect}##{direction} failed: #{e.message}")
+        end
+        Function.new(in_type, out_type, step_proc)
+      end
+
       # In a union/intersection the sibling and the encoder describe the same
       # RESULTING value, so orient by produced types.
       def union_oriented(other)
@@ -159,57 +192,6 @@ module Plumb
 
     def decode(_value)
       raise NotImplementedError, "#{self.class} must implement #decode(value) (#{self.class.input_type.inspect} -> #{self.class.output_type.inspect})"
-    end
-
-    # One direction of an Encoder, as a composable node. A Function subclass:
-    # #call validates the input type, runs the encoder's #encode/#decode, and
-    # validates the produced value against the output type — so a wrong return
-    # value becomes an invalid Result, not silent corruption. Subtyping
-    # identity, accepted type and `#>>` checks all come from Function.
-    #
-    # `input_type:`/`output_type:` overrides substitute a side (used by Codec
-    # to splice a rewritten wire type or a narrowed field type in, and by the
-    # Decorator to rebuild with decorated children).
-    class Step < Function
-      attr_reader :encoder_class, :direction
-
-      # @param encoder_class [Class] an Encoder subclass
-      # @param direction [Symbol] :decode (the declared direction) or :encode
-      def initialize(encoder_class, direction, input_type: nil, output_type: nil)
-        # Set these before super — Function#initialize freezes the node.
-        @encoder_class = encoder_class
-        @direction = direction
-        # Resolve the declared types first: an unparameterized encoder gets the
-        # "declares no types" error before the missing-method one.
-        default_in, default_out = direction == :decode ? [encoder_class.input_type, encoder_class.output_type] : [encoder_class.output_type, encoder_class.input_type]
-        if encoder_class.instance_method(direction).owner == Encoder
-          raise ArgumentError, "#{encoder_class.inspect} must implement ##{direction} to be used in this direction"
-        end
-
-        instance = encoder_class.new.freeze
-        step_proc = lambda do |result|
-          result.valid!(instance.public_send(direction, result.value))
-        rescue StandardError => e
-          result.invalid!(errors: "#{encoder_class.inspect}##{direction} failed: #{e.message}")
-        end
-        super(input_type || default_in, output_type || default_out, step_proc)
-      end
-
-      # Naming would otherwise derive :function from the superclass.
-      def node_name = :encoder
-
-      def ==(other)
-        other.is_a?(Step) &&
-          other.encoder_class == encoder_class &&
-          other.direction == direction &&
-          other.children == children
-      end
-
-      # Like Function's `(In -> Out)`, prefixed with the encoder class — the
-      # direction is implicit in the order of the types.
-      private def _inspect
-        "#{encoder_class.inspect}(#{input_type.inspect} -> #{output_type.inspect})"
-      end
     end
   end
 end

@@ -71,7 +71,7 @@ module Plumb
     case node.node_name
     when :or
       node.children.flat_map { |child| resolve_base_types(child) }
-    when :and, :function, :encoder
+    when :and, :function
       resolve_base_types(node.output_type)
     when :constraint
       # A refinement matcher carries its base type — resolve that (eg.

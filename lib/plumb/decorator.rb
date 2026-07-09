@@ -28,12 +28,6 @@ module Plumb
              when And
                left, right = visit_children(type)
                And.new(left, right)
-             when Encoder::Step
-               # Must precede the Function branch (Step < Function, and the
-               # 3-positional Function rebuild below doesn't fit Step's
-               # constructor).
-               left, right = visit_children(type)
-               Encoder::Step.new(type.encoder_class, type.direction, input_type: left, output_type: right)
              when Function
                left, right = visit_children(type)
                # type.class preserves a GuaranteedFunction across decoration.

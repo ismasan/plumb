@@ -64,12 +64,11 @@ module EncoderSpecTypes
     end
 
     describe '.decoding / .encoding steps' do
-      it 'decoding is the declared direction' do
+      it 'decoding is the declared direction, as a plain Function' do
         step = ISODateEncoder.decoding
+        expect(step).to be_a(Plumb::Function)
         expect(step.input_type).to eq(Types::String)
         expect(step.output_type).to eq(Types::Date)
-        expect(step.direction).to eq(:decode)
-        expect(step.node_name).to eq(:encoder)
         assert_result(step.resolve('2024-01-01'), DATE, true)
       end
 
@@ -86,8 +85,7 @@ module EncoderSpecTypes
         expect(ISODateEncoder.decoding <= Types::String).to be(false)
       end
 
-      specify '#== compares encoder class, direction and children' do
-        expect(described_class::Step.new(ISODateEncoder, :decode)).to eq(ISODateEncoder.decoding)
+      specify 'Function structural equality applies (directions differ by type order)' do
         expect(ISODateEncoder.decoding).not_to eq(ISODateEncoder.encoding)
         expect(ISODateEncoder.decoding).not_to eq(StringNoopEncoder.decoding)
       end
