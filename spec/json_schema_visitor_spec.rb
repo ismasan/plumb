@@ -49,18 +49,86 @@ RSpec.describe Plumb::JSONSchemaVisitor do
     )
   end
 
-  specify '#defer' do
+  specify '#defer (self-referential): $ref into a hoisted $defs table' do
     type = Types::Hash[
       # String keys are converted to symbols, existing symbols are preserved
       (Types::Symbol | Types::String.transform(::Symbol, &:to_sym)),
       # Hash values are recursively symbolized, other types pass through unchanged
       Types::Any.defer { type } | Types::Any
     ]
-    schema = type.to_json_schema 
+    schema = type.to_json_schema
     expect(schema).to eq({
       'type' => 'object',
-      'patternProperties' => {'.*' => {'anyOf' => []}}
+      'patternProperties' => { '.*' => { '$ref' => '#/$defs/Deferred1' } },
+      '$defs' => {
+        'Deferred1' => {
+          'type' => 'object',
+          'patternProperties' => { '.*' => { '$ref' => '#/$defs/Deferred1' } }
+        }
+      }
     })
+  end
+
+  specify '#defer (non-recursive): inlines the materialized type as its own $def' do
+    type = Types::Hash[
+      name: Types::String,
+      age: Types::Any.defer { Types::Integer }
+    ]
+    expect(type.to_json_schema).to eq({
+      'type' => 'object',
+      'properties' => {
+        'name' => { 'type' => 'string' },
+        'age' => { '$ref' => '#/$defs/Deferred1' }
+      },
+      'required' => %w[name age],
+      '$defs' => { 'Deferred1' => { 'type' => 'integer' } }
+    })
+  end
+
+  # Two distinct `defer { list }` wrappers (the root and the one inside `next`)
+  # resolve to the SAME `list` type, so they share a single $defs entry rather
+  # than producing identical Deferred1/Deferred2 copies.
+  specify '#defer at the document root references itself; envelope + $defs via .call' do
+    list = nil
+    list = Types::Hash[
+      value: Types::Integer,
+      next?: Types::Any.defer { list } | Types::Nil
+    ]
+    root = Types::Any.defer { list }
+
+    expect(described_class.call(root)).to eq({
+      '$schema' => 'https://json-schema.org/draft-08/schema#',
+      '$ref' => '#/$defs/Deferred1',
+      '$defs' => {
+        'Deferred1' => {
+          'type' => 'object',
+          'properties' => {
+            'value' => { 'type' => 'integer' },
+            'next' => { 'anyOf' => [{ '$ref' => '#/$defs/Deferred1' }, { 'type' => 'null' }] }
+          },
+          'required' => %w[value]
+        }
+      }
+    })
+  end
+
+  # Distinct Deferreds resolving to distinct (even if structurally equal) targets
+  # keep separate defs — dedup is by target IDENTITY, not structural equality.
+  specify '#defer dedups by resolved-target identity, not structure' do
+    shared = Types::Hash[id: Types::Integer]
+    type = Types::Hash[
+      a: Types::Any.defer { shared },
+      b: Types::Any.defer { shared },              # same object as a's target -> shared def
+      c: Types::Any.defer { Types::Hash[id: Types::Integer] } # distinct object -> own def
+    ]
+
+    schema = type.to_json_schema
+    expect(schema['properties']).to eq({
+      'a' => { '$ref' => '#/$defs/Deferred1' },
+      'b' => { '$ref' => '#/$defs/Deferred1' },
+      'c' => { '$ref' => '#/$defs/Deferred2' }
+    })
+    expect(schema['$defs'].keys).to eq(%w[Deferred1 Deferred2])
   end
 
   specify 'Hash with key and value types (Hash Map)' do

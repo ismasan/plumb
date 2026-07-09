@@ -21,6 +21,8 @@ module Plumb
     NOT = 'not'
     ENUM = 'enum'
     CONST = 'const'
+    REF = '$ref'
+    DEFS = '$defs'
     ITEMS = 'items'
     PATTERN = 'pattern'
     MINIMUM = 'minimum'
@@ -39,7 +41,13 @@ module Plumb
     }.freeze
 
     def self.call(node, root: true)
-      data = new.visit(node)
+      visitor = new
+      data = visitor.visit(node)
+      # Deferred types register named entries in a `$defs` table and reference
+      # them by `$ref` (see the :deferred handler). Hoist that table to the top of
+      # the document so the root-relative `#/$defs/...` pointers resolve.
+      defs = visitor.defs
+      data = data.merge(DEFS => defs) unless defs.empty?
       data = ENVELOPE.merge(data) if root
       normalize_json(data)
     end
@@ -76,6 +84,30 @@ module Plumb
 
     private def stringify_keys(hash) = hash.transform_keys(&:to_s)
 
+    # The `$defs` table of materialized Deferred schemas built during this visit,
+    # hoisted to the document root by `.call`. Empty unless a Deferred was visited.
+    def defs = @defs || BLANK_HASH
+
+    # Register a Deferred under a stable `$defs` name and return that name. Keyed
+    # by the RESOLVED target type's identity (not the Deferred wrapper's), so
+    # distinct `defer { … }` wrappers pointing at the same type share one def.
+    # Resolving via #type is cheap (memoized) and does no visitor recursion, so we
+    # can key on it up front. The name is recorded BEFORE the body is visited, so a
+    # self-reference encountered while visiting finds the name already present and
+    # emits a `$ref` instead of recursing forever.
+    private def deferred_ref(node)
+      @defs ||= {}
+      @deferred_names ||= {}.compare_by_identity
+      target = node.type
+      existing = @deferred_names[target]
+      return existing if existing
+
+      name = "Deferred#{@deferred_names.size + 1}"
+      @deferred_names[target] = name
+      @defs[name] = visit(target)
+      name
+    end
+
     on(:any) do |_node, props|
       props
     end
@@ -98,11 +130,14 @@ module Plumb
       props
     end
 
-    # Trying to visit the deferred could go into infinite recursion
-    # if a type is deferring to itself
-    # Not clear what deferred types would mean for JSON Schema anyway.
+    # A Deferred materializes to a concrete type (via #type), but that type may
+    # reference the Deferred back (a recursive/self-referential schema), so we
+    # can't inline it — that would recurse forever. Instead each Deferred becomes a
+    # named `$defs` entry referenced by `$ref`, the standard JSON Schema idiom for
+    # recursion. `deferred_ref` builds the def (once) and returns its name; `.call`
+    # hoists the `$defs` table to the document root.
     on(:deferred) do |node, props|
-      props
+      props.merge(REF => "#/#{DEFS}/#{deferred_ref(node)}")
     end
 
     on(:hash) do |node, props|

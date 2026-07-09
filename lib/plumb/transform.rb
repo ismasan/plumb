@@ -31,6 +31,10 @@ module Plumb
     def call(result)
       result.map(@input_type).map(@transform_proc).map(@output_type)
     end
+
+    # A Transform's subtyping identity is what it produces — its declared,
+    # distinct output_type. See Plumb::Subtyping.subtype? and Composable#subtype_identity.
+    def subtype_identity = @output_type
   end
 
   # A Transform whose proc is known *at build time* to produce a value of

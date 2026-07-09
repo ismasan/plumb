@@ -30,13 +30,54 @@ module Plumb
       b = Composable.wrap(b)
 
       return true if a.equal?(b) || a == b
+
+      # A Deferred stands in for the type it lazily materializes (via #type). We
+      # unwrap it here so the rest of the algebra never sees a Deferred. Recursive
+      # (self-referential) types would otherwise loop forever, so we break cycles
+      # coinductively: keyed by the identity of the (a, b) PAIR — the same Deferred
+      # may be compared against different RHSs on sibling branches, so a single-node
+      # marker would give false positives. Re-encountering a pair mid-recursion
+      # means we've closed a loop in a self-referential type: assume it holds (the
+      # greatest fixpoint) and let the surrounding structure confirm or refute it.
+      #
+      # `seen` is fiber-local (Thread.current[] is fiber-local in Ruby, not
+      # thread-local): a subtype? query never yields, so its recursion owns the set
+      # for its whole run, and concurrent fibers each get an isolated one. The
+      # ensure-delete unwinds each pair, so the set is empty again between queries.
+      if a.is_a?(Deferred) || b.is_a?(Deferred)
+        seen = (Thread.current[:plumb_subtype_seen] ||= Set.new)
+        key = [a.object_id, b.object_id]
+        return true if seen.include?(key)
+
+        seen.add(key)
+        begin
+          a = a.type if a.is_a?(Deferred)
+          b = b.type if b.is_a?(Deferred)
+          return subtype?(a, b)
+        ensure
+          seen.delete(key)
+        end
+      end
+
       return true if b.is_a?(AnyClass)  # X <= Top
       return false if a.is_a?(AnyClass) # Top <= X only when X is Top (handled above)
 
-      # A Transform changes the value, so its identity for subtyping is what it
-      # *produces* — its output_type. Input constraints don't carry through.
-      return subtype?(a.output_type, b) if a.is_a?(Transform)
-      return subtype?(a, b.output_type) if b.is_a?(Transform)
+      # A value-converting type (Transform, or any custom type that opts in) is
+      # identified for subtyping by what it *produces*, not what it consumes, so we
+      # reduce `a <= b` to `produced(a) <= b` before consulting the leaf hooks. A
+      # type declares its produced identity via #subtype_identity (default: self).
+      #
+      # The `!equal?` guard is the safety rail: we only reduce when the projection
+      # is a DISTINCT node. This makes the "distinct output type" invariant
+      # structural rather than a convention — a type that projects to itself (the
+      # default, and value-preserving types like FilteredHashMap/Static) simply
+      # doesn't reduce and falls through to its #subtype_of? leaf, instead of
+      # recursing into subtype?(self, b) forever.
+      ai = a.subtype_identity
+      return subtype?(ai, b) unless ai.equal?(a)
+
+      bi = b.subtype_identity
+      return subtype?(a, bi) unless bi.equal?(b)
 
       # Unions
       return a.children.all? { |m| subtype?(m, b) } if a.is_a?(Or) # (A|B) <= C
