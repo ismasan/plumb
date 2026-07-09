@@ -189,6 +189,12 @@ module Plumb
       return false unless @noop_union
 
       side = direction == :decode ? Plumb::Subtyping.accepted_type(type) : Plumb::Subtyping.resolved_output(type)
+      # A pure filter with an opaque side is judged by the type itself: a
+      # bare-matcher Constraint (a branch of a factored refinement union, eg.
+      # the `String[/\Atrue\z/i] | String['1']` boolean wire type) reports Any
+      # as its accepted type, but as a value-preserving refinement it IS its
+      # own honest description.
+      side = type if side.is_a?(AnyClass) && Plumb::Subtyping.value_preserving?(type)
       Plumb::Subtyping.subtype?(side, @noop_union)
     end
 
@@ -273,19 +279,10 @@ module Plumb
         # composition IS a subtype of T — but would be dropped by a wholesale
         # replacement. Recursing rewrites the data-bearing parts and keeps the
         # machinery; an encoder with a union internal type still matches at
-        # branch level.
-        #
-        # One exception: a value-preserving composite that is fully
-        # noop-covered converts nothing and needs no rewriting — pass it
-        # through whole. Factored refinement unions rely on this: a union of
-        # noop-type refinements (eg. `String[/\Atrue\z/i] | String['1']`)
-        # factors into a shape whose bare-matcher branches report opaque
-        # accepted types and would defeat the leaf-level noop check.
-        case type
-        when Or, And, Metadata, Policy, Composable::Node
-          return type if Plumb::Subtyping.value_preserving?(type) && @codec.noop?(type, @direction)
-        end
-
+        # branch level. Untouched subtrees come back identical, so there is
+        # no shortcut to take here — a whole-composite noop check would let a
+        # container-top noop (`noop Types::Array`) swallow a rewritable union
+        # (`Array[Date] | String`).
         case type
         when Or then return visit_or(type, path)
         when And then return visit_and(type, path)

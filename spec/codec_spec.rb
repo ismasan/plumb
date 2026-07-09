@@ -219,6 +219,13 @@ module CodecSpecTypes
         expect(codec_schema.parse({ dates: { from: '2024-01-01', to: '2024-02-01' } })).to eq({ dates: RANGE })
       end
 
+      it 'rewrites containers inside unions even when a container-top noop is registered' do
+        union = Types::Array[Types::Date] | Types::String
+        codec_union = JSONCodec >> union
+        expect(codec_union.parse(['2024-01-01'])).to eq([DATE]) # not swallowed by `noop Types::Array`
+        expect(codec_union.parse('plain')).to eq('plain')
+      end
+
       it 'preserves Metadata wrappers' do
         schema = Types::Hash[date: Types::Date.metadata(label: 'When')]
         codec_schema = JSONCodec >> schema
