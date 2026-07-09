@@ -500,18 +500,53 @@ module Plumb
       end
     end
 
-    # Date <=> ISO 8601 date string ("2024-01-30"). Included in Codec::JSON;
-    # its wire type carries `format: 'date'` metadata, so generated JSON
-    # Schemas describe date fields as `{type: "string", format: "date"}`.
-    class JSONDateEncoder < Encoder[Types::String[/\A\d{4}-\d{2}-\d{2}\z/].metadata(format: 'date') => Types::Date]
+    # ------------------------------------------------------------------
+    # Shared, format-neutral encoders — string representations standardized
+    # by ISO 8601 (dates, times) and RFC 3986 (URIs) — registered by both
+    # built-in codecs, and usable per-field in any schema. Their wire types
+    # carry `format:` metadata, so generated JSON Schemas describe the fields
+    # as eg. `{type: "string", format: "date"}`.
+    # ------------------------------------------------------------------
+
+    TIME_EXPR = /\A\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})?)?\z/
+    # Scheme-prefixed URI strings, per RFC 3986 — URI.parse alone is too
+    # permissive (a blank string is a valid URI).
+    URI_EXPR = /\A[a-z][a-z0-9+\-.]*:/i
+
+    # Date <=> ISO 8601 date string ("2024-01-30").
+    class DateEncoder < Encoder[Types::String[/\A\d{4}-\d{2}-\d{2}\z/].metadata(format: 'date') => Types::Date]
       def encode(date) = date.iso8601
       def decode(str) = ::Date.parse(str)
     end
 
+    # Time <=> ISO 8601 date-time string ("2024-08-30T20:15:23Z").
+    class TimeEncoder < Encoder[Types::String[TIME_EXPR].metadata(format: 'date-time') => Types::Time]
+      def encode(time) = time.iso8601
+      def decode(str) = ::Time.parse(str)
+    end
+
+    # URI <=> scheme-prefixed URI string. The narrower HTTP/File variants win
+    # most-specific matching for fields typed as such; the produced value is
+    # validated against the declared URI class.
+    class URIEncoder < Encoder[Types::String[URI_EXPR].metadata(format: 'uri') => Types::URI::Generic]
+      def encode(uri) = uri.to_s
+      def decode(str) = ::URI.parse(str)
+    end
+
+    class HTTPURIEncoder < Encoder[Types::String[URI_EXPR].metadata(format: 'uri') => Types::URI::HTTP]
+      def encode(uri) = uri.to_s
+      def decode(str) = ::URI.parse(str)
+    end
+
+    class FileURIEncoder < Encoder[Types::String[URI_EXPR].metadata(format: 'uri') => Types::URI::File]
+      def encode(uri) = uri.to_s
+      def decode(str) = ::URI.parse(str)
+    end
+
     # A base codec for JSON-like targets: the scalars native to JSON pass
     # through (structured containers are handled structurally by the rewrite;
-    # the bare Hash/Array tops cover untyped ones), and Dates map to ISO 8601
-    # strings. Subclass it and register encoders:
+    # the bare Hash/Array tops cover untyped ones), and Dates/Times/URIs map
+    # to their standard string forms. Subclass it and register encoders:
     #
     #   class MyCodec < Plumb::Codec::JSON
     #     encoder MoneyEncoder
@@ -524,7 +559,8 @@ module Plumb
            Types::True, Types::False, Types::Nil,
            Types::Hash, Types::Array
 
-      encoder JSONDateEncoder
+      encoder DateEncoder, TimeEncoder
+      encoder URIEncoder, HTTPURIEncoder, FileURIEncoder
     end
 
     # A base codec for stringly wire formats — HTML forms, query strings, CSV
@@ -540,7 +576,6 @@ module Plumb
     class Forms < self
       INTEGER_EXPR = /\A-?\d+\z/
       FLOAT_EXPR = /\A-?\d+(\.\d+)?\z/
-      TIME_EXPR = /\A\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})?)?\z/
 
       class IntegerEncoder < Encoder[Types::String[INTEGER_EXPR] => Types::Integer]
         def encode(int) = int.to_s
@@ -583,38 +618,12 @@ module Plumb
         def decode(_str) = nil
       end
 
-      class TimeEncoder < Encoder[Types::String[TIME_EXPR].metadata(format: 'date-time') => Types::Time]
-        def encode(time) = time.iso8601
-        def decode(str) = ::Time.parse(str)
-      end
-
-      # Scheme-prefixed URI strings, per RFC 3986 — URI.parse alone is too
-      # permissive (a blank string is a valid URI). The narrower HTTP/File
-      # variants win most-specific matching for fields typed as such; the
-      # produced value is validated against the declared URI class.
-      URI_EXPR = /\A[a-z][a-z0-9+\-.]*:/i
-
-      class URIEncoder < Encoder[Types::String[URI_EXPR].metadata(format: 'uri') => Types::URI::Generic]
-        def encode(uri) = uri.to_s
-        def decode(str) = ::URI.parse(str)
-      end
-
-      class HTTPURIEncoder < Encoder[Types::String[URI_EXPR].metadata(format: 'uri') => Types::URI::HTTP]
-        def encode(uri) = uri.to_s
-        def decode(str) = ::URI.parse(str)
-      end
-
-      class FileURIEncoder < Encoder[Types::String[URI_EXPR].metadata(format: 'uri') => Types::URI::File]
-        def encode(uri) = uri.to_s
-        def decode(str) = ::URI.parse(str)
-      end
-
       noop Types::String, Types::Hash, Types::Array
 
       encoder IntegerEncoder, FloatEncoder, DecimalEncoder, NumericEncoder
       encoder TrueEncoder, FalseEncoder, NilEncoder
-      encoder JSONDateEncoder # ISO 8601 date strings — shared with Codec::JSON
-      encoder TimeEncoder
+      # ISO 8601 / RFC 3986 string encoders, shared with Codec::JSON.
+      encoder DateEncoder, TimeEncoder
       encoder URIEncoder, HTTPURIEncoder, FileURIEncoder
     end
   end

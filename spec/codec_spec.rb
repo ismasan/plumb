@@ -85,6 +85,16 @@ module CodecSpecTypes
         expect(schema.dig('properties', 'date')).to eq('type' => 'string', 'format' => 'date')
       end
 
+      it 'encodes and decodes Times and URIs via the shared encoders' do
+        time = ::Time.parse('2024-08-30T20:15:23Z')
+        expect((Plumb::Codec::JSON >> Types::Time).parse('2024-08-30T20:15:23Z')).to eq(time)
+        expect((Types::Time >> Plumb::Codec::JSON).parse(time)).to eq('2024-08-30T20:15:23Z')
+
+        uri = URI.parse('http://example.com')
+        expect((Plumb::Codec::JSON >> Types::URI::HTTP).parse('http://example.com')).to eq(uri)
+        expect((Types::URI::HTTP >> Plumb::Codec::JSON).parse(uri)).to eq('http://example.com')
+      end
+
       it 'lets a subclass Date encoder take precedence over the built-in' do
         expect((Types::Date >> JSONCodec).parse(DATE)).to eq('2024-01-01') # spec ISODateEncoder wins the tie
         schema = Plumb::JSONSchemaVisitor.call(JSONCodec >> Types::Hash[date: Types::Date])
@@ -120,7 +130,7 @@ module CodecSpecTypes
       end
 
       it 'raises for an unmatched root' do
-        expect { JSONCodec >> Types::Any[::Time] }
+        expect { JSONCodec >> Types::Symbol }
           .to raise_error(Plumb::TypeError, /the root type .* matches no encoder/)
       end
     end
@@ -316,7 +326,7 @@ module CodecSpecTypes
 
     describe 'composition-time errors' do
       it 'raises for an unmatched field with its dotted path, in both directions' do
-        schema = Types::Hash[profile: Types::Hash[joined: Types::Any[::Time]]]
+        schema = Types::Hash[profile: Types::Hash[joined: Types::Symbol]]
         expect { JSONCodec >> schema }
           .to raise_error(Plumb::TypeError, /field `profile\.joined`.*matches no encoder/)
         expect { schema >> JSONCodec }
@@ -324,7 +334,7 @@ module CodecSpecTypes
       end
 
       it 'includes array positions in the path' do
-        schema = Types::Hash[times: Types::Array[Types::Any[::Time]]]
+        schema = Types::Hash[times: Types::Array[Types::Symbol]]
         expect { JSONCodec >> schema }.to raise_error(Plumb::TypeError, /field `times\.\[\]`/)
       end
 
@@ -423,7 +433,7 @@ module CodecSpecTypes
       end
 
       it 'raises with the attribute path for unmatched attribute types' do
-        klass = Types::Data[joined_at: Types::Any[::Time]]
+        klass = Types::Data[joined_at: Types::Symbol]
         expect { JSONCodec >> klass }.to raise_error(Plumb::TypeError, /joined_at/)
         expect { klass >> JSONCodec }.to raise_error(Plumb::TypeError, /joined_at/)
       end

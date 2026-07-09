@@ -378,7 +378,7 @@ RSpec.describe Types::Data do
 
   specify 'writer: true' do
     klass = Class.new(Types::Data) do
-      attribute :host, Plumb::Codec::Forms::HTTPURIEncoder, writer: true
+      attribute :host, Plumb::Codec::HTTPURIEncoder, writer: true
       attribute :port, Types::Lax::Integer.default(80), writer: true
       attribute :thing do
         attribute :name, String, writer: true

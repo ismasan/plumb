@@ -1612,7 +1612,7 @@ class DBConfig < Types::Data
 end
 
 class Config < Types::Data
-  attribute :host, Plumb::Codec::Forms::HTTPURIEncoder, writer: true
+  attribute :host, Plumb::Codec::HTTPURIEncoder, writer: true
   attribute :port, Types::Integer.default(80), writer: true
 
   # Nested structs can have writers too
@@ -1913,7 +1913,7 @@ A codec groups encoders and applies them to whole types at composition time. Cod
 
 ```ruby
 # Plumb::Codec::JSON ships noops for String, Numeric, booleans, Nil and bare
-# Hash/Array, plus a built-in Date <=> ISO 8601 string encoder.
+# Hash/Array, plus built-in ISO 8601 Date/Time and URI string encoders.
 class JSONCodec < Plumb::Codec::JSON
   encoder JSONDateRangeEncoder
 end
@@ -1999,7 +1999,9 @@ encoder.parse({ host: URI.parse('http://example.com'), port: 80, active: true, s
 # => { host: 'http://example.com', port: '80', active: 'true', starts_on: '' }
 ```
 
-`Codec::Forms` replaces the old one-way `Types::Forms` namespace. The wire types are strict — actual integers or booleans are *not* accepted on decode, since form data is always strings; apply the codec at the boundary and write schemas in internal types. Its encoders are also usable per-field (`attribute :host, Plumb::Codec::Forms::HTTPURIEncoder`), and the old lenient behaviour is expressible as a union: `Types::Date | Plumb::Codec::JSONDateEncoder`.
+`Codec::Forms` replaces the old one-way `Types::Forms` namespace. The wire types are strict — actual integers or booleans are *not* accepted on decode, since form data is always strings; apply the codec at the boundary and write schemas in internal types.
+
+Format-neutral encoders (ISO 8601 `Codec::DateEncoder`/`Codec::TimeEncoder`, RFC 3986 `Codec::URIEncoder`/`HTTPURIEncoder`/`FileURIEncoder`) live at the `Plumb::Codec` level and are registered by both built-in codecs. They are also usable per-field (`attribute :host, Plumb::Codec::HTTPURIEncoder`), and the old lenient behaviour is expressible as a union: `Types::Date | Plumb::Codec::DateEncoder`.
 
 Things to know:
 
