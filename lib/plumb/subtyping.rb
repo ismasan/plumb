@@ -59,6 +59,13 @@ module Plumb
         end
       end
 
+      # Transparent wrappers (Policy/Metadata/Node) only re-label the type they
+      # delegate to — for the subtype relation they ARE the wrapped type, just
+      # as they are for #accepted_type.
+      ua = unwrap_transparent(a)
+      ub = unwrap_transparent(b)
+      return subtype?(ua, ub) unless ua.equal?(a) && ub.equal?(b)
+
       return true if b.is_a?(AnyClass)  # X <= Top
       return false if a.is_a?(AnyClass) # Top <= X only when X is Top (handled above)
 

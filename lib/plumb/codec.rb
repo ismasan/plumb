@@ -184,15 +184,18 @@ module Plumb
     def noop?(type, direction)
       return false unless @noop_union
 
-      # A Static ignores its input (it reports Any as accepted), so it is
-      # judged by what it emits in both directions — eg. the `Static['x']`
-      # inside a `.default('x')` composition.
-      side = if direction == :encode || type.is_a?(StaticClass)
-               Plumb::Subtyping.resolved_output(type)
-             else
-               Plumb::Subtyping.accepted_type(type)
-             end
+      side = direction == :decode ? Plumb::Subtyping.accepted_type(type) : Plumb::Subtyping.resolved_output(type)
       Plumb::Subtyping.subtype?(side, @noop_union)
+    end
+
+    # Is this concrete VALUE covered by the noop types? Used for Static nodes,
+    # whose fixed value can be validated directly — subtyping over the node
+    # can't relate an atomic Static to a container noop (`Static[[]]` vs
+    # `Types::Array`), but the value itself can just be checked.
+    def noop_value?(value)
+      return false unless @noop_union
+
+      @noop_union.resolve(value).valid?
     end
 
     def at_path(path) = path.empty? ? 'the root type' : "field `#{path.join('.')}`"
@@ -203,14 +206,17 @@ module Plumb
 
     # The deep rewrite walker. Top-down, per node:
     #
-    #   1. a real encoder match replaces the node whole (its wire type is
+    #   1. Static values, Or/And chains and transparent wrappers recurse into
+    #      their parts first — they can carry generator machinery (a
+    #      `.default`'s `Undefined >> Static` guard) that a wholesale
+    #      replacement would drop (see #visit);
+    #   2. a real encoder match replaces the node whole (its wire type is
     #      recursively rewritten through the same codec, cycle-guarded);
-    #   2. structured composites (Hash schemas, typed Arrays/Tuples/HashMaps,
-    #      Or branches, transparent wrappers) recurse into their children —
-    #      AFTER encoder matching, so an encoder can target a specific
-    #      composite shape, but BEFORE the noop check, so a generic
-    #      `noop Types::Hash` can't swallow a structured schema;
-    #   3. leaves pass through when noop-covered, otherwise raise with the
+    #   3. structured composites (Hash schemas, typed Arrays/Tuples/HashMaps)
+    #      recurse into their children — AFTER encoder matching, so an encoder
+    #      can target a specific composite shape, but BEFORE the noop check,
+    #      so a generic `noop Types::Hash` can't swallow a structured schema;
+    #   4. leaves pass through when noop-covered, otherwise raise with the
     #      dotted field path.
     #
     # Untouched subtrees keep their identity (the original node is returned),
@@ -238,6 +244,26 @@ module Plumb
 
       def visit(type, path)
         return visit_deferred(type, path) if type.is_a?(Deferred)
+        # Before encoder matching: a Static's fixed value would otherwise
+        # match an encoder atomically (`Static[a_date]` is a subtype of Date)
+        # and get replaced by a step that expects wire input, losing the
+        # static behaviour (eg. the default value in a `.default(...)`).
+        return visit_static(type, path) if type.is_a?(StaticClass)
+
+        # Or/And chains and transparent wrappers also recurse BEFORE encoder
+        # matching: they can carry generator guards (`(Undefined >> Static) |
+        # T`, the #default shape) that are subtype-wise invisible — the whole
+        # composition IS a subtype of T — but would be dropped by a wholesale
+        # replacement. Recursing rewrites the data-bearing parts and keeps the
+        # machinery; an encoder with a union internal type still matches at
+        # branch level.
+        case type
+        when Or then return visit_or(type, path)
+        when And then return visit_and(type, path)
+        when Metadata then return rebuild(type, visit(type.type, path)) { |t| Metadata.new(t, type.metadata) }
+        when Policy then return rebuild(type, visit(type.children.first, path)) { |t| Policy.new(type.policy_name, type.arg, t) }
+        when Composable::Node then return rebuild(type, visit(type.type, path)) { |t| t.as_node(type.node_name, type.args) }
+        end
 
         if (enc = @codec.encoder_for(type, path))
           return replace(type, enc, path)
@@ -248,11 +274,35 @@ module Plumb
         when ArrayClass, StreamClass then visit_array(type, path)
         when TupleClass then visit_tuple(type, path)
         when HashMap then visit_hash_map(type, path)
-        when Or then visit_or(type, path)
-        when And then visit_and(type, path)
-        when Metadata then rebuild(type, visit(type.type, path)) { |t| Metadata.new(t, type.metadata) }
-        when Policy then rebuild(type, visit(type.children.first, path)) { |t| Policy.new(type.policy_name, type.arg, t) }
-        when Composable::Node then rebuild(type, visit(type.type, path)) { |t| t.as_node(type.node_name, type.args) }
+        else
+          noop_or_fail(type, path)
+        end
+      end
+
+      # A Static ignores its input and emits a fixed value (eg. the default in
+      # a `.default(...)` composition). Decoding, that value is part of the
+      # internal structure the schema declares — keep it as-is.
+      #
+      # Encoding is different: the suffix runs on values the schema has
+      # ALREADY produced (the Static ran when the schema did), and
+      # resolved_output collapses the `Undefined >> Static` guard of a
+      # #default, leaving the Static as an always-matching first Or branch —
+      # re-running it would clobber the actual value with the default. So on
+      # encode a Static becomes a CHECKED value: match the static value
+      # (against the VALUE, not the node — subtyping can't relate an atomic
+      # Static to a container noop), then emit its wire form — the value
+      # itself when noop-covered, or its encoding, computed once here at
+      # composition time (the value is fixed, so its encoding is too).
+      def visit_static(type, path)
+        return type if @direction == :decode
+
+        value = type.children.first
+        return ValueClass.new(value) if @codec.noop_value?(value)
+
+        if (enc = @codec.encoder_for(type, path))
+          encoded = replace(type, enc, path).parse(value)
+          encoded = encoded.freeze unless encoded.frozen?
+          And.new(ValueClass.new(value), StaticClass.new(encoded))
         else
           noop_or_fail(type, path)
         end
@@ -347,9 +397,9 @@ module Plumb
         l.equal?(left) && r.equal?(right) ? type : Or.new(l, r)
       end
 
-      # An And chain (refinement/sequence) that wasn't matched whole: rewrite
-      # the data-bearing children; pure refinements (checks, #where clauses,
-      # value matchers) filter the adjacent type's values and pass through.
+      # An And chain (refinement/sequence): rewrite the data-bearing children;
+      # pure refinements (checks, #where clauses, value matchers) filter the
+      # adjacent type's values and pass through.
       def visit_and(type, path)
         left, right = type.children
         l = visit_and_child(left, path)

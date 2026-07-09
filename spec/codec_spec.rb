@@ -28,7 +28,7 @@ module CodecSpecTypes
     children: Types::Array[Types::Any.defer { Tree }]
   ]
 
-  DATE = ::Date.new(2024, 1, 1)
+  DATE = ::Date.new(2024, 1, 1).freeze
   RANGE = ::Date.new(2024, 1, 1)..::Date.new(2024, 2, 1)
   WIRE_PERSON = { name: 'Joe', dates: { from: '2024-01-01', to: '2024-02-01' } }.freeze
   PERSON = { name: 'Joe', dates: RANGE }.freeze
@@ -186,6 +186,23 @@ module CodecSpecTypes
         schema = Types::Hash[name: Types::String.default('Unknown'), date: Types::Date]
         codec_schema = JSONCodec >> schema
         expect(codec_schema.parse({ date: '2024-01-01' })).to eq({ name: 'Unknown', date: DATE })
+      end
+
+      it 'supports #default with container values, in both directions' do
+        type = Types::Array[Types::Integer].default([].freeze)
+        decoder, encoder = Plumb::Codec::JSON.for(type)
+        expect(decoder.parse).to eq([])
+        expect(decoder.parse([1, 2])).to eq([1, 2])
+        expect(encoder.parse([1, 2])).to eq([1, 2])
+      end
+
+      it 'supports #default with encodable values (decode emits the internal default; encode encodes it)' do
+        schema = Types::Hash[date: Types::Date.default(DATE)]
+        decoder, encoder = JSONCodec.for(schema)
+        expect(decoder.parse({})).to eq({ date: DATE })
+        expect(decoder.parse({ date: '2024-06-01' })).to eq({ date: ::Date.new(2024, 6, 1) })
+        expect(encoder.parse({})).to eq({ date: '2024-01-01' })
+        expect(encoder.parse({ date: ::Date.new(2024, 6, 1) })).to eq({ date: '2024-06-01' })
       end
 
       it 'passes pure refinements through' do
