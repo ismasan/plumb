@@ -1265,9 +1265,9 @@ RSpec.describe Plumb::Types do
       assert_result(s1.resolve('a' => 1, 'b' => 2), { 'a' => 1, 'b' => 2 }, true)
     end
 
-    specify '#inclusive' do
+    specify '_ catch-all key (undeclared keys)' do
       exclusive = Types::Hash[age: Types::Lax::Integer]
-      inclusive = exclusive.inclusive
+      inclusive = Types::Hash[age: Types::Lax::Integer, _: Types::Any]
       data = { name: 'Joe', age: '10' }
       assert_result(exclusive.resolve(data), { age: 10 }, true)
       assert_result(inclusive.resolve(data), { name: 'Joe', age: 10 }, true)

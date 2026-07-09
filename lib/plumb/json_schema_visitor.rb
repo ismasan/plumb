@@ -79,6 +79,12 @@ module Plumb
       props
     end
 
+    # The bottom type matches nothing — JSON Schema `{ "not": {} }` (the empty
+    # schema `{}` matches everything, so its negation matches nothing).
+    on(:never) do |_node, props|
+      props.merge('not' => {})
+    end
+
     on(:pipeline) do |node, props|
       visit_children(node, props)
     end
@@ -99,13 +105,30 @@ module Plumb
     end
 
     on(:hash) do |node, props|
-      props.merge(
+      # Named (literal) keys become properties/required. Typed/catch-all keys are
+      # not fixed property names: the `_` catch-all becomes `additionalProperties`
+      # (a schema; `{}` for Any = any value), and a pattern-backed typed key becomes
+      # a `patternProperties` entry (reusing the Regexp -> `pattern` handler).
+      literal = node.literal_fields
+      schema = {
         TYPE => 'object',
-        PROPERTIES => node._schema.each_with_object({}) do |(key, value), hash|
+        PROPERTIES => literal.each_with_object({}) do |(key, value), hash|
           hash[key.to_s] = visit(value)
         end,
-        REQUIRED => node._schema.reject { |key, _value| key.optional? }.keys.map(&:to_s)
-      )
+        REQUIRED => literal.reject { |key, _value| key.optional? }.keys.map(&:to_s)
+      }
+
+      schema['additionalProperties'] = visit(node.catch_all_type) if node.catch_all_type
+
+      patterns = node.matcher_fields.each_with_object({}) do |(key, value), h|
+        next if key.catch_all?
+
+        pattern = visit(key.matcher)[PATTERN]
+        h[pattern] = visit(value) if pattern
+      end
+      schema['patternProperties'] = patterns unless patterns.empty?
+
+      props.merge(schema)
     end
 
     on(:data) do |node, props|

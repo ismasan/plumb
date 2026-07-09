@@ -16,15 +16,26 @@ module Plumb
     end
 
     # A HashMap is a Hash, so it is a subtype of the "any Hash" top — an
-    # empty-schema HashClass like Types::Hash. It is NOT a subtype of a
-    # structured HashClass, which requires specific keys a map doesn't
-    # guarantee. Against another HashMap it is covariant in key and value types
-    # (handled by the default #subtype_of?).
+    # empty-schema HashClass like Types::Hash — or of an open catch-all-only
+    # HashClass `Hash[_: V]` when this map's value type is a subtype of `V` (the
+    # catch-all's Any key admits any map key). It is NOT a subtype of a HashClass
+    # that requires specific keys a map doesn't guarantee. Against another HashMap
+    # it is covariant in key and value types (handled by the default #subtype_of?).
     def subtype_of?(other)
-      return other._schema.empty? if other.is_a?(HashClass)
+      if other.is_a?(HashClass)
+        return true if other._schema.empty?
+        return false unless other.only_catch_all?
+
+        return Plumb::Subtyping.subtype?(@value_type, other.catch_all_type)
+      end
 
       super
     end
+
+    # A HashMap re-maps each key and value through its key/value types, so it
+    # preserves the value only when both do (a coercing key or value would change
+    # the hash).
+    def value_preserving? = children.all? { |c| Plumb::Subtyping.value_preserving?(c) }
 
     def call(result)
       return result.invalid!(errors: 'must be a Hash') unless result.value.is_a?(::Hash)
@@ -58,6 +69,10 @@ module Plumb
       # the subclass would otherwise inherit :hash_map. Restore its own name so
       # visitors still dispatch to their :filtered_hash_map handlers.
       def node_name = :filtered_hash_map
+
+      # A filtered map DROPS non-matching entries, so it changes the value
+      # regardless of its key/value types — never value-preserving.
+      def value_preserving? = false
 
       # A filtered map is lenient: it accepts ANY hash and drops non-matching
       # entries (it never rejects a Hash), so as a #>> consumer it accepts any

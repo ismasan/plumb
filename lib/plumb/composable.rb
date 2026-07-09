@@ -265,8 +265,13 @@ module Plumb
     # coreflexive refinement (a pure filter). Lets `#|` absorb a redundant
     # branch (`Integer | Numeric == Numeric`) without dropping a coercion. See
     # Subtyping.reduce_union, which memoizes this per frozen node in TypeCache.
-    # Default false; refinements opt in, transforms/containers stay false.
-    # A stronger property than #idempotent? (value-preserving ⟹ idempotent).
+    # Default false; refinements opt in, transforms stay false. A covariant
+    # container (Array/Tuple/HashMap) preserves the value exactly when all its
+    # element/child types do — so `Array[Integer] >> Array[Numeric]` collapses
+    # like the scalar `Integer >> Numeric` — while a container that reshapes the
+    # value (a filtered map dropping entries, a record dropping undeclared keys)
+    # stays false. A stronger property than #idempotent? (value-preserving ⟹
+    # idempotent).
     def value_preserving? = false
 
     # Chain two composable objects together.
@@ -331,9 +336,28 @@ module Plumb
     # @return [Composable]
     def |(other)
       other = Composable.wrap(other)
+      return self if other.is_a?(NeverClass) # X | Never == X
+
       Plumb::Subtyping.reduce_union(self, other) ||
         Plumb::Subtyping.factor_union(self, other) ||
         Or.new(self, other)
+    end
+
+    # Intersection ("and"/meet) — the symmetric dual of #|. Builds the greatest
+    # lower bound of `self` and `other`: the type describing values that satisfy
+    # BOTH. Unlike #>>, it is order-independent and not subtype-checked. The
+    # reducer (Subtyping.intersect) narrows where it can — intersecting Ranges/
+    # Sets (`Integer[2..] & Integer[0..100]` == `Integer[2..100]`), covariant
+    # containers, and distributing over unions — and collapses a PROVABLY-empty
+    # intersection to `Types::Never` (`Integer[2..10] & Integer[11..100]`,
+    # `String & Integer`). When it can prove neither a narrowing nor emptiness it
+    # falls back to `And.new` — a runtime intersection where both sides must pass.
+    #
+    # @param other [Composable]
+    # @return [Composable]
+    def &(other)
+      other = Composable.wrap(other)
+      Plumb::Subtyping.intersect(self, other) || And.new(self, other)
     end
 
     # Transform value. Requires specifying the resulting type of the value after transformation.

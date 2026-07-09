@@ -139,7 +139,7 @@ More about [Types::Hash](#typeshash) and [Types::Array](#typesarray). There's al
 
 ### Type composition
 
-At the core, Plumb types are little [Railway-oriented pipelines](https://ismaelcelis.com/posts/composable-pipelines-in-ruby/) that can be composed together with _AND_, _OR_ and _NOT_ semantics. Everything else builds on top of these two ideas.
+At the core, Plumb types are little [Railway-oriented pipelines](https://ismaelcelis.com/posts/composable-pipelines-in-ruby/) that can be composed together with _AND_ (`#>>`), _OR_ (`#|`) and _NOT_ (`#not`) semantics, plus set-style _intersection_ (`#&`). Everything else builds on top of these ideas.
 
 #### Composing types with `#>>` ("And")
 
@@ -215,6 +215,58 @@ FlexibleUSD.parse(Money.new(1000, 'GBP')) # Money(USD 15.00)
 ```
 
 You can see more use cases in [the examples directory](https://github.com/ismasan/plumb/tree/main/examples)
+
+#### Intersection with `#&` and the `Never` type
+
+`A & B` is the **intersection** (the greatest lower bound) of two types: it describes values that satisfy **both**. Unlike `#>>`, it is symmetric (order-independent) and never raises — where the two types can't overlap it produces `Types::Never` (see below).
+
+Where it can, `#&` narrows to the exact overlap:
+
+```ruby
+Types::Integer[2..] & Types::Integer[0..100]   # => Integer[2..100]  (ranges intersected)
+Types::Integer[1, 2, 3] & Types::Integer[2, 3, 4] # => Integer[Set[2, 3]]
+Types::Integer & Types::Numeric                # => Integer          (keeps the narrower)
+```
+
+It distributes over unions and intersects covariant containers element-wise:
+
+```ruby
+Types::Array[Types::Integer | Types::Float] & Types::Array[Types::Float] # => Array[Float]
+Types::Integer | (Types::String & Types::Integer)                        # => Integer
+```
+
+When the intersection is provably empty, the result is `Types::Never`:
+
+```ruby
+Types::String & Types::Integer                 # => Types::Never  (no value is both)
+Types::Integer[2..10] & Types::Integer[11..100] # => Types::Never  (disjoint ranges)
+```
+
+Chaining refinements with `#[]` (or `#where`) is the same intersection, so a provably-empty chain reduces to `Types::Never` too:
+
+```ruby
+Types::Integer[0..5][10..]                       # => Types::Never  (== Integer[0..5] & Integer[10..])
+Types::String.where(size: 0..5).where(size: 10..) # => Types::Never  (unsatisfiable clause)
+```
+
+When it can neither narrow nor prove emptiness, `#&` falls back to a runtime intersection that validates the value through both sides.
+
+`Types::Hash#&` ([Hash intersections](#hash-intersections)) and `Types::Interface#&` ([Intersecting interfaces](#intersecting-interfaces)) are the record- and interface-specific cases of the same operator.
+
+##### `Types::Never`
+
+`Types::Never` is the **bottom type** — the dual of the `Types::Any` top. No value inhabits it, so it always fails validation, and it collapses out of compositions:
+
+```ruby
+Types::Any     & Types::Integer   # => Integer  (Any is the identity of &)
+Types::Integer & Types::Never     # => Types::Never  (Never absorbs &)
+Types::Integer | Types::Never     # => Integer       (Never is dropped from |)
+
+Types::Never.resolve(42).valid?   # => false  (nothing is a Never)
+Types::Never.to_json_schema       # => { "not" => {} }
+```
+
+You rarely write `Types::Never` by hand — it's what an impossible intersection reduces to, which lets the composition algebra prove and discard dead branches (as in `Integer | (String & Integer)` above). It's also useful as a Hash catch-all to forbid undeclared keys — see [`_: Types::Never`](#undeclared-keys-and-the-_-catch-all).
 
 ### Built-in types
 
@@ -908,10 +960,27 @@ StaffMember = User + Employee # Hash[:name, :age, :company]
 
 #### Hash intersections
 
-Use `Types::Hash#&` to produce a new Hash definition with keys present in both.
+Use `Types::Hash#&` to intersect two hash definitions as maps. It keeps the keys present in **both**, and intersects each shared key's value type:
 
 ```ruby
-intersection = User & Employee # Hash[:name]
+User & Employee # => Hash[name: String]  (only the shared :name survives)
+
+# shared keys have their value types intersected
+Types::Hash[age: Types::Integer[18..]] & Types::Hash[age: Types::Integer[..65]]
+# => Hash[age: Integer[18..65]]
+```
+
+Two closed schemas that share no keys have nothing in common, so the intersection is `Types::Never` — the empty/bottom type, which no value satisfies:
+
+```ruby
+Types::Hash[a: Types::Integer] & Types::Hash[b: Types::String] # => Types::Never
+```
+
+A [`_` catch-all](#undeclared-keys-and-the-_-catch-all) widens what survives, since it admits the other side's extra keys:
+
+```ruby
+Types::Hash[a: Types::String, _: Types::Any] & Types::Hash[a: Types::String, b: Types::Integer]
+# => Hash[a: String, b: Integer]  (:b admitted via the left's catch-all)
 ```
 
 #### `Types::Hash#tagged_by`
@@ -931,18 +1000,41 @@ Events = Types::Hash.tagged_by(
 Events.parse(type: 'name_updated', name: 'Joe') # Uses NameUpdatedEvent definition
 ```
 
-#### `Types::Hash#inclusive`
+#### Undeclared keys and the `_` catch-all
 
-Use `#inclusive` to preserve input keys not defined in the hash schema.
+By default, keys present in the input but **not** declared in the schema are dropped:
 
 ```ruby
-hash = Types::Hash[age: Types::Lax::Integer].inclusive
-
-# Only :age, is coerced and validated, all other keys are preserved as-is
-hash.parse(age: '30', name: 'Joe', last_name: 'Bloggs') # { age: 30, name: 'Joe', last_name: 'Bloggs' }
+Types::Hash[age: Types::Integer].parse(age: 30, name: 'Joe') # => { age: 30 }  (:name dropped)
 ```
 
-This can be useful if you only care about validating some fields, or to assemble different front and back hashes. For example a client-facing one that validates JSON or form data, and a backend one that runs further coercions or domain validations on some keys.
+To control what happens to those undeclared keys, add a special `_` key. It is a **catch-all**: its value type is applied to every key not otherwise declared. The value type you give it decides the behaviour:
+
+| Catch-all | Meaning | Undeclared key `name`… |
+| --- | --- | --- |
+| _(none)_ | drop (default) | is removed |
+| `_: Types::Any` | include, unchanged | is kept as-is |
+| `_: SomeType` | include, validated/coerced | must be a `SomeType` (coerced if the type coerces) |
+| `_: Types::Never` | exclude (strict) | is a validation **error** |
+
+```ruby
+# _: Any — keep every undeclared key, unchanged
+hash = Types::Hash[age: Types::Lax::Integer, _: Types::Any]
+hash.parse(age: '30', name: 'Joe', last_name: 'Bloggs')
+# => { age: 30, name: 'Joe', last_name: 'Bloggs' }
+
+# _: SomeType — every undeclared value must be (or coerce to) that type
+Types::Hash[id: Types::String, _: Types::Integer].parse(id: 'x', a: 1, b: 2)
+# => { id: 'x', a: 1, b: 2 }
+Types::Hash[id: Types::String, _: Types::Integer].resolve(id: 'x', a: 'nope').valid? # => false
+
+# _: Never — reject any undeclared key (a closed/strict hash)
+strict = Types::Hash[a: Types::String, _: Types::Never]
+strict.resolve(a: 'x').valid?          # => true
+strict.resolve(a: 'x', b: 1).valid?    # => false  (b is not allowed)
+```
+
+`_: Any` is useful when you only care about validating some fields, or to assemble different front and back hashes — for example a client-facing one that validates JSON or form data, and a backend one that runs further coercions on some keys while passing the rest through:
 
 ```ruby
 # Front-end definition does structural validation
@@ -952,14 +1044,28 @@ Front = Types::Hash[price: Integer, name: String, category: String]
 IntToMoney = Types::Integer.build(Money)
 
 # Backend definition turns :price into a Money object, leaves other keys as-is
-Back = Types::Hash[price: IntToMoney].inclusive
+Back = Types::Hash[price: IntToMoney, _: Types::Any]
 
 # Compose the pipeline
 InputHandler = Front >> Back
 
 InputHandler.parse(price: 100_000, name: 'iPhone 15', category: 'smartphones')
-# => { price: #<Money fractional:100000 currency:GBP>, name: 'iPhone 15', category: 'smartphone' }
+# => { price: #<Money fractional:100000 currency:GBP>, name: 'iPhone 15', category: 'smartphones' }
 ```
+
+The catch-all also shows up in generated JSON Schema as `additionalProperties`: `_: Any` → `{}` (anything), `_: Integer` → `{ "type": "integer" }`, and `_: Never` → `{ "not": {} }` (nothing allowed).
+
+#### Typed keys
+
+Keys are not limited to symbols. A key can be any type or matcher, and it matches an input key via `key === other`. So you can key by String, or by a pattern, and mix them with a catch-all:
+
+```ruby
+Types::Hash['name' => Types::String]                 # a String key
+Types::Hash[Types::String[/^id_/] => Types::Integer, # keys matching /^id_/ hold Integers
+            _: Types::Any]                           # everything else passes through
+```
+
+A typed key is **lenient**: input keys that don't match any declared or typed key follow the catch-all rule above (dropped by default). This is different from a homogeneous map (`Types::Hash[Types::Symbol, Types::Integer]`, a `HashMap` — note the comma, not `=>`), which is **strict** (a non-conforming key is an error) and coerces keys through the key type. Use a `HashMap` for "every key/value has this type"; use typed keys for "keys shaped like this map to that".
 
 #### `Types::Hash#filtered`
 
@@ -1790,7 +1896,7 @@ This is how [Plumb::Types::Data](#typesdata) is implemented.
 
 #### Participating in subtype & composition checks
 
-The subtype (`#<=`) and [`#>>` composition](#composition-type-checks) checks are built on a single hook that every `Plumb::Composable` already implements with a sensible default — `#>>` is just `subtype?(produced, accepted)`, so there's nothing extra to implement for composition. A custom type participates **without changing any core library code**: it either relies on the default or overrides the hook. `Plumb::Subtyping` itself only knows the composition algebra (the top type `Types::Any`, union `#|`, intersection `#>>`, and conversion `#transform`); everything else is delegated to the type.
+The subtype (`#<=`) and [`#>>` composition](#composition-type-checks) checks are built on a single hook that every `Plumb::Composable` already implements with a sensible default — `#>>` is just `subtype?(produced, accepted)`, so there's nothing extra to implement for composition. A custom type participates **without changing any core library code**: it either relies on the default or overrides the hook. `Plumb::Subtyping` itself only knows the composition algebra (the top type `Types::Any`, the bottom type `Types::Never`, union `#|`, intersection `#&`, refinement/sequencing `#>>`, and conversion `#transform`); everything else is delegated to the type.
 
 The default leans on two methods your type already has:
 
@@ -1803,7 +1909,7 @@ The default leans on two methods your type already has:
 | --- | --- | --- | --- |
 | `#subtype_of?(other)` | `Boolean` | `#<=`, `Plumb::Subtyping.subtype?`, and so `#>>` | reflexive · atomic · same-class covariant `#children` |
 
-`#subtype_of?` answers "is every value I describe also described by `other`?". It's the leaf step of `subtype?`, reached after the algebra (`Any`/`|`/`>>`/`#transform`) has been peeled away. Override it for bespoke behaviour — **recurse through `Plumb::Subtyping.subtype?`, never through `#<=`** (which would loop back into the algebra). `HashClass` overrides it for record (width + depth + optionality) subtyping.
+`#subtype_of?` answers "is every value I describe also described by `other`?". It's the leaf step of `subtype?`, reached after the algebra (`Any`/`Never`/`|`/`&`/`>>`/`#transform`) has been peeled away. Override it for bespoke behaviour — **recurse through `Plumb::Subtyping.subtype?`, never through `#<=`** (which would loop back into the algebra). `HashClass` overrides it for record (width + depth + optionality) subtyping.
 
 ```ruby
 # An "even integer" refinement that knows it is a subtype of Integer (and

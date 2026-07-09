@@ -219,12 +219,16 @@ module Plumb
         return nil unless left.attr_name == avm.attr_name && compatible_base?(left.type, avm.type)
 
         merged = intersect_attribute_values(left.value, avm.value)
-        merged.nil? ? nil : AttributeValueMatch.new(left.type, left.attr_name, merged)
+        return nil if merged.nil?
+        return Types::Never if merged.equal?(Constraint::EMPTY) # unsatisfiable clause ⇒ bottom
+
+        AttributeValueMatch.new(left.type, left.attr_name, merged)
       when And
+        # A conjunct that folds to Never makes the whole And uninhabitable ⇒ Never.
         if (right = merge_attribute_into(left.children[1], avm))
-          And.new(left.children[0], right)
+          right.is_a?(NeverClass) ? right : And.new(left.children[0], right)
         elsif (leftc = merge_attribute_into(left.children[0], avm))
-          And.new(leftc, left.children[1])
+          leftc.is_a?(NeverClass) ? leftc : And.new(leftc, left.children[1])
         end
       end
     end
@@ -246,11 +250,13 @@ module Plumb
       end
     end
 
-    # Intersect two attribute-constraint values into a single value, or nil to
-    # keep the two clauses stacked. Raw Ranges/Sets intersect to their (possibly
-    # narrower) overlap via Constraint.merge_matchers; a Plumb-typed value reduces
-    # only by subsumption — keeping the narrower — and otherwise stays stacked
-    # (intersecting two arbitrary Plumb types into one clause isn't representable).
+    # Intersect two attribute-constraint values into a single value, `nil` to keep
+    # the two clauses stacked, or `Constraint::EMPTY` when the overlap is provably
+    # empty (the caller turns that into Never). Raw Ranges/Sets intersect to their
+    # (possibly narrower, possibly empty) overlap via Constraint.merge_matchers; a
+    # Plumb-typed value reduces only by subsumption — keeping the narrower — and
+    # otherwise stays stacked (intersecting two arbitrary Plumb types into one
+    # clause isn't representable).
     def intersect_attribute_values(a, b)
       return a if a == b
 
@@ -281,7 +287,59 @@ module Plumb
     # compat check — a value-narrowing refinement (AVM) opts out of the latter
     # (its #input_type is Any), so check_composable! can't tell it apart.
     def redundant_refinement?(left, right)
-      value_preserving?(right) && subtype?(left, right)
+      (value_preserving?(right) && subtype?(left, right)) ||
+        redundant_record_refinement?(left, right)
+    end
+
+    # The record case of `redundant_refinement?`. A HashClass is NOT value-
+    # preserving in general — a non-inclusive record drops undeclared keys — so
+    # the generic test above never fires for it. `left >> right` (both records)
+    # still reduces to `left` when `right` merely re-validates every value `left`
+    # produces without dropping or changing anything. Sound sufficient conditions:
+    #
+    #   - both are plain records (no typed/pattern keys — only literal keys and an
+    #     optional `_` catch-all — so key-keeping is decidable);
+    #   - the same declared (literal) key set — `right` drops none of `left`'s keys
+    #     and requires none `left` lacks;
+    #   - `left <= right` — `right`'s fields are supertypes with compatible
+    #     optionality, so it rejects nothing `left` emits;
+    #   - every `right` field is value-preserving — `right` coerces nothing;
+    #   - if `left` carries a catch-all (so it emits arbitrary extra keys), `right`
+    #     carries a value-preserving catch-all that covers it — otherwise `right`
+    #     would drop or reject those extra keys.
+    #
+    # Anything short keeps the And (`right` might drop keys or convert values —
+    # eg. the front/back coercion `Hash[price: Int] >> Hash[price: Int.build(Money)]`
+    # must NOT collapse).
+    def redundant_record_refinement?(left, right)
+      return false unless left.is_a?(HashClass) && right.is_a?(HashClass)
+      return false unless plain_record?(left) && plain_record?(right)
+      return false unless same_literal_keys?(left, right)
+      return false unless catch_all_preserved?(left, right)
+      return false unless subtype?(left, right)
+
+      right.literal_fields.all? { |_key, field| value_preserving?(field) }
+    end
+
+    # A record whose only keys are literal names plus an optional `_` catch-all
+    # (no typed/pattern keys, whose key-keeping we don't reason about here).
+    def plain_record?(hash) = hash.matcher_fields.all? { |key, _| key.catch_all? }
+
+    # Do two records declare the same set of literal key names?
+    def same_literal_keys?(left, right)
+      lk = left.literal_fields.keys
+      rk = right.literal_fields.keys
+      lk.size == rk.size && lk.all? { |k| rk.any? { |o| o.eql?(k) } }
+    end
+
+    # Does `right` keep and preserve `left`'s catch-all tail (the keys `left` emits
+    # beyond its declared ones)? Vacuously true when `left` has no catch-all.
+    def catch_all_preserved?(left, right)
+      lc = left.catch_all_type
+      return true if lc.nil?
+
+      rc = right.catch_all_type
+      !rc.nil? && value_preserving?(rc) && subtype?(lc, rc)
     end
 
     # Join-dual of `reduce_step`: absorption for `a | b`. If one branch's value
@@ -301,6 +359,111 @@ module Plumb
       return a if subtype?(b, a) # b ⊆ a — keep the wider a
 
       nil
+    end
+
+    # The meet (greatest lower bound) of two types — the dual of reduce_union's
+    # join. `intersect(a, b)` returns the narrowed type, or nil to fall back to
+    # `And.new(a, b)` (a sound runtime intersection: both sides must pass). It
+    # only produces `Types::Never` when the intersection is PROVABLY empty
+    # (disjoint ranges/sets/classes); when it can't prove emptiness or a subtype
+    # relation, it declines (nil) so the caller keeps a runtime And.
+    #
+    # Consumed by Composable#&.
+    def intersect(a, b)
+      a = Composable.wrap(a)
+      b = Composable.wrap(b)
+
+      return a if a.is_a?(NeverClass) # Never & X == Never
+      return b if b.is_a?(NeverClass)
+      return b if a.is_a?(AnyClass)   # Any & X == X (top is the meet identity)
+      return a if b.is_a?(AnyClass)
+
+      return a if a == b
+      return a if subtype?(a, b) # a ⊆ b — meet keeps the narrower a
+      return b if subtype?(b, a) # b ⊆ a — keep the narrower b
+
+      # Distribute over unions: (a1 | a2) & b == (a1 & b) | (a2 & b).
+      return intersect_union(a, b) if a.is_a?(Or)
+      return intersect_union(b, a) if b.is_a?(Or)
+
+      intersect_constraints(a, b) ||
+        intersect_containers(a, b) ||
+        (disjoint_atomic?(a, b) ? Types::Never : nil)
+    end
+
+    # Distribute `&` over a union: intersect each branch with `other`, drop the
+    # branches that go Never, and rejoin the survivors with `|`. All-Never ⇒
+    # Never. A branch the reducer can't fold becomes a runtime And.
+    def intersect_union(union, other)
+      parts = union.children.filter_map do |branch|
+        m = intersect(branch, other) || And.new(branch, other)
+        m unless m.is_a?(NeverClass)
+      end
+      return Types::Never if parts.empty?
+
+      parts.reduce { |acc, p| acc | p }
+    end
+
+    # Intersect two knowable refinements over the SAME base type (Ranges or Sets),
+    # reusing Constraint.merge_matchers. An empty overlap (disjoint Ranges, empty
+    # Set intersection) is provably empty ⇒ Never; a non-empty overlap rebuilds via
+    # Constraint.narrow (`Integer[2..] & Integer[0..100]` == `Integer[2..100]`).
+    # Returns nil for anything it can't merge here (different bases, non-Range/Set
+    # matchers), leaving the caller to try other strategies.
+    def intersect_constraints(a, b)
+      return nil unless a.is_a?(Constraint) && b.is_a?(Constraint)
+      return nil unless a.base && b.base && a.base == b.base
+
+      merged = Constraint.merge_matchers(a.matcher, b.matcher)
+      return nil if merged.nil? # not the same knowable kind, or an incomputable overlap
+      return Types::Never if merged.equal?(Constraint::EMPTY) # provably empty ⇒ Never
+
+      Constraint.narrow(a.base, merged)
+    end
+
+    # Intersect two covariant containers of the same class (Array/Tuple/HashMap)
+    # by intersecting their children pairwise — `Array[A] & Array[B]` ==
+    # `Array[A & B]`. Returns nil for non-containers or a class/arity mismatch (the
+    # caller then falls back).
+    #
+    # A `Never` child does NOT necessarily sink the whole container. A Tuple has
+    # fixed arity — every position must be filled — so a `Never` element makes it
+    # uninhabitable ⇒ `Never`. A homogeneous container (Array/HashMap) can be
+    # empty, so `Array[Never]` / `HashMap[K, Never]` are still inhabited (by `[]` /
+    # `{}`) and are kept as-is rather than collapsed.
+    def intersect_containers(a, b)
+      return nil unless container_covariant?(a) && a.instance_of?(b.class)
+      return nil if a.children.empty? || a.children.size != b.children.size
+
+      merged = a.children.zip(b.children).map { |x, y| intersect(x, y) || And.new(x, y) }
+      return Types::Never if a.is_a?(TupleClass) && merged.any? { |m| m.is_a?(NeverClass) }
+
+      rebuild_container(a, merged)
+    end
+
+    def container_covariant?(type)
+      type.is_a?(ArrayClass) || type.is_a?(TupleClass) || type.is_a?(HashMap)
+    end
+
+    def rebuild_container(type, children)
+      case type
+      when ArrayClass then type.of(children.first)
+      when TupleClass then type.of(*children)
+      when HashMap then HashMap.new(children[0], children[1])
+      end
+    end
+
+    # Are two leaf types provably disjoint? True when NO pair of their underlying
+    # Ruby base types is subtype-related — so no value can be an instance of both
+    # (`Types::String & Types::Integer` ⇒ Never). Conservative: an unknown base
+    # (opaque matcher ⇒ empty base-type list) is NOT provably disjoint, so the
+    # caller keeps a runtime And rather than wrongly collapsing to Never.
+    def disjoint_atomic?(a, b)
+      abt = Plumb.resolve_base_types(a)
+      bbt = Plumb.resolve_base_types(b)
+      return false if abt.empty? || bbt.empty?
+
+      abt.none? { |x| bbt.any? { |y| class_le?(x, y) || class_le?(y, x) } }
     end
 
     # Distributive factoring — the join-dual of reduce_union's absorption:

@@ -30,6 +30,10 @@ module Plumb
       props
     end
 
+    on(:never) do |_node, props|
+      props
+    end
+
     # A refinement matcher carries its base; any user metadata lives on the base
     # (the matcher itself is type-bound info we don't collect), so follow it.
     on(:constraint) do |node, props|

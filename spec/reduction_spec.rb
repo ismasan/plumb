@@ -51,9 +51,10 @@ RSpec.describe 'composition reduction (>>)' do
       expect(RTypes::String['a'..'m']['c'..'z']).to eq(RTypes::String['c'..'m'])
     end
 
-    it 'leaves an empty intersection stacked (still rejects every value)' do
+    it 'reduces a disjoint intersection to Never (as #& does)' do
       empty = RTypes::Integer[0..5][10..]
-      expect(matcher_chain(empty)).to eq([10.., 0..5, ::Integer]) # not merged
+      expect(empty).to eq(RTypes::Never)
+      expect(empty).to eq(RTypes::Integer[0..5] & RTypes::Integer[10..])
       expect(empty.resolve(3).valid?).to be(false)
     end
 
@@ -88,9 +89,10 @@ RSpec.describe 'composition reduction (>>)' do
         .to raise_error(Plumb::TypeError)
     end
 
-    it 'merges an empty intersection to Set[] (matches nothing)' do
+    it 'reduces an empty set intersection to Never (as #& does)' do
       empty = RTypes::Integer[Set[1, 2]][Set[3, 4]]
-      expect(empty).to eq(RTypes::Integer[Set[]])
+      expect(empty).to eq(RTypes::Never)
+      expect(empty).to eq(RTypes::Integer[Set[1, 2]] & RTypes::Integer[Set[3, 4]])
       expect(empty.resolve(1).valid?).to be(false)
     end
 
@@ -164,8 +166,9 @@ RSpec.describe 'composition reduction (>>)' do
       expect(reduced.resolve('x' * 9).valid?).to be(false) # length 9 out of 4..8
     end
 
-    it 'stacks disjoint same-attribute clauses (unsatisfiable, like Constraints)' do
+    it 'reduces disjoint same-attribute clauses to Never (unsatisfiable, like Constraints)' do
       reduced = RTypes::String.where(size: 0..5) / RTypes::String.where(size: 10..20)
+      expect(reduced).to eq(RTypes::Never)
       expect(reduced.resolve('xxx').valid?).to be(false)    # size 3 fails 10..20
       expect(reduced.resolve('x' * 12).valid?).to be(false) # size 12 fails 0..5
     end
@@ -401,5 +404,94 @@ RSpec.describe 'composition reduction (>>)' do
         expect(string_branch).to have_key('anyOf')
       end
     end
+  end
+end
+
+# A covariant container is value-preserving exactly when its element/child types
+# are, so `#>>` / `#|` reduce it like the scalar case (see ArrayClass/TupleClass/
+# HashMap#value_preserving?).
+RSpec.describe 'covariant container reductions' do
+  module CTypes
+    include Plumb::Types
+  end
+
+  it '>> drops a redundant wider Array, like the scalar case' do
+    expect(CTypes::Array[CTypes::Integer] >> CTypes::Array[CTypes::Numeric])
+      .to eq(CTypes::Array[CTypes::Integer])
+    expect(CTypes::Array[CTypes::Integer] >> CTypes::Array[CTypes::Integer])
+      .to eq(CTypes::Array[CTypes::Integer])
+  end
+
+  it '| absorbs the narrower Array into the wider' do
+    expect(CTypes::Array[CTypes::Integer] | CTypes::Array[CTypes::Numeric])
+      .to eq(CTypes::Array[CTypes::Numeric])
+  end
+
+  it 'reduces Tuples and HashMaps the same way' do
+    expect(CTypes::Tuple[CTypes::Integer, CTypes::String] >> CTypes::Tuple[CTypes::Numeric, CTypes::String])
+      .to eq(CTypes::Tuple[CTypes::Integer, CTypes::String])
+    expect(CTypes::Hash[CTypes::Symbol, CTypes::Integer] >> CTypes::Hash[CTypes::Symbol, CTypes::Numeric])
+      .to eq(CTypes::Hash[CTypes::Symbol, CTypes::Integer])
+  end
+
+  it 'does NOT reduce when an element type coerces (not value-preserving)' do
+    coercing = CTypes::Array[CTypes::Integer.transform(::Float, &:to_f)]
+    expect(Plumb::Subtyping.value_preserving?(coercing)).to be(false)
+    # a coercing branch survives the union rather than being absorbed
+    union = CTypes::Array[CTypes::Integer] | coercing
+    expect(union).to be_a(Plumb::Or)
+  end
+
+  it 'keeps a filtered map non-value-preserving (it drops entries)' do
+    expect(Plumb::Subtyping.value_preserving?(CTypes::Hash[CTypes::Symbol, CTypes::Integer].filtered)).to be(false)
+  end
+end
+
+# A record `left >> right` reduces to `left` when `right` merely re-validates
+# left's output without dropping or converting anything (see
+# Subtyping.redundant_record_refinement?).
+RSpec.describe 'record (Hash) composition reductions' do
+  module HRTypes
+    include Plumb::Types
+  end
+
+  it 'drops a redundant wider record, like the scalar case' do
+    expect(HRTypes::Hash[age: HRTypes::Integer] >> HRTypes::Hash[age: HRTypes::Numeric])
+      .to eq(HRTypes::Hash[age: HRTypes::Integer])
+  end
+
+  it 'reduces across several keys' do
+    expect(HRTypes::Hash[a: HRTypes::Integer, b: HRTypes::Integer] >>
+           HRTypes::Hash[a: HRTypes::Numeric, b: HRTypes::Numeric])
+      .to eq(HRTypes::Hash[a: HRTypes::Integer, b: HRTypes::Integer])
+  end
+
+  it 'reduces when both carry a matching value-preserving catch-all' do
+    expect(HRTypes::Hash[a: HRTypes::Integer, _: HRTypes::Any] >>
+           HRTypes::Hash[a: HRTypes::Numeric, _: HRTypes::Any])
+      .to eq(HRTypes::Hash[a: HRTypes::Integer, _: HRTypes::Any])
+  end
+
+  it 'reduces identically at runtime' do
+    reduced = HRTypes::Hash[age: HRTypes::Integer] >> HRTypes::Hash[age: HRTypes::Numeric]
+    assert_result(reduced.resolve(age: 5, extra: 9), { age: 5 }, true)
+  end
+
+  it 'does NOT reduce when the right record drops a key the left keeps' do
+    type = HRTypes::Hash[age: HRTypes::Integer, name: HRTypes::String] >> HRTypes::Hash[age: HRTypes::Numeric]
+    expect(type).to be_a(Plumb::And)
+    # right drops :name, so the composed result differs from the left alone
+    assert_result(type.resolve(age: 5, name: 'x'), { age: 5 }, true)
+  end
+
+  it 'does NOT reduce when the right record would drop the left catch-all tail' do
+    expect(HRTypes::Hash[a: HRTypes::Integer, _: HRTypes::Any] >> HRTypes::Hash[a: HRTypes::Numeric])
+      .to be_a(Plumb::And)
+  end
+
+  it 'does NOT reduce when a right field converts the value (front/back coercion)' do
+    money = Class.new
+    back = HRTypes::Hash[price: HRTypes::Integer.build(money), _: HRTypes::Any]
+    expect(HRTypes::Hash[price: HRTypes::Integer] >> back).to be_a(Plumb::And)
   end
 end

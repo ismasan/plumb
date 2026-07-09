@@ -9,6 +9,9 @@ module Plumb
     def |(other) = Composable.wrap(other)
     def >>(other) = Composable.wrap(other)
 
+    # Top is the identity of intersection: `Any & X == X`, mirroring `Any | X`.
+    def &(other) = Composable.wrap(other)
+
     # Any.default(value) must trigger default when value is Undefined
     def default(...)
       Types::Undefined.not.default(...)

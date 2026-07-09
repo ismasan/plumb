@@ -19,6 +19,11 @@ module Plumb
 
     alias [] of
 
+    # A Tuple validates each position through its type, so it preserves the value
+    # only when every position type does (a coercing position would change the
+    # tuple).
+    def value_preserving? = children.all? { |c| Plumb::Subtyping.value_preserving?(c) }
+
     def call(result)
       return result.invalid!(errors: 'must be an Array') unless result.value.is_a?(::Array)
       return result.invalid!(errors: 'must have the same size') unless result.value.size == @children.size
