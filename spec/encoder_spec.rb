@@ -108,7 +108,7 @@ module EncoderSpecTypes
       end
 
       it 'orients unions by the produced value' do
-        # The Types::Forms::Date pattern: accept a Date, or decode a wire string into one.
+        # The lenient-union pattern: accept a Date, or decode a wire string into one.
         union = Types::Date | ISODateEncoder
         expect(union.parse(DATE)).to eq(DATE)
         expect(union.parse('2024-01-01')).to eq(DATE)

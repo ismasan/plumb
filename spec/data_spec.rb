@@ -378,7 +378,7 @@ RSpec.describe Types::Data do
 
   specify 'writer: true' do
     klass = Class.new(Types::Data) do
-      attribute :host, Types::Forms::URI::HTTP, writer: true
+      attribute :host, Plumb::Codec::Forms::HTTPURIEncoder, writer: true
       attribute :port, Types::Lax::Integer.default(80), writer: true
       attribute :thing do
         attribute :name, String, writer: true
@@ -398,6 +398,6 @@ RSpec.describe Types::Data do
 
     config.host = 10
     expect(config.valid?).to be false
-    expect(config.errors[:host].any?).to be true
+    expect(config.errors[:host]).not_to be_empty
   end
 end

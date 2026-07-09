@@ -298,15 +298,8 @@ You rarely write `Types::Never` by hand — it's what an impossible intersection
 * `Types::Lax::Integer`
 * `Types::Lax::String`
 * `Types::Lax::Symbol`
-* `Types::Forms::Boolean`
-* `Types::Forms::Nil`
-* `Types::Forms::True`
-* `Types::Forms::False`
-* `Types::Forms::Date`
-* `Types::Forms::Time`
-* `Types::Forms::URI::Generic`
-* `Types::Forms::URI::HTTP`
-* `Types::Forms::URI::File`
+
+For parsing stringy wire formats (HTML forms, query strings) into these types — what the `Types::Forms` namespace used to do, one way — see `Plumb::Codec::Forms` under [Encoders and Codecs](#encoders-and-codecs).
 
 TODO: datetime, others.
 
@@ -792,7 +785,7 @@ Wraps a step's execution, rescues a specific exception and returns an invalid re
 
 Useful for turning a 3rd party library's exception into an invalid result that plays well with Plumb's type compositions.
 
-Example: this is how `Types::Forms::Date` uses the `:rescue` policy to parse strings with `Date.parse` and turn `Date::Error` exceptions into Plumb errors.
+Example: parsing strings with `Date.parse` and turning `Date::Error` exceptions into Plumb errors.
 
 ```ruby
 # Accept a string that can be parsed into a Date
@@ -1619,7 +1612,7 @@ class DBConfig < Types::Data
 end
 
 class Config < Types::Data
-  attribute :host, Types::Forms::URI::HTTP, writer: true
+  attribute :host, Plumb::Codec::Forms::HTTPURIEncoder, writer: true
   attribute :port, Types::Integer.default(80), writer: true
 
   # Nested structs can have writers too
@@ -1872,7 +1865,7 @@ LinkedList = Types::Hash[
 
 ### Encoders and Codecs
 
-Coercions like `Types::Forms::Date` parse an external representation (a string) into an internal value (a `Date`), one way only. **Encoders** generalize that into pluggable, two-way serialization, and **Codecs** group encoders and apply them to whole schemas — Ruby data structures to JSON-ready structures and back, for example.
+A one-way coercion can parse an external representation (a date string) into an internal value (a `Date`), but not back. **Encoders** generalize that into pluggable, two-way serialization, and **Codecs** group encoders and apply them to whole schemas — Ruby data structures to JSON-ready structures and back, for example.
 
 #### Defining encoders
 
@@ -1912,7 +1905,7 @@ JSONDateRangeEncoder.decode(from: Date.new(2024, 1, 1), to: Date.new(2024, 2, 1)
 JSONDateRangeEncoder.encode(Date.new(2024, 1, 1)..Date.new(2024, 2, 1))           # => a Hash
 ```
 
-Encoders also upgrade the `Types::Forms::Date` pattern to two-way — `Types::Date | ISODateEncoder` accepts a `Date` or decodes a wire string into one.
+Encoders also express lenient unions — `Types::Date | SomeDateEncoder` accepts a `Date` or decodes a wire string into one.
 
 #### Codecs
 
@@ -1986,6 +1979,27 @@ The result of a codec composition is ordinary Plumb algebra — the codec leaves
 JSONPerson.to_json_schema
 # "dates" is described as { "type" => "object", "properties" => { "from" => { "type" => "string" }, ... } }
 ```
+
+#### `Codec::Forms`: stringly wire formats
+
+The second built-in codec targets HTML forms, query strings and other formats where **every value arrives as a string**. Unlike `Codec::JSON` there are almost no native scalars: strings pass through, untyped containers recurse (Rack-style nested params), and everything else maps through an encoder with a strictly-patterned string wire type — integers (`/\A-?\d+\z/`), floats, decimals, booleans (`"true"/"1"`, `"false"/"0"`, case-insensitive), ISO 8601 dates and times, scheme-prefixed URIs, and the empty string for `nil` (so `Types::Date | Types::Nil` decodes `''` to `nil`).
+
+```ruby
+Config = Types::Hash[
+  host: Types::URI::HTTP,
+  port: Types::Integer,
+  active: Types::Boolean,
+  starts_on: Types::Date | Types::Nil
+]
+
+decoder, encoder = Plumb::Codec::Forms.for(Config)
+decoder.parse({ host: 'http://example.com', port: '80', active: '1', starts_on: '' })
+# => { host: URI(...), port: 80, active: true, starts_on: nil }
+encoder.parse({ host: URI.parse('http://example.com'), port: 80, active: true, starts_on: nil })
+# => { host: 'http://example.com', port: '80', active: 'true', starts_on: '' }
+```
+
+`Codec::Forms` replaces the old one-way `Types::Forms` namespace. The wire types are strict — actual integers or booleans are *not* accepted on decode, since form data is always strings; apply the codec at the boundary and write schemas in internal types. Its encoders are also usable per-field (`attribute :host, Plumb::Codec::Forms::HTTPURIEncoder`), and the old lenient behaviour is expressible as a union: `Types::Date | Plumb::Codec::JSONDateEncoder`.
 
 Things to know:
 

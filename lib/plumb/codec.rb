@@ -274,6 +274,18 @@ module Plumb
         # replacement. Recursing rewrites the data-bearing parts and keeps the
         # machinery; an encoder with a union internal type still matches at
         # branch level.
+        #
+        # One exception: a value-preserving composite that is fully
+        # noop-covered converts nothing and needs no rewriting — pass it
+        # through whole. Factored refinement unions rely on this: a union of
+        # noop-type refinements (eg. `String[/\Atrue\z/i] | String['1']`)
+        # factors into a shape whose bare-matcher branches report opaque
+        # accepted types and would defeat the leaf-level noop check.
+        case type
+        when Or, And, Metadata, Policy, Composable::Node
+          return type if Plumb::Subtyping.value_preserving?(type) && @codec.noop?(type, @direction)
+        end
+
         case type
         when Or then return visit_or(type, path)
         when And then return visit_and(type, path)
@@ -513,6 +525,97 @@ module Plumb
            Types::Hash, Types::Array
 
       encoder JSONDateEncoder
+    end
+
+    # A base codec for stringly wire formats — HTML forms, query strings, CSV
+    # cells — where EVERY value arrives as a string. Unlike Codec::JSON there
+    # are almost no native scalars: strings pass through, untyped containers
+    # recurse structurally (Rack-style nested params), and everything else
+    # maps through an encoder whose wire type is a strictly-patterned string.
+    #
+    #   Config = Types::Hash[port: Types::Integer, active: Types::Boolean, on: Types::Date]
+    #   decoder, encoder = Plumb::Codec::Forms.for(Config)
+    #   decoder.parse({ port: '80', active: '1', on: '2024-01-30' })
+    #   # => { port: 80, active: true, on: Date(2024-01-30) }
+    class Forms < self
+      INTEGER_EXPR = /\A-?\d+\z/
+      FLOAT_EXPR = /\A-?\d+(\.\d+)?\z/
+      TIME_EXPR = /\A\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})?)?\z/
+
+      class IntegerEncoder < Encoder[Types::String[INTEGER_EXPR] => Types::Integer]
+        def encode(int) = int.to_s
+        def decode(str) = str.to_i
+      end
+
+      class FloatEncoder < Encoder[Types::String[FLOAT_EXPR] => Types::Float]
+        def encode(float) = float.to_s
+        def decode(str) = str.to_f
+      end
+
+      class DecimalEncoder < Encoder[Types::String[FLOAT_EXPR] => Types::Decimal]
+        def encode(dec) = dec.to_s('F')
+        def decode(str) = BigDecimal(str)
+      end
+
+      # For fields typed as the Numeric union. A more specific field (Integer,
+      # Float, Decimal) picks its own encoder via most-specific matching.
+      class NumericEncoder < Encoder[Types::String[FLOAT_EXPR] => Types::Numeric]
+        def encode(num) = num.is_a?(BigDecimal) ? num.to_s('F') : num.to_s
+        def decode(str) = str.include?('.') ? str.to_f : str.to_i
+      end
+
+      # Booleans are two encoders: a field typed Types::Boolean is the
+      # `True | False` union underneath, and each branch matches its own.
+      class TrueEncoder < Encoder[(Types::String[/\Atrue\z/i] | Types::String['1']) => Types::True]
+        def encode(_bool) = 'true'
+        def decode(_str) = true
+      end
+
+      class FalseEncoder < Encoder[(Types::String[/\Afalse\z/i] | Types::String['0']) => Types::False]
+        def encode(_bool) = 'false'
+        def decode(_str) = false
+      end
+
+      # An empty form field is nil — so `Types::Date | Types::Nil` decodes ''
+      # to nil and '2024-01-30' to a Date.
+      class NilEncoder < Encoder[Types::String[''] => Types::Nil]
+        def encode(_nil) = ''
+        def decode(_str) = nil
+      end
+
+      class TimeEncoder < Encoder[Types::String[TIME_EXPR].metadata(format: 'date-time') => Types::Time]
+        def encode(time) = time.iso8601
+        def decode(str) = ::Time.parse(str)
+      end
+
+      # Scheme-prefixed URI strings, per RFC 3986 — URI.parse alone is too
+      # permissive (a blank string is a valid URI). The narrower HTTP/File
+      # variants win most-specific matching for fields typed as such; the
+      # produced value is validated against the declared URI class.
+      URI_EXPR = /\A[a-z][a-z0-9+\-.]*:/i
+
+      class URIEncoder < Encoder[Types::String[URI_EXPR].metadata(format: 'uri') => Types::URI::Generic]
+        def encode(uri) = uri.to_s
+        def decode(str) = ::URI.parse(str)
+      end
+
+      class HTTPURIEncoder < Encoder[Types::String[URI_EXPR].metadata(format: 'uri') => Types::URI::HTTP]
+        def encode(uri) = uri.to_s
+        def decode(str) = ::URI.parse(str)
+      end
+
+      class FileURIEncoder < Encoder[Types::String[URI_EXPR].metadata(format: 'uri') => Types::URI::File]
+        def encode(uri) = uri.to_s
+        def decode(str) = ::URI.parse(str)
+      end
+
+      noop Types::String, Types::Hash, Types::Array
+
+      encoder IntegerEncoder, FloatEncoder, DecimalEncoder, NumericEncoder
+      encoder TrueEncoder, FalseEncoder, NilEncoder
+      encoder JSONDateEncoder # ISO 8601 date strings — shared with Codec::JSON
+      encoder TimeEncoder
+      encoder URIEncoder, HTTPURIEncoder, FileURIEncoder
     end
   end
 end

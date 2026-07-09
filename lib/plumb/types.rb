@@ -219,38 +219,8 @@ module Plumb
       Integer = Numeric.transform(::Integer, :to_i)
     end
 
-    module Forms
-      True = Types::True \
-        | (
-          Types::String[/^true$/i] \
-          | Types::String['1'] \
-          | Types::Integer[1]
-        ).transform(::TrueClass) { |_| true }
-
-      False = Types::False \
-        | (
-          Types::String[/^false$/i] \
-          | Types::String['0'] \
-          | Types::Integer[0]
-        ).transform(::FalseClass) { |_| false }
-
-      Boolean = True | False
-
-      Nil = Nil | (String[BLANK_STRING] >> nil)
-
-      # Accept a Date, or a string that can be parsed into a Date
-      # via Date.parse
-      Date = Date | (String >> Any.build(::Date, :parse).policy(:rescue, ::Date::Error))
-      Time = Time | (String >> Any.build(::Time, :parse).policy(:rescue, ::ArgumentError))
-
-      # Turn strings into different URI types
-      module URI
-        # URI.parse is very permisive - a blank string is valid.
-        # We want to ensure that a generic URI at least starts with a scheme as per RFC 3986
-        Generic = Types::URI::Generic | (String[/^([a-z][a-z0-9+\-.]*)/].build(::URI, :parse))
-        HTTP = Generic[::URI::HTTP]
-        File = Generic[::URI::File]
-      end
-    end
+    # NOTE: the one-way Types::Forms coercions were replaced by the two-way
+    # Plumb::Codec::Forms — apply it to a schema written in internal types
+    # (`Codec::Forms >> schema`), or use its encoders per-field.
   end
 end
