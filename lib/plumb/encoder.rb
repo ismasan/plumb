@@ -66,10 +66,6 @@ module Plumb
 
       alias output_type input_type
 
-      # A noop encoder passes values through untouched — used by Codec to
-      # declare pass-through types (see Codec.noop). Real encoders are not.
-      def noop? = false
-
       # The default step: the declared `input_type -> output_type` direction,
       # running #decode. A plain Function — #call validates the input type,
       # runs the encoder's method, and validates the produced value against
@@ -132,7 +128,9 @@ module Plumb
 
       def /(other) = decoding / other
 
-      # Direct use runs the default direction.
+      # Direct use runs the default direction — also the Composable.wrap hook
+      # for context-free positions (schema literals, `Array[Enc]`, `#/`).
+      def to_composable = decoding
       def call(result) = decoding.call(result)
       def resolve(...) = decoding.resolve(...)
       def parse(...) = decoding.parse(...)
@@ -151,10 +149,10 @@ module Plumb
           raise ArgumentError, "#{inspect} must implement ##{direction} to be used in this direction"
         end
 
-        instance = new.freeze
+        run = new.freeze.method(direction)
         encoder_class = self
         step_proc = lambda do |result|
-          result.valid!(instance.public_send(direction, result.value))
+          result.valid!(run.call(result.value))
         rescue StandardError => e
           result.invalid!(errors: "#{encoder_class.inspect}##{direction} failed: #{e.message}")
         end

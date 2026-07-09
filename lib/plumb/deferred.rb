@@ -19,7 +19,11 @@ module Plumb
 
     def type
       @lock.synchronize do
-        @cached_type = @definition.call
+        @cached_type ||= @definition.call
+        # Release the definition closure: it can capture large scopes (eg. a
+        # codec rewriter and the type graph it walked) that would otherwise
+        # stay reachable for the life of this node.
+        @definition = nil
         self.define_singleton_method(:type) do
           @cached_type
         end

@@ -210,13 +210,14 @@ module Plumb
     def self.wrap(callable)
       if callable.is_a?(Composable)
         callable
-      elsif callable.is_a?(::Class) && defined?(Encoder) && callable < Encoder
-        # An Encoder class used in a context-free position (a schema literal,
-        # `Array[Enc]`, `#/`) resolves to its default (declared) direction. The
-        # composition operators (#>>, #|, #&) consult #to_plumb_type BEFORE
-        # wrapping, so a composed encoder can pick its direction from context
-        # and never reaches this branch.
-        callable.decoding
+      elsif callable.respond_to?(:to_composable)
+        # The context-free resolution hook for objects that become a type on
+        # demand: an Encoder class resolves to its default (declared)
+        # direction, a Codec class to its instance. Used in schema literals,
+        # `Array[Enc]`, `#/`, etc. The composition operators (#>>, #|, #&)
+        # consult #to_plumb_type BEFORE wrapping, so a composed operand can
+        # resolve against context and never reaches this branch.
+        wrap(callable.to_composable)
       elsif callable.is_a?(::Hash)
         HashClass.new(schema: callable)
       elsif callable.is_a?(::Array)

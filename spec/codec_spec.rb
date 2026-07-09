@@ -55,8 +55,10 @@ module CodecSpecTypes
     describe 'definition' do
       it 'registers encoders and noops, inheritable through subclasses' do
         expect(JSONCodec.encoders).to include(DateRangeEncoder, ISODateEncoder)
+        expect(JSONCodec.noop_types).to include(Types::String)
         sub = Class.new(JSONCodec)
         expect(sub.encoders).to include(DateRangeEncoder)
+        expect(sub.noop_types).to include(Types::String)
       end
 
       it 'validates encoder registration' do

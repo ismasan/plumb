@@ -26,7 +26,7 @@ module Plumb
 
     # As a consumer, a Tuple accepts each position relaxed to what that
     # position's type accepts (see HashClass#accepted_type).
-    def accepted_type = self.class.new(*children.map { |c| Plumb::Subtyping.accepted_type(c) })
+    def accepted_type = of(*children.map { |c| Plumb::Subtyping.accepted_type(c) })
 
     def call(result)
       return result.invalid!(errors: 'must be an Array') unless result.value.is_a?(::Array)

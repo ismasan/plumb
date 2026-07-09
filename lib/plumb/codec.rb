@@ -6,7 +6,8 @@ require 'plumb/encoder'
 module Plumb
   # A group of {Encoder}s that applies itself to whole types at composition
   # time. A Codec knows nothing about any particular format — only its
-  # encoders. Pass-through types are expressed as noop encoders (`.noop`).
+  # encoders, plus a list of pass-through types (`.noop`) already valid in
+  # the target format.
   #
   #   class JSONCodec < Plumb::Codec
   #     noop Types::String, Types::Integer, Types::Float, Types::Numeric,
@@ -50,15 +51,12 @@ module Plumb
         self
       end
 
-      # Register pass-through types: values of these types are already valid in
-      # the codec's target format and are left untouched. Implemented as noop
-      # encoders (identity #encode/#decode), so they participate in matching
-      # like any encoder but rewrite to nothing.
+      # Register pass-through types: values of these types are already valid
+      # in the codec's target format and are left untouched — they rewrite to
+      # nothing. Real encoders always match first, so a noop never shadows a
+      # registered encoder for the same type.
       def noop(*types)
-        types.each do |t|
-          t = Composable.wrap(t)
-          own_encoders << build_noop(t)
-        end
+        types.each { |t| own_noop_types << Composable.wrap(t) }
         self
       end
 
@@ -69,6 +67,12 @@ module Plumb
         inherited + own_encoders
       end
 
+      # All registered pass-through types, inherited first.
+      def noop_types
+        inherited = superclass.respond_to?(:noop_types) ? superclass.noop_types : BLANK_ARRAY
+        inherited + own_noop_types
+      end
+
       # Class-level composition delegates to a memoized instance, so a Codec
       # subclass composes directly: `JSONCodec >> Person`.
       def instance = @instance ||= new
@@ -77,30 +81,23 @@ module Plumb
       def &(other) = instance & other
       def for(type) = instance.for(type)
       def to_plumb_type(op:, left:) = instance.to_plumb_type(op:, left:)
+      def to_composable = instance
       def call(result) = instance.call(result)
 
       private
 
       def own_encoders = @own_encoders ||= []
-
-      def build_noop(type)
-        Class.new(Encoder[type => type]) do
-          def encode(value) = value
-          def decode(value) = value
-
-          define_singleton_method(:noop?) { true }
-          define_singleton_method(:inspect) { "Noop(#{type.inspect})" }
-        end
-      end
+      def own_noop_types = @own_noop_types ||= []
     end
 
-    attr_reader :encoders
+    attr_reader :encoders, :noop_types
 
     # @param extra_encoders [Array<Class>] encoders for this instance, appended
     #   after (and winning ties over) the class-level registry.
     def initialize(*extra_encoders)
       @encoders = self.class.encoders + extra_encoders
-      @noop_union = @encoders.select(&:noop?).map(&:output_type).reduce { |a, b| Or.new(a, b) }
+      @noop_types = self.class.noop_types
+      @noop_union = @noop_types.reduce { |a, b| Or.new(a, b) }
       freeze
     end
 
@@ -138,7 +135,7 @@ module Plumb
       left = Composable.wrap(left)
       # A plain-include struct wraps as an opaque Step (output Any), so its
       # rewrite target is the struct node itself, not its resolved output.
-      target = Rewriter.struct_class(left) ? left : Plumb::Subtyping.resolved_output(left)
+      target = Plumb::Attributes.struct_class(left) ? left : Plumb::Subtyping.resolved_output(left)
       Rewriter.new(self, :encode).call(target)
     end
 
@@ -149,12 +146,12 @@ module Plumb
       raise Plumb::TypeError, "#{inspect} is not a runtime type; compose it with a type via #>>"
     end
 
-    # The best matching REAL (non-noop) encoder for `type`, or nil. Matching is
-    # against each encoder's output (internal) type — schemas are written in
-    # internal terms in both directions. Most-specific wins; equivalent types
+    # The best matching encoder for `type`, or nil. Matching is against each
+    # encoder's output (internal) type — schemas are written in internal
+    # terms in both directions. Most-specific wins; equivalent types
     # tie-break to the last registered; incomparable multi-matches raise.
     def encoder_for(type, path = BLANK_ARRAY)
-      matches = encoders.reject(&:noop?).select { |e| Plumb::Subtyping.subtype?(type, e.output_type) }
+      matches = encoders.select { |e| Plumb::Subtyping.subtype?(type, e.output_type) }
       return nil if matches.empty?
       return matches.first if matches.size == 1
 
@@ -211,7 +208,7 @@ module Plumb
     def at_path(path) = path.empty? ? 'the root type' : "field `#{path.join('.')}`"
 
     private def _inspect
-      "#{self.class == Codec ? 'Plumb::Codec' : self.class.name}[#{encoders.reject(&:noop?).map(&:inspect).join(', ')}]"
+      "#{self.class == Codec ? 'Plumb::Codec' : self.class.name}[#{encoders.map(&:inspect).join(', ')}]"
     end
 
     # The deep rewrite walker. Top-down, per node:
@@ -232,23 +229,11 @@ module Plumb
     # Untouched subtrees keep their identity (the original node is returned),
     # so noop pass-through adds no nodes.
     class Rewriter
-      # The struct class behind `type`, or nil. Structs appear in two shapes:
-      # a Composable-extended class (Types::Data subclasses — the class IS the
-      # node), or an opaque Step wrapping a plain `include Plumb::Attributes`
-      # class (what Composable.wrap makes of one — same shape
-      # Attributes#build_nested detects).
-      def self.struct_class(type)
-        return type if type.is_a?(::Class) && type <= Plumb::Attributes
-        return nil unless type.is_a?(Plumb::Step)
-
-        callable = type.children.first
-        callable.is_a?(::Class) && callable <= Plumb::Attributes ? callable : nil
-      end
-
       def initialize(codec, direction)
         @codec = codec
         @direction = direction # :decode | :encode
         @deferred_memo = {}.compare_by_identity
+        @wire_memo = {}.compare_by_identity
         @wire_stack = []
         @root = nil
       end
@@ -259,11 +244,6 @@ module Plumb
       end
 
       private
-
-      # Pure value-preserving refinements carry no data of their own — as
-      # children of an And chain they filter the adjacent type's values and
-      # pass through the rewrite untouched.
-      PURE_REFINEMENTS = %i[constraint attribute_value_match value not].freeze
 
       def visit(type, path)
         return visit_deferred(type, path) if type.is_a?(Deferred)
@@ -286,9 +266,9 @@ module Plumb
         case type
         when Or then return visit_or(type, path)
         when And then return visit_and(type, path)
-        when Metadata then return rebuild(type, visit(type.type, path)) { |t| Metadata.new(t, type.metadata) }
-        when Policy then return rebuild(type, visit(type.children.first, path)) { |t| Policy.new(type.policy_name, type.arg, t) }
-        when Composable::Node then return rebuild(type, visit(type.type, path)) { |t| t.as_node(type.node_name, type.args) }
+        when Metadata then return rebuild(type, type.type, path) { |t| Metadata.new(t, type.metadata) }
+        when Policy then return rebuild(type, type.children.first, path) { |t| Policy.new(type.policy_name, type.arg, t) }
+        when Composable::Node then return rebuild(type, type.type, path) { |t| t.as_node(type.node_name, type.args) }
         end
 
         if (enc = @codec.encoder_for(type, path))
@@ -301,7 +281,7 @@ module Plumb
         when TupleClass then visit_tuple(type, path)
         when HashMap then visit_hash_map(type, path)
         else
-          if (struct = self.class.struct_class(type))
+          if (struct = Plumb::Attributes.struct_class(type))
             visit_struct(type, struct, path)
           else
             noop_or_fail(type, path)
@@ -353,8 +333,7 @@ module Plumb
 
         if (enc = @codec.encoder_for(type, path))
           encoded = replace(type, enc, path).parse(value)
-          encoded = encoded.freeze unless encoded.frozen?
-          And.new(ValueClass.new(value), StaticClass.new(encoded))
+          And.new(ValueClass.new(value), StaticClass.new(encoded.freeze))
         else
           noop_or_fail(type, path)
         end
@@ -373,12 +352,17 @@ module Plumb
                 "#{@codec.inspect}: encoder wire-type cycle: #{(@wire_stack + [enc]).map(&:inspect).join(' -> ')}"
         end
 
+        # Memoized per run: a schema with many fields matching the same
+        # encoder rewrites its wire type once (direction is fixed per
+        # Rewriter; the path only feeds error text on the first visit).
         wire = enc.input_type
-        begin
-          @wire_stack.push(enc)
-          rewritten_wire = visit(wire, path + ["<#{enc.inspect} wire>"])
-        ensure
-          @wire_stack.pop
+        rewritten_wire = @wire_memo.fetch(enc) do
+          begin
+            @wire_stack.push(enc)
+            @wire_memo[enc] = visit(wire, path + ["<#{enc.inspect} wire>"])
+          ensure
+            @wire_stack.pop
+          end
         end
 
         narrowed = narrowed_side(type, enc)
@@ -426,12 +410,12 @@ module Plumb
         return noop_or_fail(type, path) if element.is_a?(AnyClass) # untyped Array — a leaf
 
         v = visit(element, path + ['[]'])
-        v.equal?(element) ? type : type.class.new(element_type: v)
+        v.equal?(element) ? type : type[v]
       end
 
       def visit_tuple(type, path)
         members = type.children.each_with_index.map { |m, i| visit(m, path + ["[#{i}]"]) }
-        members.zip(type.children).all? { |v, m| v.equal?(m) } ? type : type.class.new(*members)
+        members.zip(type.children).all? { |v, m| v.equal?(m) } ? type : type.of(*members)
       end
 
       # Keys are left untouched — key normalization (eg. string keys from the
@@ -459,10 +443,13 @@ module Plumb
         l.equal?(left) && r.equal?(right) ? type : And.new(l, r)
       end
 
+      # Pure value-preserving refinements carry no data of their own — they
+      # filter the adjacent type's values and pass through the rewrite.
       def visit_and_child(child, path)
-        return child if child.respond_to?(:node_name) && PURE_REFINEMENTS.include?(child.node_name)
-
-        visit(child, path)
+        case child
+        when Constraint, AttributeValueMatch, ValueClass, Not then child
+        else visit(child, path)
+        end
       end
 
       # Recursive/self-referential types rewrite lazily: the memo ties the knot
@@ -488,12 +475,11 @@ module Plumb
         end
       end
 
-      def rebuild(original, visited_inner)
-        visited_inner.equal?(original_inner(original)) ? original : yield(visited_inner)
-      end
-
-      def original_inner(node)
-        node.respond_to?(:type) ? node.type : node.children.first
+      # Visit a transparent wrapper's inner type; keep the wrapper when
+      # nothing changed, else re-wrap via the block.
+      def rebuild(original, inner, path)
+        v = visit(inner, path)
+        v.equal?(inner) ? original : yield(v)
       end
     end
 
@@ -548,15 +534,10 @@ module Plumb
       def decode(str) = ::URI.parse(str)
     end
 
-    class HTTPURIEncoder < Encoder[Types::String[URI_EXPR].metadata(format: 'uri') => Types::URI::HTTP]
-      def encode(uri) = uri.to_s
-      def decode(str) = ::URI.parse(str)
-    end
-
-    class FileURIEncoder < Encoder[Types::String[URI_EXPR].metadata(format: 'uri') => Types::URI::File]
-      def encode(uri) = uri.to_s
-      def decode(str) = ::URI.parse(str)
-    end
+    # Re-parameterized subclasses: same wire type and methods, narrower
+    # output — the produced URI is validated against the declared class.
+    HTTPURIEncoder = URIEncoder[URIEncoder.input_type => Types::URI::HTTP]
+    FileURIEncoder = URIEncoder[URIEncoder.input_type => Types::URI::File]
 
     # A base codec for JSON-like targets: the scalars native to JSON pass
     # through (structured containers are handled structurally by the rewrite;

@@ -33,7 +33,7 @@ module Plumb
     # As a consumer, an Array accepts elements relaxed to what the ELEMENT type
     # accepts — so `Array[Integer] >> Array[Integer.build(Money)]` composes,
     # mirroring HashClass#accepted_type's per-field relaxation.
-    def accepted_type = self.class.new(element_type: Plumb::Subtyping.accepted_type(@element_type))
+    def accepted_type = of(Plumb::Subtyping.accepted_type(@element_type))
 
     def concurrent
       ConcurrentArrayClass.new(element_type:)

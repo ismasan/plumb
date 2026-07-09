@@ -113,6 +113,19 @@ module Plumb
       base.define_singleton_method(:__plumb_struct_class__) { base }
     end
 
+    # The struct class behind `node`, or nil. Structs appear in two shapes: a
+    # Plumb::Attributes class itself (Types::Data subclasses are Composable
+    # classes), or the opaque Step that Composable.wrap builds around a plain
+    # `include Plumb::Attributes` class. This is the one owner of that
+    # representation fact — used by #build_nested and Codec's rewriter.
+    def self.struct_class(node)
+      return node if node.is_a?(::Class) && node <= Attributes
+      return nil unless node.is_a?(Plumb::Step)
+
+      callable = node.children.first
+      callable.is_a?(::Class) && callable <= Attributes ? callable : nil
+    end
+
     attr_reader :errors, :attributes
 
     def initialize(attrs = {})
@@ -333,19 +346,10 @@ module Plumb
       end
 
       def build_nested(name, node, &block)
-        if node.is_a?(Class) && node <= Plumb::Attributes
-          sub = Class.new(node)
-          sub.instance_exec(&block)
-          __set_nested_class__(name, sub)
-          return Composable.wrap(sub)
-        end
+        klass = Plumb::Attributes.struct_class(node)
+        return node unless klass
 
-        return node unless node.is_a?(Plumb::Step)
-
-        child = node.children.first
-        return node unless child <= Plumb::Attributes
-
-        sub = Class.new(child)
+        sub = Class.new(klass)
         sub.instance_exec(&block)
         __set_nested_class__(name, sub)
         Composable.wrap(sub)
