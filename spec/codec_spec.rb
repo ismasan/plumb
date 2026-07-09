@@ -23,6 +23,24 @@ module CodecSpecTypes
 
   Person = Types::Hash[name: Types::String, dates: DateRange]
 
+  class Company < Types::Data
+    attribute :name, Types::String
+    attribute :founded, Types::Date
+  end
+
+  class PlainEmployee
+    include Plumb::Attributes
+    attribute :name, Types::String
+    attribute :joined, Types::Date
+  end
+
+  class Team < Types::Data
+    attribute :title, Types::String
+    attribute :company, Company
+    attribute :members, Types::Array[PlainEmployee].default([].freeze)
+    attribute? :dates, DateRange
+  end
+
   Tree = Types::Hash[
     value: Types::Date,
     children: Types::Array[Types::Any.defer { Tree }]
@@ -328,6 +346,92 @@ module CodecSpecTypes
 
       it 'raises when used as a runtime type' do
         expect { JSONCodec.instance.parse('x') }.to raise_error(Plumb::TypeError, /not a runtime type/)
+      end
+    end
+
+    describe 'struct types (Types::Data / Plumb::Attributes)' do
+      it 'decodes wire structures into struct instances' do
+        company = (JSONCodec >> Company).parse({ name: 'ACME', founded: '2024-01-01' })
+        expect(company).to be_a(Company)
+        expect(company.founded).to eq(DATE)
+      end
+
+      it 'encodes struct instances into wire structures' do
+        company = Company.new(name: 'ACME', founded: DATE)
+        expect((Company >> JSONCodec).parse(company)).to eq({ name: 'ACME', founded: '2024-01-01' })
+      end
+
+      it 'round-trips via .for' do
+        decoder, encoder = JSONCodec.for(Company)
+        company = decoder.parse({ name: 'ACME', founded: '2024-01-01' })
+        expect(encoder.parse(company)).to eq({ name: 'ACME', founded: '2024-01-01' })
+      end
+
+      it 'supports plain include Plumb::Attributes classes' do
+        decoder, encoder = JSONCodec.for(PlainEmployee)
+        employee = decoder.parse({ name: 'Joe', joined: '2024-01-01' })
+        expect(employee).to be_a(PlainEmployee)
+        expect(employee.joined).to eq(DATE)
+        expect(encoder.parse(employee)).to eq({ name: 'Joe', joined: '2024-01-01' })
+      end
+
+      it 'recurses into nested structs, arrays of structs, defaults and encoder-matched attributes' do
+        wire = {
+          title: 'Core',
+          company: { name: 'ACME', founded: '2024-01-01' },
+          members: [{ name: 'Joe', joined: '2024-02-01' }],
+          dates: { from: '2024-01-01', to: '2024-02-01' }
+        }
+        decoder, encoder = JSONCodec.for(Team)
+        team = decoder.parse(wire)
+        expect(team.company.founded).to eq(DATE)
+        expect(team.members.first).to be_a(PlainEmployee)
+        expect(team.members.first.joined).to eq(::Date.new(2024, 2, 1))
+        expect(team.dates).to eq(RANGE)
+        expect(encoder.parse(team)).to eq(wire)
+
+        defaulted = decoder.parse({ title: 'Solo', company: { name: 'ACME', founded: '2024-01-01' } })
+        expect(defaulted.members).to eq([])
+      end
+
+      it 'works as a field inside plain Hash schemas' do
+        schema = Types::Hash[company: Company]
+        decoded = (JSONCodec >> schema).parse({ company: { name: 'ACME', founded: '2024-01-01' } })
+        expect(decoded[:company]).to be_a(Company)
+        expect(decoded[:company].founded).to eq(DATE)
+      end
+
+      it 'reports invalid wire data under the failing attribute' do
+        result = (JSONCodec >> Company).resolve({ name: 'ACME', founded: 'nope' })
+        expect(result.valid?).to be(false)
+        expect(result.errors[:founded]).to be_a(::String)
+      end
+
+      it 'lets an encoder target a struct type directly' do
+        company_string = Class.new(Plumb::Encoder[Types::String => Company]) do
+          def encode(company) = "#{company.name}|#{company.founded.iso8601}"
+
+          def decode(str)
+            name, founded = str.split('|')
+            Company.new(name:, founded: ::Date.parse(founded))
+          end
+        end
+        codec = Class.new(Plumb::Codec::JSON) { encoder(company_string) }
+        decoded = (codec >> Company).parse('ACME|2024-01-01')
+        expect(decoded).to be_a(Company)
+        expect((Company >> codec).parse(decoded)).to eq('ACME|2024-01-01')
+      end
+
+      it 'raises with the attribute path for unmatched attribute types' do
+        klass = Types::Data[joined_at: Types::Any[::Time]]
+        expect { JSONCodec >> klass }.to raise_error(Plumb::TypeError, /joined_at/)
+        expect { klass >> JSONCodec }.to raise_error(Plumb::TypeError, /joined_at/)
+      end
+
+      it 'describes the wire side in JSON Schema' do
+        schema = Plumb::JSONSchemaVisitor.call(JSONCodec >> Company)
+        expect(schema.dig('properties', 'founded')).to eq('type' => 'string')
+        expect(schema['required']).to eq(%w[name founded])
       end
     end
 

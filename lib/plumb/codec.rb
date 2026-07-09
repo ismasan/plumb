@@ -135,7 +135,11 @@ module Plumb
         raise Plumb::TypeError, "#{inspect} only composes with #>> (got #{op}); a Codec is not a value type"
       end
 
-      Rewriter.new(self, :encode).call(Plumb::Subtyping.resolved_output(Composable.wrap(left)))
+      left = Composable.wrap(left)
+      # A plain-include struct wraps as an opaque Step (output Any), so its
+      # rewrite target is the struct node itself, not its resolved output.
+      target = Rewriter.struct_class(left) ? left : Plumb::Subtyping.resolved_output(left)
+      Rewriter.new(self, :encode).call(target)
     end
 
     def |(_other) = raise Plumb::TypeError, "#{inspect} only composes with #>>; a Codec is not a value type"
@@ -222,6 +226,19 @@ module Plumb
     # Untouched subtrees keep their identity (the original node is returned),
     # so noop pass-through adds no nodes.
     class Rewriter
+      # The struct class behind `type`, or nil. Structs appear in two shapes:
+      # a Composable-extended class (Types::Data subclasses — the class IS the
+      # node), or an opaque Step wrapping a plain `include Plumb::Attributes`
+      # class (what Composable.wrap makes of one — same shape
+      # Attributes#build_nested detects).
+      def self.struct_class(type)
+        return type if type.is_a?(::Class) && type <= Plumb::Attributes
+        return nil unless type.is_a?(Plumb::Step)
+
+        callable = type.children.first
+        callable.is_a?(::Class) && callable <= Plumb::Attributes ? callable : nil
+      end
+
       def initialize(codec, direction)
         @codec = codec
         @direction = direction # :decode | :encode
@@ -275,7 +292,33 @@ module Plumb
         when TupleClass then visit_tuple(type, path)
         when HashMap then visit_hash_map(type, path)
         else
-          noop_or_fail(type, path)
+          if (struct = self.class.struct_class(type))
+            visit_struct(type, struct, path)
+          else
+            noop_or_fail(type, path)
+          end
+        end
+      end
+
+      # A struct (Types::Data / Plumb::Attributes) is a Hash schema plus a
+      # constructor. Decoding, the rewritten schema turns wire fields into
+      # internal values and the class itself builds the instance (Transform's
+      # output stage CALLS it). Encoding, the class validates/constructs the
+      # instance, `#attributes` exposes the internal values (shallow — nested
+      # structs stay instances and are handled by their own rewritten nodes,
+      # unlike the deep #to_h), and the encode-rewritten schema turns them
+      # into wire values. Either way a single Transform node, so accepted/
+      # produced types and the JSON Schema stay honest.
+      def visit_struct(original, struct, path)
+        schema = visit(struct._schema, path)
+        if @direction == :decode
+          # All fields wire-native already: the struct validates and
+          # constructs by itself.
+          return original if schema.equal?(struct._schema)
+
+          Transform.new(schema, struct, Plumb::NOOP)
+        else
+          Transform.new(struct, schema, ->(result) { result.valid!(result.value.attributes) })
         end
       end
 

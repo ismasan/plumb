@@ -1960,6 +1960,19 @@ Codecs work with any type, not just schemas:
 JSONCodec >> Types::String # => Types::String, unchanged (noop)
 ```
 
+Struct classes (`Types::Data` subclasses, or any class that `include`s `Plumb::Attributes`) work too, at any depth — decoding builds instances, encoding takes them apart:
+
+```ruby
+class Company < Types::Data
+  attribute :name, Types::String
+  attribute :founded, Types::Date
+end
+
+decoder, encoder = JSONCodec.for(Company)
+company = decoder.parse({ name: 'ACME', founded: '2024-01-01' }) # => #<Company founded: Date>
+encoder.parse(company) # => { name: 'ACME', founded: '2024-01-01' }
+```
+
 A field that matches no encoder and no noop is a composition-time error naming the field path:
 
 ```ruby
@@ -1979,8 +1992,8 @@ Things to know:
 * Direction inference needs a typed neighbour. Opaque contexts fall back to the declared direction — use `.decoding`/`.encoding` to be explicit.
 * The JSON Schema of an *encode* pipeline describes its (internal) input side, per the library convention that schemas describe accepted inputs. Visit the decode direction for the wire schema.
 * `.defer`red fields rewrite lazily, so an unmatched type inside one surfaces at first resolution rather than at composition.
-* Registering `noop Types::Hash` / `Types::Array` only covers *untyped* containers — structured schemas are always recursed into, so a generic noop can't accidentally skip encoding of nested fields.
-* `Types::Data` / `Plumb::Attributes` classes are not yet supported as codec targets.
+* Registering `noop Types::Hash` / `Types::Array` only covers *untyped* containers — structured schemas (and struct classes) are always recursed into, so a generic noop can't accidentally skip encoding of nested fields.
+* Decoding a struct runs the rewritten schema and then the struct's own validation — correct, but a struct attribute with a non-idempotent transform would apply it twice. Struct attributes should be validators/coercions, as they already must be for `#with`.
 
 ### Custom types
 
