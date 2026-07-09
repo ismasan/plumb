@@ -1913,7 +1913,8 @@ A codec groups encoders and applies them to whole types at composition time. Cod
 
 ```ruby
 # Plumb::Codec::JSON ships noops for String, Numeric, booleans, Nil and bare
-# Hash/Array, plus built-in ISO 8601 Date/Time and URI string encoders.
+# Hash/Array, plus built-in string encoders for Dates, Times, URIs,
+# Symbols and Decimals.
 class JSONCodec < Plumb::Codec::JSON
   encoder JSONDateRangeEncoder
 end
@@ -2001,7 +2002,7 @@ encoder.parse({ host: URI.parse('http://example.com'), port: 80, active: true, s
 
 `Codec::Forms` replaces the old one-way `Types::Forms` namespace. The wire types are strict — actual integers or booleans are *not* accepted on decode, since form data is always strings; apply the codec at the boundary and write schemas in internal types.
 
-Format-neutral encoders (ISO 8601 `Codec::DateEncoder`/`Codec::TimeEncoder`, RFC 3986 `Codec::URIEncoder`/`HTTPURIEncoder`/`FileURIEncoder`) live at the `Plumb::Codec` level and are registered by both built-in codecs. They are also usable per-field (`attribute :host, Plumb::Codec::HTTPURIEncoder`), and the old lenient behaviour is expressible as a union: `Types::Date | Plumb::Codec::DateEncoder`.
+Format-neutral encoders live at the `Plumb::Codec` level and are registered by both built-in codecs: ISO 8601 `Codec::DateEncoder`/`Codec::TimeEncoder`, RFC 3986 `Codec::URIEncoder`/`HTTPURIEncoder`/`FileURIEncoder`, `Codec::SymbolEncoder` (Symbols travel as strings) and `Codec::DecimalEncoder` (BigDecimals travel as canonical decimal strings — a string, not a number, to keep their precision; this also applies under `Codec::JSON`, where a raw BigDecimal would not be JSON-native). They are also usable per-field (`attribute :host, Plumb::Codec::HTTPURIEncoder`), and the old lenient behaviour is expressible as a union: `Types::Date | Plumb::Codec::DateEncoder`.
 
 Things to know:
 

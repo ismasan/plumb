@@ -37,6 +37,14 @@ module CodecFormsSpec
       end
     end
 
+    describe 'symbols' do
+      specify Types::Symbol do
+        decoder, encoder = Codec.for(Types::Symbol)
+        expect(decoder.parse('active')).to eq(:active)
+        expect(encoder.parse(:active)).to eq('active')
+      end
+    end
+
     describe 'booleans' do
       specify Types::Boolean do
         decoder, encoder = Codec.for(Types::Boolean)

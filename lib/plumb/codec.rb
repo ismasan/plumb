@@ -512,6 +512,7 @@ module Plumb
     # Scheme-prefixed URI strings, per RFC 3986 — URI.parse alone is too
     # permissive (a blank string is a valid URI).
     URI_EXPR = /\A[a-z][a-z0-9+\-.]*:/i
+    FLOAT_EXPR = /\A-?\d+(\.\d+)?\z/
 
     # Date <=> ISO 8601 date string ("2024-01-30").
     class DateEncoder < Encoder[Types::String[/\A\d{4}-\d{2}-\d{2}\z/].metadata(format: 'date') => Types::Date]
@@ -523,6 +524,23 @@ module Plumb
     class TimeEncoder < Encoder[Types::String[TIME_EXPR].metadata(format: 'date-time') => Types::Time]
       def encode(time) = time.iso8601
       def decode(str) = ::Time.parse(str)
+    end
+
+    # Symbol <=> String. Internal Ruby structures use Symbols for enum-ish
+    # values (`status: :active`); every wire format carries them as strings.
+    # A narrowed field (`Types::Symbol[:draft, :published]`) keeps its check.
+    class SymbolEncoder < Encoder[Types::String => Types::Symbol]
+      def encode(sym) = sym.to_s
+      def decode(str) = str.to_sym
+    end
+
+    # BigDecimal <=> canonical decimal string ("1.5"). A string, not a
+    # number: decimals exist to avoid float precision loss, and JSON numbers
+    # are floats. In Codec::JSON this also keeps Decimal fields from silently
+    # noop-passing via the Numeric noop (a BigDecimal is not JSON-native).
+    class DecimalEncoder < Encoder[Types::String[FLOAT_EXPR] => Types::Decimal]
+      def encode(dec) = dec.to_s('F')
+      def decode(str) = BigDecimal(str)
     end
 
     # URI <=> scheme-prefixed URI string. The narrower HTTP/File variants win
@@ -559,7 +577,7 @@ module Plumb
            Types::True, Types::False, Types::Nil,
            Types::Hash, Types::Array
 
-      encoder DateEncoder, TimeEncoder
+      encoder DateEncoder, TimeEncoder, SymbolEncoder, DecimalEncoder
       encoder URIEncoder, HTTPURIEncoder, FileURIEncoder
     end
 
@@ -575,7 +593,6 @@ module Plumb
     #   # => { port: 80, active: true, on: Date(2024-01-30) }
     class Forms < self
       INTEGER_EXPR = /\A-?\d+\z/
-      FLOAT_EXPR = /\A-?\d+(\.\d+)?\z/
 
       class IntegerEncoder < Encoder[Types::String[INTEGER_EXPR] => Types::Integer]
         def encode(int) = int.to_s
@@ -585,11 +602,6 @@ module Plumb
       class FloatEncoder < Encoder[Types::String[FLOAT_EXPR] => Types::Float]
         def encode(float) = float.to_s
         def decode(str) = str.to_f
-      end
-
-      class DecimalEncoder < Encoder[Types::String[FLOAT_EXPR] => Types::Decimal]
-        def encode(dec) = dec.to_s('F')
-        def decode(str) = BigDecimal(str)
       end
 
       # For fields typed as the Numeric union. A more specific field (Integer,
@@ -620,10 +632,10 @@ module Plumb
 
       noop Types::String, Types::Hash, Types::Array
 
-      encoder IntegerEncoder, FloatEncoder, DecimalEncoder, NumericEncoder
+      encoder IntegerEncoder, FloatEncoder, NumericEncoder
       encoder TrueEncoder, FalseEncoder, NilEncoder
-      # ISO 8601 / RFC 3986 string encoders, shared with Codec::JSON.
-      encoder DateEncoder, TimeEncoder
+      # Format-neutral string encoders, shared with Codec::JSON.
+      encoder DateEncoder, TimeEncoder, SymbolEncoder, DecimalEncoder
       encoder URIEncoder, HTTPURIEncoder, FileURIEncoder
     end
   end
