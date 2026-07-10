@@ -365,28 +365,32 @@ module Plumb
                 "#{@codec.inspect}: encoder wire-type cycle: #{(@wire_stack + [enc]).map(&:inspect).join(' -> ')}"
         end
 
-        # Memoized per run: a schema with many fields matching the same
-        # encoder rewrites its wire type once (direction is fixed per
-        # Rewriter; the path only feeds error text on the first visit).
-        wire = enc.input_type
-        rewritten_wire = @wire_memo.fetch(enc) do
+        # A generic encoder builds its wire from the matched type (see
+        # Encoder.input_type_for), so the wire — and its rewrite — vary per
+        # matched type, NOT per encoder: memoize by matched type (direction is
+        # fixed per Rewriter; the path only feeds error text on the first
+        # visit). Fields sharing a type object (eg. the same `Types::Date`
+        # constant) still rewrite their wire once.
+        wire = enc.input_type_for(type)
+        rewritten_wire = @wire_memo.fetch(type) do
           begin
             @wire_stack.push(enc)
-            @wire_memo[enc] = visit(wire, path + ["<#{enc.inspect} wire>"])
+            @wire_memo[type] = visit(wire, path + ["<#{enc.inspect} wire>"])
           ensure
             @wire_stack.pop
           end
         end
 
+        # Splice the wire into the step unless it is the encoder's declared
+        # input type unchanged (then the base step already carries it). A
+        # generic encoder's member-specialized wire is never that base type, so
+        # it is always spliced — the step reports the specific wire, not the top.
+        wire_arg = rewritten_wire.equal?(enc.input_type) ? nil : rewritten_wire
         narrowed = narrowed_side(type, enc)
         if @direction == :decode
-          enc.step(:decode,
-                   input_type: (rewritten_wire unless rewritten_wire.equal?(wire)),
-                   output_type: narrowed)
+          enc.step(:decode, input_type: wire_arg, output_type: narrowed)
         else
-          enc.step(:encode,
-                   input_type: narrowed,
-                   output_type: (rewritten_wire unless rewritten_wire.equal?(wire)))
+          enc.step(:encode, input_type: narrowed, output_type: wire_arg)
         end
       end
 
@@ -581,6 +585,44 @@ module Plumb
     HTTPURIEncoder = URIEncoder[URIEncoder.input_type => Types::URI::HTTP]
     FileURIEncoder = URIEncoder[URIEncoder.input_type => Types::URI::File]
 
+    # Range <=> a JSON object `{ from:, to:, exclusive: }`. Generic over the
+    # range's member type: it matches ANY `Range[member]` (its output type is
+    # the Range top), and #input_type_for builds the wire from the matched
+    # member — so a `Range[Date]` serializes its endpoints as ISO strings, a
+    # `Range[Integer]` as JSON numbers, etc., because the codec rewrites those
+    # member-typed `from`/`to` fields through itself. `from`/`to` are nullable
+    # for beginless/endless ranges; `exclusive` records whether the end is
+    # excluded (`1...5` vs `1..5`).
+    class RangeEncoder < Encoder[
+      Types::Hash[
+        from: Types::Any.nullable,
+        to: Types::Any.nullable,
+        exclusive: Types::Boolean
+      ] => Types::Range
+    ]
+      # Specialize the wire to the matched range's member type. A non-Range
+      # match (should not happen — only RangeClass is a subtype of the Range
+      # top) falls back to the generic declared wire.
+      def self.input_type_for(matched)
+        return input_type unless matched.is_a?(Plumb::RangeClass)
+
+        member = matched.children.first
+        Types::Hash[
+          from: member.nullable,
+          to: member.nullable,
+          exclusive: Types::Boolean
+        ]
+      end
+
+      def encode(range)
+        { from: range.begin, to: range.end, exclusive: range.exclude_end? }
+      end
+
+      def decode(hash)
+        ::Range.new(hash[:from], hash[:to], hash[:exclusive])
+      end
+    end
+
     # A base codec for JSON-like targets: the scalars native to JSON pass
     # through (structured containers are handled structurally by the rewrite;
     # the bare Hash/Array tops cover untyped ones), and Dates/Times/URIs map
@@ -599,6 +641,7 @@ module Plumb
 
       encoder DateEncoder, TimeEncoder, SymbolEncoder, DecimalEncoder
       encoder URIEncoder, HTTPURIEncoder, FileURIEncoder
+      encoder RangeEncoder
     end
 
     # A base codec for stringly wire formats — HTML forms, query strings, CSV

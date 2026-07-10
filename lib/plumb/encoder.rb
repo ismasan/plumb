@@ -66,6 +66,18 @@ module Plumb
 
       alias output_type input_type
 
+      # The wire (input) type to rewrite for a particular matched output type.
+      # Fixed for a normal encoder — the declared input type, regardless of what
+      # matched. A GENERIC encoder (one whose output_type is a container top like
+      # Types::Range, matching any Range[member]) overrides this to BUILD its wire
+      # from the matched node's structure, so `Range[Date]` yields a
+      # `from: Date, to: Date` wire and `Range[Integer]` a `from: Integer, …` one.
+      # The codec then rewrites that member type through itself as usual. Mirrors
+      # how the Rewriter reads an Array's element type off the matched node.
+      # @param matched_type [Composable] the type this encoder matched
+      # @return [Composable]
+      def input_type_for(_matched_type) = input_type
+
       # The default step: the declared `input_type -> output_type` direction,
       # running #decode. A plain Function — #call validates the input type,
       # runs the encoder's method, and validates the produced value against

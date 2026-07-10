@@ -113,6 +113,37 @@ module CodecSpecTypes
         expect(encoder.parse(BigDecimal('1.5'))).to eq('1.5') # a string: BigDecimal is not JSON-native
       end
 
+      it 'encodes and decodes Ranges as objects, generic over the member type' do
+        # Range[Date]: endpoints rewrite to ISO strings via the Date encoder.
+        dec, enc = Plumb::Codec::JSON.for(Types::Range[Types::Date])
+        wire = { from: '2024-01-01', to: '2024-02-01', exclusive: false }
+        expect(enc.parse(RANGE)).to eq(wire)
+        expect(dec.parse(wire)).to eq(RANGE)
+
+        # Range[Integer]: JSON-native endpoints pass through; `exclusive` tracks
+        # exclusive ranges, and beginless/endless ranges keep a nil endpoint.
+        dec, enc = Plumb::Codec::JSON.for(Types::Range[Types::Integer])
+        expect(enc.parse(1...5)).to eq({ from: 1, to: 5, exclusive: true })
+        expect(dec.parse(enc.parse(1...5))).to eq(1...5)
+        expect(dec.parse(enc.parse(1..))).to eq(1..)
+        expect(dec.parse(enc.parse(..5))).to eq(..5)
+      end
+
+      it 'reports a bad Range endpoint under its wire key' do
+        dec, = Plumb::Codec::JSON.for(Types::Range[Types::Date])
+        result = dec.resolve({ from: 'nope', to: '2024-02-01', exclusive: false })
+        expect(result.valid?).to be(false)
+        expect(result.errors[:from]).to be_truthy
+      end
+
+      it 'describes a Range field as a wire object in JSON Schema' do
+        schema = Plumb::JSONSchemaVisitor.call(Plumb::Codec::JSON >> Types::Hash[span: Types::Range[Types::Date]])
+        span = schema.dig('properties', 'span')
+        expect(span['type']).to eq('object')
+        expect(span.dig('properties', 'from', 'anyOf')).to include('format' => 'date', 'type' => 'string')
+        expect(span.dig('properties', 'exclusive')).to eq('type' => 'boolean')
+      end
+
       it 'lets a subclass Date encoder take precedence over the built-in' do
         expect((Types::Date >> JSONCodec).parse(DATE)).to eq('2024-01-01') # spec ISODateEncoder wins the tie
         schema = Plumb::JSONSchemaVisitor.call(JSONCodec >> Types::Hash[date: Types::Date])
