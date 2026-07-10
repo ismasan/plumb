@@ -614,19 +614,19 @@ module Plumb
     class Forms < self
       INTEGER_EXPR = /\A-?\d+\z/
 
-      class IntegerEncoder < Encoder[Types::String[INTEGER_EXPR] => Types::Integer]
+      class IntegerEncoder < Encoder[Types::String[INTEGER_EXPR] => Integer]
         def encode(int) = int.to_s
         def decode(str) = str.to_i
       end
 
-      class FloatEncoder < Encoder[Types::String[FLOAT_EXPR] => Types::Float]
+      class FloatEncoder < Encoder[Types::String[FLOAT_EXPR] => Float]
         def encode(float) = float.to_s
         def decode(str) = str.to_f
       end
 
       # For fields typed as the Numeric union. A more specific field (Integer,
       # Float, Decimal) picks its own encoder via most-specific matching.
-      class NumericEncoder < Encoder[Types::String[FLOAT_EXPR] => Types::Numeric]
+      class NumericEncoder < Encoder[Types::String[FLOAT_EXPR] => Numeric]
         def encode(num) = num.is_a?(BigDecimal) ? num.to_s('F') : num.to_s
         # A fractional or scientific string is a Float; a plain integer literal
         # is an Integer ("1e20".to_i would wrongly be 1).
@@ -635,12 +635,12 @@ module Plumb
 
       # Booleans are two encoders: a field typed Types::Boolean is the
       # `True | False` union underneath, and each branch matches its own.
-      class TrueEncoder < Encoder[(Types::String[/\Atrue\z/i] | Types::String['1']) => Types::True]
+      class TrueEncoder < Encoder[(Types::String[/\Atrue\z/i] | '1') => Types::True]
         def encode(_bool) = 'true'
         def decode(_str) = true
       end
 
-      class FalseEncoder < Encoder[(Types::String[/\Afalse\z/i] | Types::String['0']) => Types::False]
+      class FalseEncoder < Encoder[(Types::String[/\Afalse\z/i] | '0') => Types::False]
         def encode(_bool) = 'false'
         def decode(_str) = false
       end
