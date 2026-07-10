@@ -19,8 +19,11 @@ module Plumb
     def >>(_other) = self
     def /(_other) = self
 
-    # Never is the identity of union: `Never | X == X`.
-    def |(other) = Composable.wrap(other)
+    # Never is the identity of union: `Never | X == X`. Route through the hook
+    # (not bare Composable.wrap) so a context-resolving operand — an Encoder
+    # orients, a Codec raises at composition — is handled like every other #|
+    # rather than leaking in as an unresolved node.
+    def |(other) = Or.wrap_left(other, left: self)
 
     def call(result) = result.invalid!(errors: 'no value is allowed (Never)')
 

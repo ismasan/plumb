@@ -6,7 +6,7 @@ module Plumb
   class TaggedHash
     include Composable
 
-    attr_reader :key, :children
+    attr_reader :key, :children, :hash_type
 
     def initialize(hash_type, key, children)
       @hash_type = hash_type
@@ -27,6 +27,21 @@ module Plumb
       end
 
       freeze
+    end
+
+    # As a consumer, relax each variant's fields to what they accept (like
+    # HashClass#accepted_type) — but keep the discriminator field literal, so
+    # the rebuilt TaggedHash still satisfies its "tag key is a Constraint"
+    # invariant. Lets `Type >> Codec` (which builds a rewritten variant with a
+    # converting field) type-check against the internal tagged hash.
+    def accepted_type
+      relaxed = @children.map do |child|
+        schema = child._schema.each_with_object({}) do |(k, field), h|
+          h[k] = k.eql?(@key) ? field : Plumb::Subtyping.accepted_type(field)
+        end
+        child.class.new(schema:)
+      end
+      self.class.new(@hash_type, @key, relaxed)
     end
 
     def call(result)

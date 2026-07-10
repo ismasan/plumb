@@ -23,6 +23,19 @@ module CodecFormsSpec
         expect(encoder.parse(10.5)).to eq('10.5')
       end
 
+      specify 'round-trips Floats whose #to_s is scientific notation' do
+        decoder, encoder = Codec.for(Types::Float)
+        expect(encoder.parse(0.00001)).to eq('1.0e-05') # encode output accepted by the wire type
+        expect(decoder.parse('1.0e-05')).to eq(0.00001)
+        expect(encoder.parse(1e20)).to eq('1.0e+20')
+      end
+
+      specify 'a Numeric field decodes a scientific string as a Float' do
+        decoder, = Codec.for(Types::Numeric)
+        expect(decoder.parse('1e20')).to eq(1e20) # not "1e20".to_i == 1
+        expect(decoder.parse('42')).to eq(42)
+      end
+
       specify Types::Decimal do
         decoder, encoder = Codec.for(Types::Decimal)
         expect(decoder.parse('10.5')).to eq(BigDecimal('10.5'))
@@ -61,9 +74,10 @@ module CodecFormsSpec
     end
 
     describe 'nil (empty form field)' do
-      specify 'a nullable field decodes the empty string to nil' do
+      specify 'a nullable field decodes the empty string AND a literal nil to nil' do
         decoder, encoder = Codec.for(Types::Date | Types::Nil)
         expect(decoder.parse('')).to be_nil
+        expect(decoder.parse(nil)).to be_nil # valueless params (Rack) arrive as nil
         expect(decoder.parse('2024-01-30')).to eq(::Date.new(2024, 1, 30))
         expect(encoder.parse(nil)).to eq('')
       end

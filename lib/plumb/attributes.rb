@@ -347,7 +347,11 @@ module Plumb
 
       def build_nested(name, node, &block)
         klass = Plumb::Attributes.struct_class(node)
-        return node unless klass
+        unless klass
+          raise ArgumentError,
+                "attribute #{name.inspect} was given a nested-attributes block, " \
+                "but its type #{node.inspect} is not a struct class"
+        end
 
         sub = Class.new(klass)
         sub.instance_exec(&block)

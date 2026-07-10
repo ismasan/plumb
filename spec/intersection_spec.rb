@@ -157,6 +157,14 @@ RSpec.describe 'intersection (#&) and Never' do
       assert_result(type.resolve(4), 4, true)
       assert_result(type.resolve(3), 3, false)
     end
+
+    it 'does NOT drop an identity-carrying wrapper (subtype? sees through it)' do
+      # subtype?(Integer, Metadata(doubler)) is true via the transform's output,
+      # but dropping the wrapper would lose the transform (and the metadata).
+      doubler = ITypes::Integer.transform(::Integer) { |i| i * 2 }.metadata(desc: 'x')
+      type = ITypes::Integer & doubler
+      assert_result(type.resolve(5), 10, true) # transform preserved, not dropped
+    end
   end
 
   describe 'Never identities' do

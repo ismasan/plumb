@@ -335,8 +335,16 @@ module Plumb
     # compat check — a value-narrowing refinement (AVM) opts out of the latter
     # (its #input_type is Any), so check_composable! can't tell it apart.
     def redundant_refinement?(left, right)
-      (value_preserving?(right) && subtype?(left, right)) ||
-        redundant_record_refinement?(left, right)
+      # `right` is the dropped side (kept: left). Don't drop it if it carries
+      # wrapper identity subtype? now sees through — unless it equals left,
+      # where left already IS that identity. eg. `String[EMAIL] >> Types::Email`
+      # keeps the And so the :email node (and its JSON-schema format) survives.
+      if value_preserving?(right) && subtype?(left, right) &&
+         (left == right || !identity_wrapper?(right))
+        return true
+      end
+
+      redundant_record_refinement?(left, right)
     end
 
     # The record case of `redundant_refinement?`. A HashClass is NOT value-
@@ -403,7 +411,12 @@ module Plumb
     # input domain, making the drop behaviour-preserving.
     def reduce_union(a, b)
       return nil unless value_preserving?(a) && value_preserving?(b)
-      return b if subtype?(a, b) # a ⊆ b — keep the wider b (also dedupes a == b)
+      return b if a == b # dedupe — the survivor is the dropped node's identity
+      # Don't absorb across a wrapper: subtype? now sees through Policy/Metadata/
+      # Node, so an absorption would drop the identity one carries (see
+      # #identity_wrapper?). eg. `Types::Email | Types::String` keeps the Or.
+      return nil if identity_wrapper?(a) || identity_wrapper?(b)
+      return b if subtype?(a, b) # a ⊆ b — keep the wider b
       return a if subtype?(b, a) # b ⊆ a — keep the wider a
 
       nil
@@ -427,8 +440,14 @@ module Plumb
       return a if b.is_a?(AnyClass)
 
       return a if a == b
-      return a if subtype?(a, b) # a ⊆ b — meet keeps the narrower a
-      return b if subtype?(b, a) # b ⊆ a — keep the narrower b
+      # Skip the subtype-drop when either side is a transparent wrapper —
+      # subtype? sees through it, but dropping it loses the identity it carries
+      # (see #identity_wrapper?); fall through to the runtime And instead. eg.
+      # `Types::Integer & doubler.metadata(...)` keeps both.
+      unless identity_wrapper?(a) || identity_wrapper?(b)
+        return a if subtype?(a, b) # a ⊆ b — meet keeps the narrower a
+        return b if subtype?(b, a) # b ⊆ a — keep the narrower b
+      end
 
       # Distribute over unions: (a1 | a2) & b == (a1 & b) | (a2 & b).
       return intersect_union(a, b) if a.is_a?(Or)
@@ -613,6 +632,18 @@ module Plumb
       when Composable::Node then unwrap_transparent(type.type)
       else type
       end
+    end
+
+    # Does `type` carry identity beyond its value semantics — a policy name,
+    # user metadata, or a visitor node_name — i.e. is it (wrapped in) a
+    # transparent Policy/Metadata/Node? `subtype?` sees THROUGH such wrappers
+    # (Policy(X) <= Y iff X <= Y), which is right for the subsumption relation
+    # but means a reduction that DROPS one in favour of a subtype-equal type
+    # would silently lose that identity. So the reductions (reduce_union,
+    # intersect, redundant_refinement?) refuse to drop one — except when the
+    # two are equal, where the survivor already IS that identity.
+    def identity_wrapper?(type)
+      !unwrap_transparent(type).equal?(type)
     end
 
     # Every node resolves its own #input_type / #output_type (an And does it at

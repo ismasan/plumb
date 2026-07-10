@@ -400,4 +400,12 @@ RSpec.describe Types::Data do
     expect(config.valid?).to be false
     expect(config.errors[:host]).not_to be_empty
   end
+
+  specify 'a nested-attributes block on a non-struct attribute raises' do
+    expect do
+      Class.new(Types::Data) do
+        attribute(:foo, ->(r) { r }) { attribute :name, String }
+      end
+    end.to raise_error(ArgumentError, /not a struct class/)
+  end
 end

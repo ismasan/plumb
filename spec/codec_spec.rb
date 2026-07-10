@@ -132,6 +132,12 @@ module CodecSpecTypes
         expect(decoder.parse('2024-01-01')).to eq(DATE)
         expect(encoder.parse(DATE)).to eq('2024-01-01')
       end
+
+      it 'produces an encoder and decoder that compose (encode >> decode) — they meet at the wire type' do
+        decoder, encoder = JSONCodec.for(Person)
+        roundtrip = encoder >> decoder # Person -> wire -> Person; type-checks at the shared wire schema
+        expect(roundtrip.parse(PERSON)).to eq(PERSON)
+      end
     end
 
     describe 'composition with any type (scalar roots)' do
@@ -273,6 +279,47 @@ module CodecSpecTypes
         expect(codec_schema.resolve({ date: '2020-01-01' }).valid?).to be(false)
       end
 
+      it 'rewrites a .where-refined field, keeping the refinement on the internal side' do
+        schema = Types::Hash[birthday: Types::Date.where(year: 1900..2100)]
+        decoder, encoder = JSONCodec.for(schema)
+        expect(decoder.parse({ birthday: '2024-01-30' })).to eq({ birthday: ::Date.new(2024, 1, 30) })
+        expect(decoder.resolve({ birthday: '1800-01-30' }).valid?).to be(false) # year check runs on the decoded Date
+        expect(encoder.parse({ birthday: ::Date.new(2024, 1, 30) })).to eq({ birthday: '2024-01-30' })
+      end
+
+      it 'encodes an encoder-matched static default (does not pass it raw via a broad noop)' do
+        schema = Types::Hash[amount: Types::Decimal.default(BigDecimal('1.5'))]
+        encoder = schema >> JSONCodec
+        expect(encoder.parse({ amount: BigDecimal('1.5') })).to eq({ amount: '1.5' }) # default value encoded
+        expect(encoder.parse({ amount: BigDecimal('9.9') })).to eq({ amount: '9.9' })
+      end
+
+      it 'rewrites tagged unions of encodable schemas' do
+        tagged = Types::Hash.tagged_by(
+          :kind,
+          Types::Hash[kind: 'event', on: Types::Date],
+          Types::Hash[kind: 'note', body: Types::String]
+        )
+        decoder, encoder = JSONCodec.for(tagged)
+        expect(decoder.parse({ kind: 'event', on: '2024-01-01' })).to eq({ kind: 'event', on: DATE })
+        expect(encoder.parse({ kind: 'event', on: DATE })).to eq({ kind: 'event', on: '2024-01-01' })
+        expect(decoder.parse({ kind: 'note', body: 'hi' })).to eq({ kind: 'note', body: 'hi' })
+      end
+
+      it 'preserves a FilteredHashMap through rewriting (does not downgrade to strict)' do
+        rewritten = JSONCodec >> Types::Hash[Types::Symbol, Types::Date].filtered
+        expect(rewritten.node_name).to eq(:filtered_hash_map)
+        # Leniency intact: a bad entry is dropped, not rejected wholesale.
+        expect(rewritten.parse({ a: '2024-01-01', b: 'nope' })).to eq({ a: DATE })
+      end
+
+      it 'rewrites containers inside a value-preserving union (not swallowed by a container-top noop)' do
+        union = Types::Array[Types::Date] | Types::String
+        rewritten = JSONCodec >> union
+        expect(rewritten.parse(['2024-01-01'])).to eq([DATE])
+        expect(rewritten.parse('plain')).to eq('plain')
+      end
+
       it 'rewrites recursive (Deferred) schemas lazily' do
         codec_tree = JSONCodec >> Tree
         decoded = codec_tree.parse({ value: '2024-01-01', children: [{ value: '2024-02-01', children: [] }] })
@@ -377,6 +424,11 @@ module CodecSpecTypes
         expect { JSONCodec | Types::String }.to raise_error(Plumb::TypeError, /only composes with #>>/)
         expect { Types::String | JSONCodec }.to raise_error(Plumb::TypeError, /only composes with #>>/)
         expect { Types::String & JSONCodec }.to raise_error(Plumb::TypeError, /only composes with #>>/)
+      end
+
+      it 'raises at composition time (not parse) even from Never/Hash operands' do
+        expect { Types::Never | JSONCodec }.to raise_error(Plumb::TypeError, /only composes with #>>/)
+        expect { Types::Hash[a: Types::String] & JSONCodec }.to raise_error(Plumb::TypeError, /only composes with #>>/)
       end
 
       it 'raises when used as a runtime type' do

@@ -107,6 +107,13 @@ module EncoderSpecTypes
         expect((DateRangeEncoder >> JSONDateRange).parse(RANGE)).to eq(WIRE_RANGE)
       end
 
+      it 'orients when a Hash schema is intersected with an encoder (not context-free to Never)' do
+        # HashClass#& must route the encoder through the orientation hook; a
+        # context-free wrap would default to decode and collapse to Never.
+        result = JSONDateRange & DateRangeEncoder
+        expect(result).not_to be_a(Plumb::NeverClass)
+      end
+
       it 'orients unions by the produced value' do
         # The lenient-union pattern: accept a Date, or decode a wire string into one.
         union = Types::Date | ISODateEncoder

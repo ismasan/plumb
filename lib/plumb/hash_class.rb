@@ -109,7 +109,11 @@ module Plumb
     # to the generic Composable#& (Subtyping.intersect), which yields Types::Never
     # for a provably-disjoint type (eg. `Hash & Integer`).
     def &(other)
-      other = Composable.wrap(other)
+      # Route through the intersection hook (not bare Composable.wrap) so a
+      # context-resolving operand — eg. an Encoder class — orients against this
+      # Hash instead of defaulting to its decode direction (which would make
+      # `Hash & EncoderClass` collapse to Never). Mirrors Composable#&.
+      other = And.wrap_intersection(other, left: self)
       return super unless other.is_a?(HashClass)
 
       # The any-Hash top is the identity of intersection: Hash[] & X == X.

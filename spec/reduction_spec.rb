@@ -252,6 +252,22 @@ RSpec.describe 'composition reduction (>>)' do
       assert_result(u.resolve(2.5), 2.5, true) # numeric branch still accepted
     end
 
+    it 'does NOT absorb across an identity-carrying wrapper (subtype? sees through it)' do
+      # A named node (Email) is subtype-equal to String, but absorbing it would
+      # drop its :email identity — and its JSON-schema `format`.
+      u = RTypes::Email | RTypes::String
+      expect(u).to be_a(Plumb::Or)
+      expect(u.to_json_schema(root: false)['anyOf'])
+        .to include('type' => 'string', 'format' => 'email')
+
+      # Metadata / default wrappers are likewise not dropped.
+      expect((RTypes::String | RTypes::String.metadata(x: 1))).to be_a(Plumb::Or)
+    end
+
+    it 'still dedupes equal wrapper nodes (the survivor IS the identity)' do
+      expect(RTypes::Email | RTypes::Email).to eq(RTypes::Email)
+    end
+
     it 'validates identically to the un-reduced union' do
       r = RTypes::Integer | RTypes::Numeric # == Numeric
       assert_result(r.resolve(5), 5, true)

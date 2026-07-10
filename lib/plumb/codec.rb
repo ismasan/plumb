@@ -272,6 +272,14 @@ module Plumb
         end
 
         if (enc = @codec.encoder_for(type, path))
+          # An encoder whose own wire type contains its output type re-matches
+          # here while we rewrite that wire (enc is on the stack). If that
+          # output is noop-covered it's a literal acceptance, not a recursive
+          # encoding — leave it (eg. Forms' NilEncoder wire `String[''] | Nil`,
+          # so a nullable field decodes a literal nil). Otherwise replace()
+          # raises the genuine wire-type cycle.
+          return type if @wire_stack.include?(enc) && @codec.noop?(type, @direction)
+
           return replace(type, enc, path)
         end
 
@@ -280,6 +288,7 @@ module Plumb
         when ArrayClass, StreamClass then visit_array(type, path)
         when TupleClass then visit_tuple(type, path)
         when HashMap then visit_hash_map(type, path)
+        when TaggedHash then visit_tagged_hash(type, path)
         else
           if (struct = Plumb::Attributes.struct_class(type))
             visit_struct(type, struct, path)
@@ -291,12 +300,12 @@ module Plumb
 
       # A struct (Types::Data / Plumb::Attributes) is a Hash schema plus a
       # constructor. Decoding, the rewritten schema turns wire fields into
-      # internal values and the class itself builds the instance (Transform's
+      # internal values and the class itself builds the instance (Function's
       # output stage CALLS it). Encoding, the class validates/constructs the
       # instance, `#attributes` exposes the internal values (shallow — nested
       # structs stay instances and are handled by their own rewritten nodes,
       # unlike the deep #to_h), and the encode-rewritten schema turns them
-      # into wire values. Either way a single Transform node, so accepted/
+      # into wire values. Either way a single Function node, so accepted/
       # produced types and the JSON Schema stay honest.
       def visit_struct(original, struct, path)
         schema = visit(struct._schema, path)
@@ -305,9 +314,9 @@ module Plumb
           # constructs by itself.
           return original if schema.equal?(struct._schema)
 
-          Transform.new(schema, struct, Plumb::NOOP)
+          Function.new(schema, struct, Plumb::NOOP)
         else
-          Transform.new(struct, schema, ->(result) { result.valid!(result.value.attributes) })
+          Function.new(struct, schema, ->(result) { result.valid!(result.value.attributes) })
         end
       end
 
@@ -329,11 +338,15 @@ module Plumb
         return type if @direction == :decode
 
         value = type.children.first
-        return ValueClass.new(value) if @codec.noop_value?(value)
-
+        # Encoder match FIRST, then noop — mirrors the invariant that real
+        # encoders always take precedence over pass-through types. Otherwise a
+        # static default whose value happens to satisfy a broad noop (eg. a
+        # BigDecimal under the Numeric noop) would emit raw instead of encoding.
         if (enc = @codec.encoder_for(type, path))
           encoded = replace(type, enc, path).parse(value)
           And.new(ValueClass.new(value), StaticClass.new(encoded.freeze))
+        elsif @codec.noop_value?(value)
+          ValueClass.new(value)
         else
           noop_or_fail(type, path)
         end
@@ -423,7 +436,18 @@ module Plumb
       def visit_hash_map(type, path)
         key_type, value_type = type.children
         v = visit(value_type, path + ['{}'])
-        v.equal?(value_type) ? type : HashMap.new(key_type, v)
+        # type.class (not HashMap) to preserve FilteredHashMap's leniency.
+        v.equal?(value_type) ? type : type.class.new(key_type, v)
+      end
+
+      # A tagged union of Hash variants discriminated by a key: rewrite each
+      # variant schema (all HashClasses); the tag key's literal value is a
+      # native pass-through, so the discriminator survives.
+      def visit_tagged_hash(type, path)
+        variants = type.children.map { |c| visit(c, path) }
+        return type if variants.zip(type.children).all? { |v, c| v.equal?(c) }
+
+        TaggedHash.new(type.hash_type, type.key, variants)
       end
 
       def visit_or(type, path)
@@ -433,22 +457,37 @@ module Plumb
         l.equal?(left) && r.equal?(right) ? type : Or.new(l, r)
       end
 
-      # An And chain (refinement/sequence): rewrite the data-bearing children;
-      # pure refinements (checks, #where clauses, value matchers) filter the
-      # adjacent type's values and pass through.
+      # An And chain is a data-bearing type refined by pure filters (a #where's
+      # AttributeValueMatch, a #check Constraint, ...). Rewrite the data type(s).
+      # On DECODE the codec replaces the schema, so the refinements are the only
+      # validation of the decoded internal value — keep them AFTER the wire ->
+      # internal conversion. On ENCODE the schema has already validated the
+      # value (the suffix runs inside `And(schema, suffix)`), so the refinements
+      # are redundant and would run on the produced wire value — drop them.
       def visit_and(type, path)
-        left, right = type.children
-        l = visit_and_child(left, path)
-        r = visit_and_child(right, path)
-        l.equal?(left) && r.equal?(right) ? type : And.new(l, r)
+        steps = flatten_and(type)
+        refinements, data = steps.partition { |s| pure_refinement?(s) }
+        rewritten = data.map { |d| visit(d, path) }
+        return type if rewritten.each_with_index.all? { |r, i| r.equal?(data[i]) }
+
+        ordered = @direction == :decode ? rewritten + refinements : rewritten
+        ordered.reduce { |l, r| And.new(l, r) }
       end
 
-      # Pure value-preserving refinements carry no data of their own — they
-      # filter the adjacent type's values and pass through the rewrite.
-      def visit_and_child(child, path)
+      def flatten_and(type)
+        type.children.flat_map { |c| c.is_a?(And) ? flatten_and(c) : [c] }
+      end
+
+      # A pure refinement carries no encodable type — it filters the adjacent
+      # type's values. A bare-matcher Constraint (opaque input, refining a
+      # sibling) qualifies, but a base-type Constraint — `Types::Date` IS
+      # `Constraint(::Date)` — is data an encoder must see (eg. in
+      # `Types::Date.where(year: ...)` == `And(Constraint(::Date), AVM)`).
+      def pure_refinement?(child)
         case child
-        when Constraint, AttributeValueMatch, ValueClass, Not then child
-        else visit(child, path)
+        when AttributeValueMatch, ValueClass, Not then true
+        when Constraint then child.input_type.is_a?(AnyClass)
+        else false
         end
       end
 
@@ -495,7 +534,10 @@ module Plumb
     # Scheme-prefixed URI strings, per RFC 3986 — URI.parse alone is too
     # permissive (a blank string is a valid URI).
     URI_EXPR = /\A[a-z][a-z0-9+\-.]*:/i
-    FLOAT_EXPR = /\A-?\d+(\.\d+)?\z/
+    # Decimal or scientific notation — Float#to_s emits scientific for very
+    # small/large magnitudes ("1.0e-05"), so the wire type must accept what
+    # encode produces or a valid Float fails its own round-trip.
+    FLOAT_EXPR = /\A-?\d+(\.\d+)?([eE][+-]?\d+)?\z/
 
     # Date <=> ISO 8601 date string ("2024-01-30").
     class DateEncoder < Encoder[Types::String[/\A\d{4}-\d{2}-\d{2}\z/].metadata(format: 'date') => Types::Date]
@@ -586,7 +628,9 @@ module Plumb
       # Float, Decimal) picks its own encoder via most-specific matching.
       class NumericEncoder < Encoder[Types::String[FLOAT_EXPR] => Types::Numeric]
         def encode(num) = num.is_a?(BigDecimal) ? num.to_s('F') : num.to_s
-        def decode(str) = str.include?('.') ? str.to_f : str.to_i
+        # A fractional or scientific string is a Float; a plain integer literal
+        # is an Integer ("1e20".to_i would wrongly be 1).
+        def decode(str) = str.match?(/[.eE]/) ? str.to_f : str.to_i
       end
 
       # Booleans are two encoders: a field typed Types::Boolean is the
@@ -601,14 +645,17 @@ module Plumb
         def decode(_str) = false
       end
 
-      # An empty form field is nil — so `Types::Date | Types::Nil` decodes ''
-      # to nil and '2024-01-30' to a Date.
-      class NilEncoder < Encoder[Types::String[''] => Types::Nil]
+      # An empty or absent form field is nil — so `Types::Date | Types::Nil`
+      # decodes '' AND a literal nil (valueless params, eg. Rack's
+      # `parse_nested_query('x')`) to nil, and '2024-01-30' to a Date. The Nil
+      # in the wire is left as a literal acceptance during wire rewriting (it
+      # is noop-covered), not recursively re-encoded.
+      class NilEncoder < Encoder[(Types::String[''] | Types::Nil) => Types::Nil]
         def encode(_nil) = ''
-        def decode(_str) = nil
+        def decode(_value) = nil
       end
 
-      noop Types::String, Types::Hash, Types::Array
+      noop Types::String, Types::Nil, Types::Hash, Types::Array
 
       encoder IntegerEncoder, FloatEncoder, NumericEncoder
       encoder TrueEncoder, FalseEncoder, NilEncoder
