@@ -32,7 +32,7 @@ module EncoderSpecTypes
 
   DATE = ::Date.new(2024, 1, 1)
   RANGE = ::Date.new(2024, 1, 1)..::Date.new(2024, 2, 1)
-  WIRE_RANGE = { from: ::Date.new(2024, 1, 1), to: ::Date.new(2024, 2, 1) }.freeze
+  ENCODED_RANGE = { from: ::Date.new(2024, 1, 1), to: ::Date.new(2024, 2, 1) }.freeze
 
   RSpec.describe Plumb::Encoder do
     describe '.[] class builder' do
@@ -94,17 +94,17 @@ module EncoderSpecTypes
     describe 'direction inference in compositions' do
       it 'runs the declared direction after a type matching its input' do
         pipeline = JSONDateRange >> DateRangeEncoder >> DateRange
-        expect(pipeline.parse(WIRE_RANGE)).to eq(RANGE)
+        expect(pipeline.parse(ENCODED_RANGE)).to eq(RANGE)
       end
 
       it 'runs the inverse after a type matching its output' do
         pipeline = DateRange >> DateRangeEncoder >> JSONDateRange
-        expect(pipeline.parse(RANGE)).to eq(WIRE_RANGE)
+        expect(pipeline.parse(RANGE)).to eq(ENCODED_RANGE)
       end
 
       it 'orients by what the right side accepts when the encoder is on the left' do
-        expect((DateRangeEncoder >> DateRange).parse(WIRE_RANGE)).to eq(RANGE)
-        expect((DateRangeEncoder >> JSONDateRange).parse(RANGE)).to eq(WIRE_RANGE)
+        expect((DateRangeEncoder >> DateRange).parse(ENCODED_RANGE)).to eq(RANGE)
+        expect((DateRangeEncoder >> JSONDateRange).parse(RANGE)).to eq(ENCODED_RANGE)
       end
 
       it 'orients when a Hash schema is intersected with an encoder (not context-free to Never)' do
@@ -115,7 +115,7 @@ module EncoderSpecTypes
       end
 
       it 'orients unions by the produced value' do
-        # The lenient-union pattern: accept a Date, or decode a wire string into one.
+        # The lenient-union pattern: accept a Date, or decode a string into one.
         union = Types::Date | ISODateEncoder
         expect(union.parse(DATE)).to eq(DATE)
         expect(union.parse('2024-01-01')).to eq(DATE)
@@ -178,7 +178,7 @@ module EncoderSpecTypes
 
       it 'round-trips' do
         expect(ISODateEncoder.decode(ISODateEncoder.encode(DATE))).to eq(DATE)
-        expect(DateRangeEncoder.encode(DateRangeEncoder.decode(WIRE_RANGE))).to eq(WIRE_RANGE)
+        expect(DateRangeEncoder.encode(DateRangeEncoder.decode(ENCODED_RANGE))).to eq(ENCODED_RANGE)
       end
     end
 
@@ -187,7 +187,7 @@ module EncoderSpecTypes
         pipeline = JSONDateRange >> DateRangeEncoder
         decorated = Plumb.decorate(pipeline) { |t| t }
         expect(decorated).to eq(pipeline)
-        expect(decorated.parse(WIRE_RANGE)).to eq(RANGE)
+        expect(decorated.parse(ENCODED_RANGE)).to eq(RANGE)
       end
     end
   end

@@ -17,15 +17,15 @@ module Plumb
   #     encoder ISODateEncoder          # String <=> Date
   #   end
   #
-  #   JSONPerson = JSONCodec >> Person  # decode: wire structures -> Person
-  #   WirePerson = Person >> JSONCodec  # encode: Person -> wire structures
+  #   JSONPerson    = JSONCodec >> Person  # decode: input structures -> Person
+  #   EncodedPerson = Person >> JSONCodec  # encode: Person -> output structures
   #
   # Composing rewrites the type deeply: every field (at any depth) whose type
-  # matches an encoder's output (internal) type is replaced with the oriented
+  # matches an encoder's output type is replaced with the oriented
   # encoder step (a plain Function, see Encoder.step); noop-matched types
   # pass through unchanged; anything else
   # raises Plumb::TypeError at composition time, naming the field path. An
-  # encoder's wire (input) type is itself rewritten through the same codec, so
+  # encoder's input type is itself rewritten through the same codec, so
   # nested non-native values resolve via other encoders in the group.
   #
   # The Codec leaves no runtime node behind — the result is ordinary Plumb
@@ -101,9 +101,9 @@ module Plumb
       freeze
     end
 
-    # Decode direction: rewrite `other` so it accepts wire input and produces
-    # the internal values `other` describes. The rewritten type REPLACES the
-    # composition — no codec node remains.
+    # Decode direction: rewrite `other` so it accepts the encoders' input form
+    # and produces the output values `other` describes. The rewritten type
+    # REPLACES the composition — no codec node remains.
     def >>(other)
       Rewriter.new(self, :decode).call(Composable.wrap(other))
     end
@@ -111,8 +111,8 @@ module Plumb
     # Both directions for a type, as a [decoding, encoding] pair:
     #
     #   decoder, encoder = Plumb::Codec::JSON.for(Person)
-    #   decoder.parse(wire_data)  # => a Person hash
-    #   encoder.parse(person)     # => wire structures
+    #   decoder.parse(input_data) # => a Person hash
+    #   encoder.parse(person)     # => output structures
     #
     # @param type [Composable, Object]
     # @return [Array(Composable, Composable)]
@@ -124,7 +124,7 @@ module Plumb
     # Encode direction, reached when the codec is the RIGHT operand
     # (`Person >> JSONCodec` — see Composable#to_plumb_type): build an encode
     # rewrite of what `left` produces. Composable#>> then composes
-    # `And(left, rewrite)`: the left validates internal input once, the
+    # `And(left, rewrite)`: the left validates its input once, the
     # rewrite encodes. Building from `left`'s OUTPUT (not `left` itself)
     # avoids re-running its coercions on already-parsed values.
     def to_plumb_type(op:, left:)
@@ -147,7 +147,7 @@ module Plumb
     end
 
     # The best matching encoder for `type`, or nil. Matching is against each
-    # encoder's output (internal) type — schemas are written in internal
+    # encoder's output type — schemas are written in output
     # terms in both directions. Most-specific wins; equivalent types
     # tie-break to the last registered; incomparable multi-matches raise.
     def encoder_for(type, path = BLANK_ARRAY)
@@ -179,8 +179,8 @@ module Plumb
     end
 
     # Is `type` (one side of it, per direction) covered by the registered noop
-    # types? Decode checks what the type ACCEPTS (it will be fed raw wire
-    # data); encode checks what it PRODUCES (its output lands in the wire
+    # types? Decode checks what the type ACCEPTS (it will be fed raw input
+    # data); encode checks what it PRODUCES (its output lands in the encoded
     # document).
     def noop?(type, direction)
       return false unless @noop_union
@@ -188,7 +188,7 @@ module Plumb
       side = direction == :decode ? Plumb::Subtyping.accepted_type(type) : Plumb::Subtyping.resolved_output(type)
       # A pure filter with an opaque side is judged by the type itself: a
       # bare-matcher Constraint (a branch of a factored refinement union, eg.
-      # the `String[/\Atrue\z/i] | String['1']` boolean wire type) reports Any
+      # the `String[/\Atrue\z/i] | String['1']` boolean input type) reports Any
       # as its accepted type, but as a value-preserving refinement it IS its
       # own honest description.
       side = type if side.is_a?(AnyClass) && Plumb::Subtyping.value_preserving?(type)
@@ -217,7 +217,7 @@ module Plumb
     #      their parts first — they can carry generator machinery (a
     #      `.default`'s `Undefined >> Static` guard) that a wholesale
     #      replacement would drop (see #visit);
-    #   2. a real encoder match replaces the node whole (its wire type is
+    #   2. a real encoder match replaces the node whole (its input type is
     #      recursively rewritten through the same codec, cycle-guarded);
     #   3. structured composites (Hash schemas, typed Arrays/Tuples/HashMaps)
     #      recurse into their children — AFTER encoder matching, so an encoder
@@ -233,8 +233,8 @@ module Plumb
         @codec = codec
         @direction = direction # :decode | :encode
         @deferred_memo = {}.compare_by_identity
-        @wire_memo = {}.compare_by_identity
-        @wire_stack = []
+        @input_memo = {}.compare_by_identity
+        @input_stack = []
         @root = nil
       end
 
@@ -249,7 +249,7 @@ module Plumb
         return visit_deferred(type, path) if type.is_a?(Deferred)
         # Before encoder matching: a Static's fixed value would otherwise
         # match an encoder atomically (`Static[a_date]` is a subtype of Date)
-        # and get replaced by a step that expects wire input, losing the
+        # and get replaced by a step that expects encoded input, losing the
         # static behaviour (eg. the default value in a `.default(...)`).
         return visit_static(type, path) if type.is_a?(StaticClass)
 
@@ -258,7 +258,7 @@ module Plumb
         # T`, the #default shape) that are subtype-wise invisible — the whole
         # composition IS a subtype of T — but would be dropped by a wholesale
         # replacement. Recursing rewrites the data-bearing parts and keeps the
-        # machinery; an encoder with a union internal type still matches at
+        # machinery; an encoder with a union output type still matches at
         # branch level. Untouched subtrees come back identical, so there is
         # no shortcut to take here — a whole-composite noop check would let a
         # container-top noop (`noop Types::Array`) swallow a rewritable union
@@ -272,13 +272,13 @@ module Plumb
         end
 
         if (enc = @codec.encoder_for(type, path))
-          # An encoder whose own wire type contains its output type re-matches
-          # here while we rewrite that wire (enc is on the stack). If that
+          # An encoder whose own input type contains its output type re-matches
+          # here while we rewrite that input (enc is on the stack). If that
           # output is noop-covered it's a literal acceptance, not a recursive
-          # encoding — leave it (eg. Forms' NilEncoder wire `String[''] | Nil`,
+          # encoding — leave it (eg. Forms' NilEncoder input `String[''] | Nil`,
           # so a nullable field decodes a literal nil). Otherwise replace()
-          # raises the genuine wire-type cycle.
-          return type if @wire_stack.include?(enc) && @codec.noop?(type, @direction)
+          # raises the genuine input-type cycle.
+          return type if @input_stack.include?(enc) && @codec.noop?(type, @direction)
 
           return replace(type, enc, path)
         end
@@ -299,18 +299,18 @@ module Plumb
       end
 
       # A struct (Types::Data / Plumb::Attributes) is a Hash schema plus a
-      # constructor. Decoding, the rewritten schema turns wire fields into
-      # internal values and the class itself builds the instance (Function's
+      # constructor. Decoding, the rewritten schema turns input fields into
+      # output values and the class itself builds the instance (Function's
       # output stage CALLS it). Encoding, the class validates/constructs the
-      # instance, `#attributes` exposes the internal values (shallow — nested
+      # instance, `#attributes` exposes the output values (shallow — nested
       # structs stay instances and are handled by their own rewritten nodes,
       # unlike the deep #to_h), and the encode-rewritten schema turns them
-      # into wire values. Either way a single Function node, so accepted/
+      # into input values. Either way a single Function node, so accepted/
       # produced types and the JSON Schema stay honest.
       def visit_struct(original, struct, path)
         schema = visit(struct._schema, path)
         if @direction == :decode
-          # All fields wire-native already: the struct validates and
+          # All fields input-native already: the struct validates and
           # constructs by itself.
           return original if schema.equal?(struct._schema)
 
@@ -322,7 +322,7 @@ module Plumb
 
       # A Static ignores its input and emits a fixed value (eg. the default in
       # a `.default(...)` composition). Decoding, that value is part of the
-      # internal structure the schema declares — keep it as-is.
+      # output structure the schema declares — keep it as-is.
       #
       # Encoding is different: the suffix runs on values the schema has
       # ALREADY produced (the Static ran when the schema did), and
@@ -331,7 +331,7 @@ module Plumb
       # re-running it would clobber the actual value with the default. So on
       # encode a Static becomes a CHECKED value: match the static value
       # (against the VALUE, not the node — subtyping can't relate an atomic
-      # Static to a container noop), then emit its wire form — the value
+      # Static to a container noop), then emit its input form — the value
       # itself when noop-covered, or its encoding, computed once here at
       # composition time (the value is fixed, so its encoding is too).
       def visit_static(type, path)
@@ -352,59 +352,59 @@ module Plumb
         end
       end
 
-      # Replace a matched type with the oriented Step. The encoder's wire
-      # (input) type is itself rewritten through this codec — that's what lets
+      # Replace a matched type with the oriented Step. The encoder's input
+      # type is itself rewritten through this codec — that's what lets
       # `Hash[from: Date, to: Date]` resolve its Dates via a String<=>Date
-      # encoder in the same group. The rewritten wire type (and, when the
+      # encoder in the same group. The rewritten input type (and, when the
       # matched type is a value-preserving strict subtype of the encoder's
       # output, the narrowed type) are spliced into the Step, so each rewritten
       # field stays a single node.
       def replace(type, enc, path)
-        if @wire_stack.include?(enc)
+        if @input_stack.include?(enc)
           raise Plumb::TypeError,
-                "#{@codec.inspect}: encoder wire-type cycle: #{(@wire_stack + [enc]).map(&:inspect).join(' -> ')}"
+                "#{@codec.inspect}: encoder input-type cycle: #{(@input_stack + [enc]).map(&:inspect).join(' -> ')}"
         end
 
-        # A generic encoder builds its wire from the matched type (see
-        # Encoder.input_type_for), so the wire — and its rewrite — vary per
+        # A generic encoder builds its input from the matched type (see
+        # Encoder.input_type_for), so the input — and its rewrite — vary per
         # matched type, NOT per encoder: memoize by matched type (direction is
         # fixed per Rewriter; the path only feeds error text on the first
         # visit). Fields sharing a type object (eg. the same `Types::Date`
-        # constant) still rewrite their wire once.
-        wire = enc.input_type_for(type)
-        rewritten_wire = @wire_memo.fetch(type) do
+        # constant) still rewrite their input once.
+        input = enc.input_type_for(type)
+        rewritten_input = @input_memo.fetch(type) do
           begin
-            @wire_stack.push(enc)
-            @wire_memo[type] = visit(wire, path + ["<#{enc.inspect} wire>"])
+            @input_stack.push(enc)
+            @input_memo[type] = visit(input, path + ["<#{enc.inspect} input>"])
           ensure
-            @wire_stack.pop
+            @input_stack.pop
           end
         end
 
-        # Splice the wire into the step unless it is the encoder's declared
+        # Splice the input into the step unless it is the encoder's declared
         # input type unchanged (then the base step already carries it). A
-        # generic encoder's member-specialized wire is never that base type, so
-        # it is always spliced — the step reports the specific wire, not the top.
-        wire_arg = rewritten_wire.equal?(enc.input_type) ? nil : rewritten_wire
+        # generic encoder's member-specialized input is never that base type, so
+        # it is always spliced — the step reports the specific input, not the top.
+        input_arg = rewritten_input.equal?(enc.input_type) ? nil : rewritten_input
         narrowed = narrowed_side(type, enc)
         if @direction == :decode
-          enc.step(:decode, input_type: wire_arg, output_type: narrowed)
+          enc.step(:decode, input_type: input_arg, output_type: narrowed)
         else
-          enc.step(:encode, input_type: narrowed, output_type: wire_arg)
+          enc.step(:encode, input_type: narrowed, output_type: input_arg)
         end
       end
 
       # When the matched type is strictly narrower than the encoder's declared
-      # output AND is a pure filter, keep it as the internal-side check (decode
+      # output AND is a pure filter, keep it as the output-side check (decode
       # re-validates the produced value against it; encode validates the input
       # against it). A value-CONVERTING narrower type is dropped — re-running
-      # its conversion on an already-internal value would be wrong; the
+      # its conversion on an already-decoded value would be wrong; the
       # encoder's declared type stands in.
       def narrowed_side(type, enc)
-        internal = enc.output_type
-        return nil if type == internal
+        output = enc.output_type
+        return nil if type == output
         return nil unless Plumb::Subtyping.value_preserving?(type)
-        return nil unless Plumb::Subtyping.subtype?(type, internal) && !Plumb::Subtyping.subtype?(internal, type)
+        return nil unless Plumb::Subtyping.subtype?(type, output) && !Plumb::Subtyping.subtype?(output, type)
 
         type
       end
@@ -436,7 +436,7 @@ module Plumb
       end
 
       # Keys are left untouched — key normalization (eg. string keys from the
-      # wire) is a separate concern (see Types::SymbolizedHash / #symbolized).
+      # input) is a separate concern (see Types::SymbolizedHash / #symbolized).
       def visit_hash_map(type, path)
         key_type, value_type = type.children
         v = visit(value_type, path + ['{}'])
@@ -464,10 +464,10 @@ module Plumb
       # An And chain is a data-bearing type refined by pure filters (a #where's
       # AttributeValueMatch, a #check Constraint, ...). Rewrite the data type(s).
       # On DECODE the codec replaces the schema, so the refinements are the only
-      # validation of the decoded internal value — keep them AFTER the wire ->
-      # internal conversion. On ENCODE the schema has already validated the
+      # validation of the decoded value — keep them AFTER the input ->
+      # output conversion. On ENCODE the schema has already validated the
       # value (the suffix runs inside `And(schema, suffix)`), so the refinements
-      # are redundant and would run on the produced wire value — drop them.
+      # are redundant and would run on the produced input value — drop them.
       def visit_and(type, path)
         steps = flatten_and(type)
         refinements, data = steps.partition { |s| pure_refinement?(s) }
@@ -529,7 +529,7 @@ module Plumb
     # ------------------------------------------------------------------
     # Shared, format-neutral encoders — string representations standardized
     # by ISO 8601 (dates, times) and RFC 3986 (URIs) — registered by both
-    # built-in codecs, and usable per-field in any schema. Their wire types
+    # built-in codecs, and usable per-field in any schema. Their input types
     # carry `format:` metadata, so generated JSON Schemas describe the fields
     # as eg. `{type: "string", format: "date"}`.
     # ------------------------------------------------------------------
@@ -539,7 +539,7 @@ module Plumb
     # permissive (a blank string is a valid URI).
     URI_EXPR = /\A[a-z][a-z0-9+\-.]*:/i
     # Decimal or scientific notation — Float#to_s emits scientific for very
-    # small/large magnitudes ("1.0e-05"), so the wire type must accept what
+    # small/large magnitudes ("1.0e-05"), so the input type must accept what
     # encode produces or a valid Float fails its own round-trip.
     FLOAT_EXPR = /\A-?\d+(\.\d+)?([eE][+-]?\d+)?\z/
 
@@ -555,8 +555,8 @@ module Plumb
       def decode(str) = ::Time.parse(str)
     end
 
-    # Symbol <=> String. Internal Ruby structures use Symbols for enum-ish
-    # values (`status: :active`); every wire format carries them as strings.
+    # Symbol <=> String. Ruby data structures use Symbols for enum-ish
+    # values (`status: :active`); the encoded form carries them as strings.
     # A narrowed field (`Types::Symbol[:draft, :published]`) keeps its check.
     class SymbolEncoder < Encoder[Types::String => Types::Symbol]
       def encode(sym) = sym.to_s
@@ -580,14 +580,14 @@ module Plumb
       def decode(str) = ::URI.parse(str)
     end
 
-    # Re-parameterized subclasses: same wire type and methods, narrower
+    # Re-parameterized subclasses: same input type and methods, narrower
     # output — the produced URI is validated against the declared class.
     HTTPURIEncoder = URIEncoder[URIEncoder.input_type => Types::URI::HTTP]
     FileURIEncoder = URIEncoder[URIEncoder.input_type => Types::URI::File]
 
     # Range <=> a JSON object `{ from:, to:, exclusive: }`. Generic over the
     # range's member type: it matches ANY `Range[member]` (its output type is
-    # the Range top), and #input_type_for builds the wire from the matched
+    # the Range top), and #input_type_for builds the input from the matched
     # member — so a `Range[Date]` serializes its endpoints as ISO strings, a
     # `Range[Integer]` as JSON numbers, etc., because the codec rewrites those
     # member-typed `from`/`to` fields through itself. `from`/`to` are nullable
@@ -600,9 +600,9 @@ module Plumb
         exclusive: Types::Boolean
       ] => Types::Range
     ]
-      # Specialize the wire to the matched range's member type. A non-Range
+      # Specialize the input to the matched range's member type. A non-Range
       # match (should not happen — only RangeClass is a subtype of the Range
-      # top) falls back to the generic declared wire.
+      # top) falls back to the generic declared input.
       def self.input_type_for(matched)
         return input_type unless matched.is_a?(Plumb::RangeClass)
 
@@ -644,11 +644,11 @@ module Plumb
       encoder RangeEncoder
     end
 
-    # A base codec for stringly wire formats — HTML forms, query strings, CSV
+    # A base codec for string-based formats — HTML forms, query strings, CSV
     # cells — where EVERY value arrives as a string. Unlike Codec::JSON there
     # are almost no native scalars: strings pass through, untyped containers
     # recurse structurally (Rack-style nested params), and everything else
-    # maps through an encoder whose wire type is a strictly-patterned string.
+    # maps through an encoder whose input type is a strictly-patterned string.
     #
     #   Config = Types::Hash[port: Types::Integer, active: Types::Boolean, on: Types::Date]
     #   decoder, encoder = Plumb::Codec::Forms.for(Config)
@@ -691,7 +691,7 @@ module Plumb
       # An empty or absent form field is nil — so `Types::Date | Types::Nil`
       # decodes '' AND a literal nil (valueless params, eg. Rack's
       # `parse_nested_query('x')`) to nil, and '2024-01-30' to a Date. The Nil
-      # in the wire is left as a literal acceptance during wire rewriting (it
+      # in the input is left as a literal acceptance during input rewriting (it
       # is noop-covered), not recursively re-encoded.
       class NilEncoder < Encoder[(Types::String[''] | Types::Nil) => Types::Nil]
         def encode(_nil) = ''

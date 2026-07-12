@@ -5,8 +5,10 @@ require 'plumb/function'
 
 module Plumb
   # A reversible, type-aware transform between two representations of a value —
-  # typically a wire/serialized form and an internal Ruby form. Declared
-  # class-based, with the types given as a one-pair Hash literal:
+  # an input type and an output type. Neither side need be a "wire" format: a
+  # serialized string and a parsed Ruby object, or one in-memory data structure
+  # and another, are equally valid. Declared class-based, with the types given
+  # as a one-pair Hash literal:
   #
   #   DateRange = Types::Range[Types::Date]
   #   JSONDateRange = Types::Hash[from: Types::Date, to: Types::Date]
@@ -38,7 +40,7 @@ module Plumb
     # types (a raw Hash becomes a HashClass, so
     # `Encoder[{from: Date} => DateRange]` works).
     #
-    # @param pair [Hash] a one-pair Hash: input (wire) type => output (internal) type
+    # @param pair [Hash] a one-pair Hash: input type => output type
     # @return [Class]
     def self.[](pair)
       unless pair.is_a?(::Hash) && pair.size == 1
@@ -66,12 +68,12 @@ module Plumb
 
       alias output_type input_type
 
-      # The wire (input) type to rewrite for a particular matched output type.
+      # The input type to rewrite for a particular matched output type.
       # Fixed for a normal encoder — the declared input type, regardless of what
       # matched. A GENERIC encoder (one whose output_type is a container top like
-      # Types::Range, matching any Range[member]) overrides this to BUILD its wire
+      # Types::Range, matching any Range[member]) overrides this to BUILD its input
       # from the matched node's structure, so `Range[Date]` yields a
-      # `from: Date, to: Date` wire and `Range[Integer]` a `from: Integer, …` one.
+      # `from: Date, to: Date` input and `Range[Integer]` a `from: Integer, …` one.
       # The codec then rewrites that member type through itself as usual. Mirrors
       # how the Rewriter reads an Array's element type off the matched node.
       # @param matched_type [Composable] the type this encoder matched
@@ -96,8 +98,8 @@ module Plumb
       end
 
       # A direction step with one or both sides substituted — used by
-      # Codec::Rewriter to splice in a rewritten wire type or a narrowed
-      # internal type, keeping each rewritten field a single Function node.
+      # Codec::Rewriter to splice in a rewritten input type or a narrowed
+      # output type, keeping each rewritten field a single Function node.
       # @return [Function]
       def step(direction, input_type: nil, output_type: nil)
         base = direction == :decode ? decoding : encoding

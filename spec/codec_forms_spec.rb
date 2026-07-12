@@ -13,7 +13,7 @@ module CodecFormsSpec
         expect(decoder.parse('-3')).to eq(-3)
         expect(decoder.resolve('12abc').valid?).to be(false)
         expect(decoder.resolve('1,000').valid?).to be(false)
-        expect(decoder.resolve(80).valid?).to be(false) # strictly stringy wire
+        expect(decoder.resolve(80).valid?).to be(false) # strictly stringy input
         expect(encoder.parse(80)).to eq('80')
       end
 
@@ -25,7 +25,7 @@ module CodecFormsSpec
 
       specify 'round-trips Floats whose #to_s is scientific notation' do
         decoder, encoder = Codec.for(Types::Float)
-        expect(encoder.parse(0.00001)).to eq('1.0e-05') # encode output accepted by the wire type
+        expect(encoder.parse(0.00001)).to eq('1.0e-05') # encode output accepted by the input type
         expect(decoder.parse('1.0e-05')).to eq(0.00001)
         expect(encoder.parse(1e20)).to eq('1.0e+20')
       end
@@ -124,7 +124,7 @@ module CodecFormsSpec
     end
 
     describe 'whole schemas' do
-      specify 'decodes and re-encodes form params against an internal schema' do
+      specify 'decodes and re-encodes form params against an output schema' do
         config = Types::Hash[
           host: Types::URI::HTTP,
           port: Types::Integer,
@@ -143,7 +143,7 @@ module CodecFormsSpec
         )
       end
 
-      specify 'JSON Schema describes the stringly wire format' do
+      specify 'JSON Schema describes the stringly input format' do
         schema = Plumb::JSONSchemaVisitor.call(Codec >> Types::Hash[port: Types::Integer, on: Types::Date])
         expect(schema.dig('properties', 'port', 'type')).to eq('string')
         expect(schema.dig('properties', 'on')).to eq('type' => 'string', 'format' => 'date')

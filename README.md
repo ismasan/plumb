@@ -299,7 +299,7 @@ You rarely write `Types::Never` by hand — it's what an impossible intersection
 * `Types::Lax::String`
 * `Types::Lax::Symbol`
 
-For parsing stringy wire formats (HTML forms, query strings) into these types — what the `Types::Forms` namespace used to do, one way — see `Plumb::Codec::Forms` under [Encoders and Codecs](#encoders-and-codecs).
+For parsing stringy formats (HTML forms, query strings) into these types — what the `Types::Forms` namespace used to do, one way — see `Plumb::Codec::Forms` under [Encoders and Codecs](#encoders-and-codecs).
 
 TODO: datetime, others.
 
@@ -1865,11 +1865,11 @@ LinkedList = Types::Hash[
 
 ### Encoders and Codecs
 
-A one-way coercion can parse an external representation (a date string) into an internal value (a `Date`), but not back. **Encoders** generalize that into pluggable, two-way serialization, and **Codecs** group encoders and apply them to whole schemas — Ruby data structures to JSON-ready structures and back, for example.
+A one-way coercion can parse an external representation (a date string) into a parsed value (a `Date`), but not back. **Encoders** generalize that into pluggable, two-way serialization, and **Codecs** group encoders and apply them to whole schemas — Ruby data structures to JSON-ready structures and back, for example.
 
 #### Defining encoders
 
-An encoder is a class declaring a wire (input) and an internal (output) type, with `#decode` (wire ⇒ internal) and `#encode` (internal ⇒ wire) methods:
+An encoder is a class declaring an input and an output type, with `#decode` (input ⇒ output) and `#encode` (output ⇒ input) methods:
 
 ```ruby
 DateRange = Types::Range[Types::Date]
@@ -1905,7 +1905,7 @@ JSONDateRangeEncoder.decode(from: Date.new(2024, 1, 1), to: Date.new(2024, 2, 1)
 JSONDateRangeEncoder.encode(Date.new(2024, 1, 1)..Date.new(2024, 2, 1))           # => a Hash
 ```
 
-Encoders also express lenient unions — `Types::Date | SomeDateEncoder` accepts a `Date` or decodes a wire string into one.
+Encoders also express lenient unions — `Types::Date | SomeDateEncoder` accepts a `Date` or decodes a string into one.
 
 #### Codecs
 
@@ -1931,8 +1931,8 @@ JSONPerson = JSONCodec >> Person # decode: JSON structures -> Person
 JSONPerson.parse({ name: 'Joe', dates: { from: '2024-01-01', to: '2024-02-01' } })
 # => { name: 'Joe', dates: Date(2024-01-01)..Date(2024-02-01) }
 
-WirePerson = Person >> JSONCodec # encode: Person -> JSON structures
-WirePerson.parse({ name: 'Joe', dates: Date.new(2024, 1, 1)..Date.new(2024, 2, 1) })
+EncodedPerson = Person >> JSONCodec # encode: Person -> JSON structures
+EncodedPerson.parse({ name: 'Joe', dates: Date.new(2024, 1, 1)..Date.new(2024, 2, 1) })
 # => { name: 'Joe', dates: { from: '2024-01-01', to: '2024-02-01' } }
 ```
 
@@ -1944,7 +1944,7 @@ decoder.parse(json_data)   # => a Person hash
 encoder.parse(person_hash) # => JSON structures
 ```
 
-Note how the `Date` values *inside* `JSONDateRange` were resolved too: an encoder's wire type is itself rewritten through the same codec, so nested non-native values are handled by other encoders in the group (here, the built-in `Date` encoder). The rewrite recurses into nested hashes, arrays, tuples, hash maps, union branches, metadata/policy wrappers and `.defer`red recursive types. Matching is by subtyping against each encoder's internal type, most-specific encoder first.
+Note how the `Date` values *inside* `JSONDateRange` were resolved too: an encoder's input type is itself rewritten through the same codec, so nested non-native values are handled by other encoders in the group (here, the built-in `Date` encoder). The rewrite recurses into nested hashes, arrays, tuples, hash maps, union branches, metadata/policy wrappers and `.defer`red recursive types. Matching is by subtyping against each encoder's output type, most-specific encoder first.
 
 Codecs work with any type, not just schemas:
 
@@ -1974,16 +1974,16 @@ JSONCodec >> Types::Hash[profile: Types::Hash[joined: Types::Any[Time]]]
 # raises Plumb::TypeError: ... field `profile.joined` (Any[Time]) matches no encoder ...
 ```
 
-The result of a codec composition is ordinary Plumb algebra — the codec leaves no runtime node behind — so JSON Schema generation works, describing the wire side of a decoded schema:
+The result of a codec composition is ordinary Plumb algebra — the codec leaves no runtime node behind — so JSON Schema generation works, describing the input side of a decoded schema:
 
 ```ruby
 JSONPerson.to_json_schema
 # "dates" is described as { "type" => "object", "properties" => { "from" => { "type" => "string" }, ... } }
 ```
 
-#### `Codec::Forms`: stringly wire formats
+#### `Codec::Forms`: string-based formats
 
-The second built-in codec targets HTML forms, query strings and other formats where **every value arrives as a string**. Unlike `Codec::JSON` there are almost no native scalars: strings pass through, untyped containers recurse (Rack-style nested params), and everything else maps through an encoder with a strictly-patterned string wire type — integers (`/\A-?\d+\z/`), floats, decimals, booleans (`"true"/"1"`, `"false"/"0"`, case-insensitive), ISO 8601 dates and times, scheme-prefixed URIs, and the empty string for `nil` (so `Types::Date | Types::Nil` decodes `''` to `nil`).
+The second built-in codec targets HTML forms, query strings and other formats where **every value arrives as a string**. Unlike `Codec::JSON` there are almost no native scalars: strings pass through, untyped containers recurse (Rack-style nested params), and everything else maps through an encoder with a strictly-patterned string input type — integers (`/\A-?\d+\z/`), floats, decimals, booleans (`"true"/"1"`, `"false"/"0"`, case-insensitive), ISO 8601 dates and times, scheme-prefixed URIs, and the empty string for `nil` (so `Types::Date | Types::Nil` decodes `''` to `nil`).
 
 ```ruby
 Config = Types::Hash[
@@ -2000,14 +2000,14 @@ encoder.parse({ host: URI.parse('http://example.com'), port: 80, active: true, s
 # => { host: 'http://example.com', port: '80', active: 'true', starts_on: '' }
 ```
 
-`Codec::Forms` replaces the old one-way `Types::Forms` namespace. The wire types are strict — actual integers or booleans are *not* accepted on decode, since form data is always strings; apply the codec at the boundary and write schemas in internal types.
+`Codec::Forms` replaces the old one-way `Types::Forms` namespace. The input types are strict — actual integers or booleans are *not* accepted on decode, since form data is always strings; apply the codec at the boundary and write schemas in output types.
 
 Format-neutral encoders live at the `Plumb::Codec` level and are registered by both built-in codecs: ISO 8601 `Codec::DateEncoder`/`Codec::TimeEncoder`, RFC 3986 `Codec::URIEncoder`/`HTTPURIEncoder`/`FileURIEncoder`, `Codec::SymbolEncoder` (Symbols travel as strings) and `Codec::DecimalEncoder` (BigDecimals travel as canonical decimal strings — a string, not a number, to keep their precision; this also applies under `Codec::JSON`, where a raw BigDecimal would not be JSON-native). They are also usable per-field (`attribute :host, Plumb::Codec::HTTPURIEncoder`), and the old lenient behaviour is expressible as a union: `Types::Date | Plumb::Codec::DateEncoder`.
 
 Things to know:
 
 * Direction inference needs a typed neighbour. Opaque contexts fall back to the declared direction — use `.decoding`/`.encoding` to be explicit.
-* The JSON Schema of an *encode* pipeline describes its (internal) input side, per the library convention that schemas describe accepted inputs. Visit the decode direction for the wire schema.
+* The JSON Schema of an *encode* pipeline describes what it accepts (its output-typed values), per the library convention that schemas describe accepted inputs. Visit the decode direction for the input-format schema.
 * `.defer`red fields rewrite lazily, so an unmatched type inside one surfaces at first resolution rather than at composition.
 * Registering `noop Types::Hash` / `Types::Array` only covers *untyped* containers — structured schemas (and struct classes) are always recursed into, so a generic noop can't accidentally skip encoding of nested fields.
 * Decoding a struct runs the rewritten schema and then the struct's own validation — correct, but a struct attribute with a non-idempotent transform would apply it twice. Struct attributes should be validators/coercions, as they already must be for `#with`.

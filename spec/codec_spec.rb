@@ -48,7 +48,7 @@ module CodecSpecTypes
 
   DATE = ::Date.new(2024, 1, 1).freeze
   RANGE = ::Date.new(2024, 1, 1)..::Date.new(2024, 2, 1)
-  WIRE_PERSON = { name: 'Joe', dates: { from: '2024-01-01', to: '2024-02-01' } }.freeze
+  ENCODED_PERSON = { name: 'Joe', dates: { from: '2024-01-01', to: '2024-02-01' } }.freeze
   PERSON = { name: 'Joe', dates: RANGE }.freeze
 
   RSpec.describe Plumb::Codec do
@@ -78,7 +78,7 @@ module CodecSpecTypes
         expect((Types::Date >> Plumb::Codec::JSON).parse(DATE)).to eq('2024-01-01')
       end
 
-      it 'rejects non-ISO date strings at the wire type' do
+      it 'rejects non-ISO date strings at the input type' do
         expect((Plumb::Codec::JSON >> Types::Date).resolve('01/30/2024').valid?).to be(false)
       end
 
@@ -116,9 +116,9 @@ module CodecSpecTypes
       it 'encodes and decodes Ranges as objects, generic over the member type' do
         # Range[Date]: endpoints rewrite to ISO strings via the Date encoder.
         dec, enc = Plumb::Codec::JSON.for(Types::Range[Types::Date])
-        wire = { from: '2024-01-01', to: '2024-02-01', exclusive: false }
-        expect(enc.parse(RANGE)).to eq(wire)
-        expect(dec.parse(wire)).to eq(RANGE)
+        encoded = { from: '2024-01-01', to: '2024-02-01', exclusive: false }
+        expect(enc.parse(RANGE)).to eq(encoded)
+        expect(dec.parse(encoded)).to eq(RANGE)
 
         # Range[Integer]: JSON-native endpoints pass through; `exclusive` tracks
         # exclusive ranges, and beginless/endless ranges keep a nil endpoint.
@@ -129,14 +129,14 @@ module CodecSpecTypes
         expect(dec.parse(enc.parse(..5))).to eq(..5)
       end
 
-      it 'reports a bad Range endpoint under its wire key' do
+      it 'reports a bad Range endpoint under its input key' do
         dec, = Plumb::Codec::JSON.for(Types::Range[Types::Date])
         result = dec.resolve({ from: 'nope', to: '2024-02-01', exclusive: false })
         expect(result.valid?).to be(false)
         expect(result.errors[:from]).to be_truthy
       end
 
-      it 'describes a Range field as a wire object in JSON Schema' do
+      it 'describes a Range field as a input object in JSON Schema' do
         schema = Plumb::JSONSchemaVisitor.call(Plumb::Codec::JSON >> Types::Hash[span: Types::Range[Types::Date]])
         span = schema.dig('properties', 'span')
         expect(span['type']).to eq('object')
@@ -147,15 +147,15 @@ module CodecSpecTypes
       it 'lets a subclass Date encoder take precedence over the built-in' do
         expect((Types::Date >> JSONCodec).parse(DATE)).to eq('2024-01-01') # spec ISODateEncoder wins the tie
         schema = Plumb::JSONSchemaVisitor.call(JSONCodec >> Types::Hash[date: Types::Date])
-        expect(schema.dig('properties', 'date')).to eq('type' => 'string') # no format: plain wire String
+        expect(schema.dig('properties', 'date')).to eq('type' => 'string') # no format: plain input String
       end
     end
 
     describe '#for' do
       it 'returns a [decoding, encoding] pair for a type' do
         decoder, encoder = JSONCodec.for(Person)
-        expect(decoder.parse(WIRE_PERSON)).to eq(PERSON)
-        expect(encoder.parse(PERSON)).to eq(WIRE_PERSON)
+        expect(decoder.parse(ENCODED_PERSON)).to eq(PERSON)
+        expect(encoder.parse(PERSON)).to eq(ENCODED_PERSON)
       end
 
       it 'works on instances and wraps raw types' do
@@ -164,9 +164,9 @@ module CodecSpecTypes
         expect(encoder.parse(DATE)).to eq('2024-01-01')
       end
 
-      it 'produces an encoder and decoder that compose (encode >> decode) — they meet at the wire type' do
+      it 'produces an encoder and decoder that compose (encode >> decode) — they meet at the input type' do
         decoder, encoder = JSONCodec.for(Person)
-        roundtrip = encoder >> decoder # Person -> wire -> Person; type-checks at the shared wire schema
+        roundtrip = encoder >> decoder # Person -> encoded -> Person; type-checks at the shared input schema
         expect(roundtrip.parse(PERSON)).to eq(PERSON)
       end
     end
@@ -191,9 +191,9 @@ module CodecSpecTypes
     end
 
     describe 'decoding schemas (Codec >> Type)' do
-      it 'rewrites matched fields, resolving the wire type through the same codec' do
+      it 'rewrites matched fields, resolving the input type through the same codec' do
         json_person = JSONCodec >> Person
-        expect(json_person.parse(WIRE_PERSON)).to eq(PERSON)
+        expect(json_person.parse(ENCODED_PERSON)).to eq(PERSON)
       end
 
       it 'reports errors under the failing field' do
@@ -205,14 +205,14 @@ module CodecSpecTypes
     end
 
     describe 'encoding schemas (Type >> Codec)' do
-      it 'rewrites the schema output to wire values' do
-        wire_person = Person >> JSONCodec
-        expect(wire_person.parse(PERSON)).to eq(WIRE_PERSON)
+      it 'rewrites the schema output to encoded values' do
+        encoded_person = Person >> JSONCodec
+        expect(encoded_person.parse(PERSON)).to eq(ENCODED_PERSON)
       end
 
-      it 'still validates the internal input' do
-        wire_person = Person >> JSONCodec
-        assert_result(wire_person.resolve({ name: 'Joe', dates: 'nope' }), { name: 'Joe', dates: 'nope' }, false)
+      it 'still validates the decoded input' do
+        encoded_person = Person >> JSONCodec
+        assert_result(encoded_person.resolve({ name: 'Joe', dates: 'nope' }), { name: 'Joe', dates: 'nope' }, false)
       end
 
       it 'does not re-run field coercions on already-parsed values' do
@@ -222,8 +222,8 @@ module CodecSpecTypes
       end
 
       it 'round-trips' do
-        decoded = (JSONCodec >> Person).parse(WIRE_PERSON)
-        expect((Person >> JSONCodec).parse(decoded)).to eq(WIRE_PERSON)
+        decoded = (JSONCodec >> Person).parse(ENCODED_PERSON)
+        expect((Person >> JSONCodec).parse(decoded)).to eq(ENCODED_PERSON)
       end
     end
 
@@ -286,7 +286,7 @@ module CodecSpecTypes
         expect(encoder.parse([1, 2])).to eq([1, 2])
       end
 
-      it 'supports #default with encodable values (decode emits the internal default; encode encodes it)' do
+      it 'supports #default with encodable values (decode emits the decoded default; encode encodes it)' do
         schema = Types::Hash[date: Types::Date.default(DATE)]
         decoder, encoder = JSONCodec.for(schema)
         expect(decoder.parse({})).to eq({ date: DATE })
@@ -302,7 +302,7 @@ module CodecSpecTypes
         expect(codec_schema.resolve({ name: '', age: 20 }).valid?).to be(false)
       end
 
-      it 'keeps a narrowed, value-preserving field type as the internal-side check' do
+      it 'keeps a narrowed, value-preserving field type as the output-side check' do
         narrow = Types::Date[DATE..::Date.new(2024, 12, 31)]
         schema = Types::Hash[date: narrow]
         codec_schema = JSONCodec >> schema
@@ -310,7 +310,7 @@ module CodecSpecTypes
         expect(codec_schema.resolve({ date: '2020-01-01' }).valid?).to be(false)
       end
 
-      it 'rewrites a .where-refined field, keeping the refinement on the internal side' do
+      it 'rewrites a .where-refined field, keeping the refinement on the output side' do
         schema = Types::Hash[birthday: Types::Date.where(year: 1900..2100)]
         decoder, encoder = JSONCodec.for(schema)
         expect(decoder.parse({ birthday: '2024-01-30' })).to eq({ birthday: ::Date.new(2024, 1, 30) })
@@ -441,14 +441,14 @@ module CodecSpecTypes
         expect { JSONCodec >> schema }.to raise_error(Plumb::TypeError, /field `times\.\[\]`/)
       end
 
-      it 'detects encoder wire-type cycles' do
+      it 'detects encoder input-type cycles' do
         loop_type = Types::Range[Types::Integer]
         looping = Class.new(Plumb::Encoder[Types::Hash[again: loop_type] => loop_type]) do
           def encode(v) = { again: v }
           def decode(v) = v[:again]
         end
         codec = Plumb::Codec.new(looping)
-        expect { codec >> loop_type }.to raise_error(Plumb::TypeError, /wire-type cycle/)
+        expect { codec >> loop_type }.to raise_error(Plumb::TypeError, /input-type cycle/)
       end
 
       it 'raises when composed with | or &' do
@@ -468,13 +468,13 @@ module CodecSpecTypes
     end
 
     describe 'struct types (Types::Data / Plumb::Attributes)' do
-      it 'decodes wire structures into struct instances' do
+      it 'decodes encoded structures into struct instances' do
         company = (JSONCodec >> Company).parse({ name: 'ACME', founded: '2024-01-01' })
         expect(company).to be_a(Company)
         expect(company.founded).to eq(DATE)
       end
 
-      it 'encodes struct instances into wire structures' do
+      it 'encodes struct instances into encoded structures' do
         company = Company.new(name: 'ACME', founded: DATE)
         expect((Company >> JSONCodec).parse(company)).to eq({ name: 'ACME', founded: '2024-01-01' })
       end
@@ -494,19 +494,19 @@ module CodecSpecTypes
       end
 
       it 'recurses into nested structs, arrays of structs, defaults and encoder-matched attributes' do
-        wire = {
+        encoded = {
           title: 'Core',
           company: { name: 'ACME', founded: '2024-01-01' },
           members: [{ name: 'Joe', joined: '2024-02-01' }],
           dates: { from: '2024-01-01', to: '2024-02-01' }
         }
         decoder, encoder = JSONCodec.for(Team)
-        team = decoder.parse(wire)
+        team = decoder.parse(encoded)
         expect(team.company.founded).to eq(DATE)
         expect(team.members.first).to be_a(PlainEmployee)
         expect(team.members.first.joined).to eq(::Date.new(2024, 2, 1))
         expect(team.dates).to eq(RANGE)
-        expect(encoder.parse(team)).to eq(wire)
+        expect(encoder.parse(team)).to eq(encoded)
 
         defaulted = decoder.parse({ title: 'Solo', company: { name: 'ACME', founded: '2024-01-01' } })
         expect(defaulted.members).to eq([])
@@ -519,7 +519,7 @@ module CodecSpecTypes
         expect(decoded[:company].founded).to eq(DATE)
       end
 
-      it 'reports invalid wire data under the failing attribute' do
+      it 'reports invalid encoded data under the failing attribute' do
         result = (JSONCodec >> Company).resolve({ name: 'ACME', founded: 'nope' })
         expect(result.valid?).to be(false)
         expect(result.errors[:founded]).to be_a(::String)
@@ -546,7 +546,7 @@ module CodecSpecTypes
         expect { klass >> JSONCodec }.to raise_error(Plumb::TypeError, /joined_at/)
       end
 
-      it 'describes the wire side in JSON Schema' do
+      it 'describes the input side in JSON Schema' do
         schema = Plumb::JSONSchemaVisitor.call(JSONCodec >> Company)
         expect(schema.dig('properties', 'founded')).to eq('type' => 'string')
         expect(schema['required']).to eq(%w[name founded])
@@ -554,7 +554,7 @@ module CodecSpecTypes
     end
 
     describe 'visitors' do
-      it 'describes the wire side of a decoded schema' do
+      it 'describes the input side of a decoded schema' do
         schema = Plumb::JSONSchemaVisitor.call(JSONCodec >> Person)
         expect(schema['properties']['dates']).to eq(
           'type' => 'object',
@@ -563,7 +563,7 @@ module CodecSpecTypes
         )
       end
 
-      it 'visits encode-direction schemas without raising (describing the internal side)' do
+      it 'visits encode-direction schemas without raising (describing the output side)' do
         schema = Plumb::JSONSchemaVisitor.call(Person >> JSONCodec)
         expect(schema['properties']['name']).to eq('type' => 'string')
       end
@@ -583,7 +583,7 @@ module CodecSpecTypes
       it 'keeps encoder steps intact through Plumb.decorate' do
         json_person = JSONCodec >> Person
         decorated = Plumb.decorate(json_person) { |t| t }
-        expect(decorated.parse(WIRE_PERSON)).to eq(PERSON)
+        expect(decorated.parse(ENCODED_PERSON)).to eq(PERSON)
       end
     end
   end
