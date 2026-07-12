@@ -202,7 +202,7 @@ module Plumb
     def noop_value?(value)
       return false unless @noop_union
 
-      @noop_union.resolve(value).valid?
+      @noop_union === value
     end
 
     def at_path(path) = path.empty? ? 'the root type' : "field `#{path.join('.')}`"
