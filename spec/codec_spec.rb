@@ -272,6 +272,21 @@ module CodecSpecTypes
         expect(codec_schema.at_key(:date).metadata[:label]).to eq('When')
       end
 
+      it 'sees through a constraint/policy stacked on a Metadata node' do
+        # `Types::String.metadata(desc:).present` nests as Policy(present) -> Constraint(base:
+        # Metadata -> String). The codec must see through both wrappers to the leaf — whether a
+        # noop (String) or an encoder-matched type (Date) — in BOTH directions.
+        noop_type = Types::String.metadata(desc: 'example').present
+        expect { JSONCodec >> noop_type }.not_to raise_error
+        expect((JSONCodec >> noop_type).parse('hello')).to eq('hello')
+        expect((JSONCodec >> noop_type).resolve('').valid?).to be(false) # refinement still enforced
+
+        encoded_type = Types::Date.metadata(desc: 'when').present
+        decoder, encoder = JSONCodec.for(Types::Hash[on: encoded_type])
+        expect(decoder.parse({ on: '2024-01-01' })).to eq({ on: DATE })
+        expect(encoder.parse({ on: DATE })).to eq({ on: '2024-01-01' })
+      end
+
       it 'preserves policies (eg. #default)' do
         schema = Types::Hash[name: Types::String.default('Unknown'), date: Types::Date]
         codec_schema = JSONCodec >> schema
