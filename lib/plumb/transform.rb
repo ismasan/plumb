@@ -12,6 +12,67 @@ module Plumb
   class Transform
     include Composable
 
+    # Build a typed function (a Transform) from an input => output pair and a
+    # callable that produces the new value.
+    #
+    #   Plumb::Transform[String => Integer] { |result| result.valid(result.value.size) }
+    #   Plumb::Transform[callable, String => Integer]
+    #
+    # The callable takes and returns a Result (unlike Composable#transform, whose
+    # block takes a value). With no types, both ends default to Types::Any.
+    # When input and output are the same type and there's nothing to apply, this
+    # is just that type, so it's returned as-is.
+    #
+    # @param args [Array] (in => out), (callable), or (callable, in => out)
+    # @yield [Result] Result => Result
+    # @return [Composable]
+    def self.[](*args, &block)
+      input_type = Types::Any
+      output_type = Types::Any
+      transform = block || NOOP
+
+      case args
+      in []
+        # no types, no callable: defaults apply
+      in [clb, Hash => inout] if clb.respond_to?(:call)
+        raise ArgumentError, 'expected a callable or a block, not both' if block
+
+        transform = clb
+        input_type, output_type = __set_types(inout)
+      in [clb] if clb.respond_to?(:call)
+        raise ArgumentError, 'expected a callable or a block, not both' if block
+
+        transform = clb
+      in [Hash => inout]
+        input_type, output_type = __set_types(inout)
+      else
+        raise ArgumentError,
+              'expected Plumb::Transform[input_type => output_type], Plumb::Transform[callable] ' \
+              "or Plumb::Transform[callable, input_type => output_type]. Got #{args.inspect}"
+      end
+
+      return input_type if input_type == output_type && transform == NOOP
+
+      if transform == NOOP
+        raise ArgumentError,
+              "defined a function (#{input_type} -> #{output_type}), but no explicit " \
+              "transform block or callable given. \n" \
+              "Should be Plumb::Transform[#{input_type} => #{output_type}] { |r| r.valid(new_value_here) }"
+      end
+
+      new(input_type, output_type, transform)
+    end
+
+    def self.__set_types(inout)
+      return [Types::Any, Types::Any] if inout.empty?
+      raise ArgumentError, 'expected single key input_type => output_type' if inout.size > 1
+
+      input_type = Composable.wrap(inout.keys.first)
+      output_type = Composable.wrap(inout.values.first)
+      [input_type, output_type]
+    end
+    private_class_method :__set_types
+
     # `transform_proc` (not `transform`, which is Composable's builder method)
     # exposes the value-level callable so the Decorator can rebuild the node.
     attr_reader :children, :input_type, :output_type, :transform_proc
