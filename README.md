@@ -1959,9 +1959,9 @@ LoudGreeting = Greeting.new('Hola').default('no greeting').invoke(:upcase)
 class User
   extend Composable
   
-  def self.class(result)
+  def self.call(result)
     # do something here. Perhaps returning a Result with an instance of this class
-    return result.valid(new)
+    result.valid(new)
   end
 end
 ```
