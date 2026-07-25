@@ -328,6 +328,19 @@ module Plumb
       self.class.new(schema: relaxed)
     end
 
+    # The value you GET after running the schema: each field resolved to what it
+    # produces, so `Hash[age: String >> Integer].output_type` is `Hash[age:
+    # Integer]` (mirror of #accepted_type on the input side). Idempotent — when
+    # no field converts, every field's resolved output IS the field, so this
+    # returns `self` and Subtyping.resolved_output reaches its fixpoint in one
+    # step. Only field types change; keys and optionality are preserved.
+    def output_type
+      resolved = _schema.each_with_object({}) do |(key, field), h|
+        h[key] = Plumb::Subtyping.resolved_output(field)
+      end
+      resolved.any? { |k, f| !f.equal?(_schema[k]) } ? self.class.new(schema: resolved) : self
+    end
+
     protected
 
     # The schema entries excluding the `_` catch-all (the named + typed keys).

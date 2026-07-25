@@ -28,6 +28,15 @@ module Plumb
     # position's type accepts (see HashClass#accepted_type).
     def accepted_type = of(*children.map { |c| Plumb::Subtyping.accepted_type(c) })
 
+    # The value you GET after validating each position: every position type
+    # resolved to what it produces (mirror of #accepted_type). Idempotent —
+    # returns self when no position converts, so Subtyping.resolved_output
+    # reaches its fixpoint in one step.
+    def output_type
+      outs = children.map { |c| Plumb::Subtyping.resolved_output(c) }
+      outs.each_with_index.all? { |o, i| o.equal?(children[i]) } ? self : of(*outs)
+    end
+
     def call(result)
       return result.invalid!(errors: 'must be an Array') unless result.value.is_a?(::Array)
       return result.invalid!(errors: 'must have the same size') unless result.value.size == @children.size

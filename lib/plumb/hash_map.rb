@@ -43,6 +43,16 @@ module Plumb
       self.class.new(Plumb::Subtyping.accepted_type(@key_type), Plumb::Subtyping.accepted_type(@value_type))
     end
 
+    # The value you GET after re-mapping each key/value: both resolved to what
+    # they produce (mirror of #accepted_type). Idempotent — returns self when
+    # neither converts, so Subtyping.resolved_output reaches its fixpoint in one
+    # step.
+    def output_type
+      ko = Plumb::Subtyping.resolved_output(@key_type)
+      vo = Plumb::Subtyping.resolved_output(@value_type)
+      ko.equal?(@key_type) && vo.equal?(@value_type) ? self : self.class.new(ko, vo)
+    end
+
     def call(result)
       return result.invalid!(errors: 'must be a Hash') unless result.value.is_a?(::Hash)
 

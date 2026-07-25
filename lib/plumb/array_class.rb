@@ -35,6 +35,16 @@ module Plumb
     # mirroring HashClass#accepted_type's per-field relaxation.
     def accepted_type = of(Plumb::Subtyping.accepted_type(@element_type))
 
+    # The value you GET after re-mapping each element: the element type resolved
+    # to what it produces, so `Array[String >> Integer].output_type` is
+    # `Array[Integer]` (mirror of #accepted_type). Idempotent — returns self when
+    # the element does not convert, so Subtyping.resolved_output reaches its
+    # fixpoint in one step.
+    def output_type
+      out = Plumb::Subtyping.resolved_output(@element_type)
+      out.equal?(@element_type) ? self : of(out)
+    end
+
     def concurrent
       ConcurrentArrayClass.new(element_type:)
     end
