@@ -72,7 +72,7 @@ module Plumb
     #
     #   pl.step(type_or_callable)        # non-strict chain (via #/)
     #   pl.step!(type_or_callable)       # strict #>> chain (type-checked)
-    #   pl.step(output_type) { |r| ... } # a Transform: validates the current
+    #   pl.step(output_type) { |r| ... } # a Function: validates the current
     #                                    # output, runs the block, and declares
     #                                    # `output_type` as the produced type
     def step(callable = nil, &block)
@@ -94,11 +94,11 @@ module Plumb
     private
 
     # Shared body for #step / #step!. The `output_type` + block form always
-    # builds a Transform (a declared conversion) regardless of `strict`; the
+    # builds a Function (a declared conversion) regardless of `strict`; the
     # plain form chains with `#>>` when strict, `#/` otherwise.
     def add_step(callable, strict:, &block)
       if !callable.nil? && block
-        @type = Transform.new(@type, Composable.wrap(callable), block)
+        @type = Function.new(@type, Composable.wrap(callable), block)
         return self
       end
 

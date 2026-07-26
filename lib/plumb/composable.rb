@@ -141,7 +141,7 @@ module Plumb
     def >(other) = (self >= other) && !(self <= other)
 
     # Leaf hook for Plumb::Subtyping.subtype?, called once the algebra (And/Or/
-    # Transform/top) has been peeled away. It must NOT delegate back to #<= (that
+    # Function/top) has been peeled away. It must NOT delegate back to #<= (that
     # would recurse); it recurses only through Plumb::Subtyping.subtype?.
     #
     # Default behaviour:
@@ -246,7 +246,7 @@ module Plumb
     # The type that carries this node's identity for the subtype relation. A
     # value-preserving type IS its own identity (the default). A value-converting
     # type is identified by what it *produces*, so it projects onto a DISTINCT
-    # type (see Transform#subtype_identity => output_type): Plumb::Subtyping.subtype?
+    # type (see Function#subtype_identity => output_type): Plumb::Subtyping.subtype?
     # reduces `a <= b` to `produced(a) <= b` before consulting the leaf hooks.
     #
     # CONTRACT: only return a value other than `self` when that value is a
@@ -254,16 +254,16 @@ module Plumb
     # with `!equal?(self)`, so it simply won't reduce); returning a node whose own
     # #subtype_identity loops back would recurse forever. This is the extension
     # point for building custom transforming types that play well with subtyping
-    # WITHOUT subclassing Transform.
+    # WITHOUT subclassing Function.
     def subtype_identity = self
 
     # The type this step accepts as the consumer of a `left >> self` chain — the
     # values its #call processes without rejecting outright. Defaults to what it
     # takes as input (its resolved #input_type): right for plain matchers and for
-    # conversion/consumer types (Transform, Stream, Pipeline — they accept their
+    # conversion/consumer types (Function, Stream, Pipeline — they accept their
     # declared input, so they need no override). Two kinds of type override it:
-    #   - a refinement (And): its #input_type is only the base (left) type and
-    #     would drop the constraint it adds, so it accepts its resolved *output*;
+    #   - a refinement (And): its #input_type is only the type the chain opens
+    #     with and would drop the constraint it adds, so it accepts its *output*;
     #   - a Hash: it relaxes each field to what that field accepts.
     # Consulted by Plumb::Subtyping when checking `#>>`.
     def accepted_type = Plumb::Subtyping.resolved_input(self)
@@ -343,7 +343,7 @@ module Plumb
     # Chain two composable objects together as a disjunction ("or").
     # When one value-preserving branch subsumes the other (`Integer | Numeric`,
     # or `X | X`), the union absorbs to the wider branch — see
-    # Subtyping.reduce_union. Transforms/containers never reduce (they may accept
+    # Subtyping.reduce_union. Functions/containers never reduce (they may accept
     # inputs the survivor rejects), so coercion unions are preserved.
     #
     # @param other [Composable]
@@ -389,7 +389,7 @@ module Plumb
     # @param target_type [Class, Symbol] the output type, or a conversion symbol
     # @param callable [#call, nil] a callable that will be applied to the value, or nil if block provided
     # @param block [Proc] a block that will be applied to the value, or nil if callable provided
-    # @return [Transform]
+    # @return [Function]
     def transform(target_type, callable = nil, &block)
       if target_type.is_a?(::Symbol) && callable.nil? && block.nil? && (out = COERCION_METHODS[target_type])
         return coercion_transform(target_type, out)
@@ -662,10 +662,10 @@ module Plumb
       transform_step(cns, block || ->(value) { cns.send(factory_method, value) })
     end
 
-    # Build a Transform that validates the input (self), applies a value-level
+    # Build a Function that validates the input (self), applies a value-level
     # callable, and declares `target_type` as the (validated) output type.
     private def transform_step(target_type, callable, guaranteed: false)
-      klass = guaranteed ? GuaranteedTransform : Transform
+      klass = guaranteed ? GuaranteedFunction : Function
       # Flip the cursor in place with the transformed value — the transform owns
       # the result it is handed (the argument is evaluated first, reading the
       # pre-transform value), so no fresh Result is needed.

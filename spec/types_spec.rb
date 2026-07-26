@@ -250,25 +250,31 @@ RSpec.describe Plumb::Types do
       expect(Types::String.output_type).to eq(Types::String)
     end
 
-    it 'exposes the two sides of a chain (A >> B)' do
+    it 'resolves through a chain (A >> B) to what it consumes and produces' do
       # A value-changing (transform) step keeps the chain as an And. Refinement-
       # only chains collapse via reduction instead (see reduction_spec.rb).
+      # The two sides themselves stay available as #children.
       b = Types::Integer.transform(::String, :to_s)
       chain = Types::Integer >> b
       expect(chain).to be_a(Plumb::And)
       expect(chain.input_type).to eq(Types::Integer)
-      expect(chain.output_type).to eq(b)
+      expect(chain.output_type).to eq(Types::String)
+      expect(chain.children).to eq([Types::Integer, b])
     end
 
-    it 'is shallow for longer chains: input_type is everything but the last step' do
-      # (A >> B >> C) == ((A >> B) >> C). Transform steps keep the And nesting;
-      # each step's output must be a subtype of the next step's input.
+    it 'resolves through longer chains, past the intermediate steps' do
+      # (A >> B >> C) == ((A >> B) >> C). Function steps keep the And nesting,
+      # but the chain as a whole only accepts what its first step accepts and
+      # only produces what its last step produces.
       a = Types::Integer[1..5]
       b = Types::Integer.transform(::String, :to_s)
       c = Types::String.transform(::Integer, :to_i)
       chain = a >> b >> c
-      expect(chain.input_type).to eq(a >> b)
-      expect(chain.output_type).to eq(c)
+      expect(chain.input_type).to eq(a)
+      expect(chain.output_type).to eq(Types::Integer)
+      # the nesting is still there — it is just not what the io types report
+      expect(chain.children).to eq([a >> b, c])
+      assert_result(chain.resolve(3), 3, true)
     end
 
     it 'preserves the constrained input type of a transform' do

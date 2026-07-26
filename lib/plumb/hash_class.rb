@@ -3,7 +3,7 @@
 require 'plumb/composable'
 require 'plumb/key'
 require 'plumb/static_class'
-require 'plumb/transform'
+require 'plumb/function'
 require 'plumb/hash_map'
 require 'plumb/tagged_hash'
 
@@ -388,16 +388,16 @@ module Plumb
     end
   end
 
-  # The typed node returned by HashClass#filtered. It is a Transform — so #>>
+  # The typed node returned by HashClass#filtered. It is a Function — so #>>
   # treats it as a conversion (subtype by its output, accepted by its input) and
   # it bypasses the strict composition check — declaring `input_type` as the
   # filtered schema and `output_type` as that schema with all keys optional. But
-  # unlike a plain Transform it does NOT strict-validate its input: #call runs
+  # unlike a plain Function it does NOT strict-validate its input: #call runs
   # the lenient filter, which accepts any Hash and drops invalid/missing/extra
   # fields.
-  class FilteredHash < Transform
-    # Naming derives #node_name when Composable is *included* (on Transform), so
-    # the subclass would otherwise inherit :transform.
+  class FilteredHash < Function
+    # Naming derives #node_name when Composable is *included* (on Function), so
+    # the subclass would otherwise inherit :function.
     def node_name = :filtered_hash
 
     # A filtered Hash is lenient: it accepts ANY hash and drops invalid/missing/
@@ -409,7 +409,7 @@ module Plumb
 
     def accepted_type = FilteredHash.each_pair_interface
 
-    def call(result) = transform_proc.call(result)
+    def call(result) = fn.call(result)
 
     private def _inspect = "#{input_type.inspect}.filtered"
   end

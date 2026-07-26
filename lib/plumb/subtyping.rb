@@ -17,7 +17,7 @@ module Plumb
     # `String` compare the same way.
     #
     # This engine knows ONLY the composition algebra — refinement (And), union
-    # (Or), conversion (Transform) and the top type (AnyClass). Everything else
+    # (Or), conversion (Function) and the top type (AnyClass). Everything else
     # (atomic matchers, covariant containers, Hash width/depth, custom types) is
     # decided by the type's own #subtype_of? leaf hook (see Composable). It never
     # calls #<= (which would recurse back here).
@@ -62,7 +62,7 @@ module Plumb
       return true if b.is_a?(AnyClass)  # X <= Top
       return false if a.is_a?(AnyClass) # Top <= X only when X is Top (handled above)
 
-      # A value-converting type (Transform, or any custom type that opts in) is
+      # A value-converting type (Function, or any custom type that opts in) is
       # identified for subtyping by what it *produces*, not what it consumes, so we
       # reduce `a <= b` to `produced(a) <= b` before consulting the leaf hooks. A
       # type declares its produced identity via #subtype_identity (default: self).
@@ -389,7 +389,7 @@ module Plumb
     # the surviving type, or nil to fall back to `Or.new`.
     #
     # Guarded to VALUE-PRESERVING refinements only. `subtype?` identifies a
-    # Transform by its OUTPUT type, so `subtype?(String->Integer, Numeric)` is
+    # Function by its OUTPUT type, so `subtype?(String->Integer, Numeric)` is
     # true even though that branch accepts Strings a bare Numeric rejects —
     # reducing there would silently drop a coercion branch. Only when both
     # branches pass values through unchanged does `subtype?` reflect the accepted
@@ -546,7 +546,7 @@ module Plumb
     def steps(type)
       type = type.type if type.is_a?(Composable::Node) && type.node_name == :refined_union
       case type
-      when And then steps(type.input_type) + steps(type.output_type)
+      when And then type.children.flat_map { |c| steps(c) }
       when Constraint then type.base ? steps(type.base) + [Constraint.new(type.matcher)] : [type]
       else [type]
       end
@@ -579,7 +579,7 @@ module Plumb
     # Does `type` return its input unchanged on success (a coreflexive
     # refinement)? Delegates to the type's polymorphic #value_preserving? hook —
     # so custom types opt in by defining it — and memoizes per frozen node in
-    # TypeCache, a pure structural predicate like #accepted_type. Transforms and
+    # TypeCache, a pure structural predicate like #accepted_type. Functions and
     # value-building containers (Hash/Array/Tuple/…) change the value and stay
     # false; refinements and their And/Or compositions are true.
     def value_preserving?(type)
@@ -608,12 +608,12 @@ module Plumb
       end
     end
 
-    # #output_type / #input_type are shallow (one level): an And's output_type is
-    # its right child, which may itself be an opaque Step (output Any) or another
-    # composite. Follow the chain to a fixpoint so the composition check sees the
-    # effective produced/accepted type (and so opaque steps resolve to Any).
-    # Memoized per node in TypeCache (frozen nodes only), so re-resolving a chain
-    # that was already walked — eg. each step of A >> B >> C >> D — is O(1).
+    # Every node resolves its own #input_type / #output_type (an And does it at
+    # construction, an Or maps over its branches), so this is normally a single
+    # hop. The loop remains for nodes that delegate through a wrapper chain, and
+    # bottoms out when a type is its own io type. Memoized per node in TypeCache
+    # (frozen nodes only) — worth it for Or, which allocates a fresh Or of its
+    # resolved branches on every call.
     def resolved_output(type, depth = 0)
       TypeCache.fetch(:resolved_output, type) do
         nxt = type.output_type
