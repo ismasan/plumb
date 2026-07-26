@@ -96,6 +96,15 @@ module Plumb
     # A Function's subtyping identity is what it produces — its declared,
     # distinct output_type. See Plumb::Subtyping.subtype? and Composable#subtype_identity.
     def subtype_identity = @output_type
+
+    # As a `left >> self` consumer, a Function accepts what its INPUT type
+    # accepts — not the input node verbatim. When the input is a Hash/container
+    # whose fields are themselves converting (eg. a codec's decode schema, whose
+    # `flags` field is a `String -> Integer` step), the accepted type is that
+    # input relaxed per field to the type it consumes. This lets an encode
+    # pipeline compose with the matching decode pipeline (`encode >> decode`):
+    # both meet at the same input type. Mirrors HashClass#accepted_type.
+    def accepted_type = Plumb::Subtyping.accepted_type(@input_type)
   end
 
   # A Function whose proc is known *at build time* to produce a value of

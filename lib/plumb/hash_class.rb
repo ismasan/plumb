@@ -109,7 +109,11 @@ module Plumb
     # to the generic Composable#& (Subtyping.intersect), which yields Types::Never
     # for a provably-disjoint type (eg. `Hash & Integer`).
     def &(other)
-      other = Composable.wrap(other)
+      # Route through the intersection hook (not bare Composable.wrap) so a
+      # context-resolving operand — eg. an Encoder class — orients against this
+      # Hash instead of defaulting to its decode direction (which would make
+      # `Hash & EncoderClass` collapse to Never). Mirrors Composable#&.
+      other = Composable.resolve_operand(other, op: :&, left: self)
       return super unless other.is_a?(HashClass)
 
       # The any-Hash top is the identity of intersection: Hash[] & X == X.
@@ -322,6 +326,19 @@ module Plumb
         h[key] = Plumb::Subtyping.accepted_type(field)
       end
       self.class.new(schema: relaxed)
+    end
+
+    # The value you GET after running the schema: each field resolved to what it
+    # produces, so `Hash[age: String >> Integer].output_type` is `Hash[age:
+    # Integer]` (mirror of #accepted_type on the input side). Idempotent — when
+    # no field converts, every field's resolved output IS the field, so this
+    # returns `self` and Subtyping.resolved_output reaches its fixpoint in one
+    # step. Only field types change; keys and optionality are preserved.
+    def output_type
+      resolved = _schema.each_with_object({}) do |(key, field), h|
+        h[key] = Plumb::Subtyping.resolved_output(field)
+      end
+      resolved.any? { |k, f| !f.equal?(_schema[k]) } ? self.class.new(schema: resolved) : self
     end
 
     protected

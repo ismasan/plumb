@@ -30,6 +30,19 @@ module Plumb
     # and `#|` absorb `Array[Integer] | Array[Numeric]`, matching the scalar case.
     def value_preserving? = children.all? { |c| Plumb::Subtyping.value_preserving?(c) }
 
+    # Rebuild around new children (see Plumb::Subtyping.map_children).
+    def with_children(children) = of(children.first)
+
+    # As a consumer, an Array accepts elements relaxed to what the ELEMENT type
+    # accepts — so `Array[Integer] >> Array[Integer.build(Money)]` composes,
+    # mirroring HashClass#accepted_type's per-field relaxation.
+    def accepted_type = Plumb::Subtyping.map_children(self) { |c| Plumb::Subtyping.accepted_type(c) }
+
+    # The value you GET after re-mapping each element: the element type resolved
+    # to what it produces, so `Array[String >> Integer].output_type` is
+    # `Array[Integer]` (mirror of #accepted_type).
+    def output_type = Plumb::Subtyping.map_children(self) { |c| Plumb::Subtyping.resolved_output(c) }
+
     def concurrent
       ConcurrentArrayClass.new(element_type:)
     end

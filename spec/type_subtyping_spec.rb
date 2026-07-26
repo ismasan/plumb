@@ -283,6 +283,31 @@ RSpec.describe 'subtyping: Plumb::Subtyping.subtype? and #<=' do
     end
   end
 
+  describe '#output_type (what a type produces after its transforms)' do
+    it 'resolves each member of a composite to its produced type (mirror of #accepted_type)' do
+      hash  = STypes::Hash[age: STypes::Lax::Integer]
+      array = STypes::Array[STypes::Lax::Integer]
+      tuple = STypes::Tuple[STypes::Lax::Integer, STypes::String]
+      map   = STypes::Hash[STypes::Symbol, STypes::Lax::Integer]
+
+      expect(hash.output_type).to eq(STypes::Hash[age: STypes::Integer])
+      expect(array.output_type).to eq(STypes::Array[STypes::Integer])
+      expect(tuple.output_type).to eq(STypes::Tuple[STypes::Integer, STypes::String])
+      expect(map.output_type).to eq(STypes::Hash[STypes::Symbol, STypes::Integer])
+      # recurses into nested composites
+      expect(STypes::Hash[xs: array].output_type).to eq(STypes::Hash[xs: STypes::Array[STypes::Integer]])
+    end
+
+    it 'is idempotent: a composite with no converting member returns self' do
+      hash  = STypes::Hash[age: STypes::Integer, xs: STypes::Array[STypes::Integer]]
+      array = STypes::Array[STypes::Integer]
+      expect(hash.output_type).to be(hash)                     # same object — resolved_output fixpoint in one step
+      expect(array.output_type).to be(array)
+      expect(Plumb::Subtyping.resolved_output(STypes::Hash[age: STypes::Lax::Integer]))
+        .to eq(STypes::Hash[age: STypes::Integer])
+    end
+  end
+
   describe 'composition type-checking (#>>)' do
     # `>>` is typed by subsumption: everything the left produces must be
     # acceptable to the right (produced <: accepted). Narrow with `#[]` instead.

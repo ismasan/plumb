@@ -121,7 +121,15 @@ module Plumb
 
       if other.is_a?(Constraint)
         within_base = other.base.nil? || Plumb::Subtyping.subtype?(self, other.base)
-        within_base && within_matcher?(other.matcher)
+        return true if within_base && within_matcher?(other.matcher)
+
+        # `self` is `base ∩ {matcher}` — a subset of `base` — so whenever the
+        # base alone is a subtype of `other`, so is `self`. This is the same
+        # fallback the non-Constraint branch below uses; it belongs here too
+        # because base types (`Types::String`, `Types::Date`) ARE Constraints,
+        # and `within_matcher?` can't peel a transparent base (a Metadata/Policy
+        # wrapper, eg. `String.metadata(...).present`) to see the guarantee.
+        base ? Plumb::Subtyping.subtype?(base, other) : false
       elsif base
         Plumb::Subtyping.subtype?(base, other)
       else

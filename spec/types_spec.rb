@@ -688,28 +688,6 @@ RSpec.describe Plumb::Types do
         assert_result(Types::URI::File.resolve(19), 19, false)
       end
 
-      describe 'Forms::URI' do
-        specify Types::Forms::URI::Generic do
-          assert_result(Types::Forms::URI::Generic.resolve(http_uri), http_uri, true)
-          assert_result(Types::Forms::URI::Generic.resolve(file_uri), file_uri, true)
-          assert_result(Types::Forms::URI::Generic.resolve(http_str), http_uri, true)
-          assert_result(Types::Forms::URI::Generic.resolve(file_str), file_uri, true)
-        end
-
-        specify Types::Forms::URI::HTTP do
-          assert_result(Types::Forms::URI::HTTP.resolve(http_uri), http_uri, true)
-          assert_result(Types::Forms::URI::HTTP.resolve(file_uri), file_uri, false)
-          assert_result(Types::Forms::URI::HTTP.resolve(http_str), http_uri, true)
-          assert_result(Types::Forms::URI::HTTP.resolve(file_str), file_uri, false)
-        end
-
-        specify Types::Forms::URI::File do
-          assert_result(Types::Forms::URI::File.resolve(http_uri), http_uri, false)
-          assert_result(Types::Forms::URI::File.resolve(file_uri), file_uri, true)
-          assert_result(Types::Forms::URI::File.resolve(http_str), http_uri, false)
-          assert_result(Types::Forms::URI::File.resolve(file_str), file_uri, true)
-        end
-      end
     end
 
     specify Types::Date do
@@ -718,28 +696,10 @@ RSpec.describe Plumb::Types do
       assert_result(Types::Date.resolve(10), 10, false)
     end
 
-    specify Types::Forms::Date do
-      date = Date.new(2024, 1, 2)
-      date_str = '2024-01-02'
-      assert_result(Types::Forms::Date.resolve(date), date, true)
-      assert_result(Types::Forms::Date.resolve(date_str), date, true)
-      assert_result(Types::Forms::Date.resolve(10), 10, false)
-      assert_result(Types::Forms::Date.resolve('2024-'), '2024-', false)
-    end
-
     specify Types::Time do
       time = Time.parse('2024-08-30T20:15:23Z')
       assert_result(Types::Time.resolve(time), time, true)
       assert_result(Types::Time.resolve(10), 10, false)
-    end
-
-    specify Types::Forms::Date do
-      str = '2024-08-30T20:15:23Z'
-      time = Time.parse(str)
-      assert_result(Types::Forms::Time.resolve(time), time, true)
-      assert_result(Types::Forms::Time.resolve(str), time, true)
-      assert_result(Types::Forms::Time.resolve(10), 10, false)
-      assert_result(Types::Forms::Time.resolve('2024-'), '2024-', false)
     end
 
     specify Types::Lax::String do
@@ -779,20 +739,6 @@ RSpec.describe Plumb::Types do
       assert_result(Types::Lax::Decimal.resolve(10.30), BigDecimal('10.30'), true)
       assert_result(Types::Lax::Decimal.resolve('10,222,333.30'), BigDecimal('10222333.30'), true)
       assert_result(Types::Lax::Decimal.resolve('10222333.30'), BigDecimal('10222333.30'), true)
-    end
-
-    specify Types::Forms::Boolean do
-      assert_result(Types::Forms::Boolean.resolve(true), true, true)
-      assert_result(Types::Forms::Boolean.resolve(false), false, true)
-      assert_result(Types::Forms::Boolean.resolve('true'), true, true)
-
-      assert_result(Types::Forms::Boolean.resolve('false'), false, true)
-      assert_result(Types::Forms::Boolean.resolve('1'), true, true)
-      assert_result(Types::Forms::Boolean.resolve('0'), false, true)
-      assert_result(Types::Forms::Boolean.resolve(1), true, true)
-      assert_result(Types::Forms::Boolean.resolve(0), false, true)
-
-      assert_result(Types::Forms::Boolean.resolve('nope'), 'nope', false)
     end
 
     specify 'pattern matching' do

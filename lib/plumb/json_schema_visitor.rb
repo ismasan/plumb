@@ -202,6 +202,9 @@ module Plumb
     # output type has no schema handler (eg. a custom class via #build) is fine.
     # Only when the input is untyped (eg. `Any.transform(::Integer)`) do we fall
     # back to the output type, since that is then all we know.
+    # Encoder steps (see Plumb::Encoder) are plain Functions, so this covers
+    # them too: a decode-direction step's input IS the encoded form, which is
+    # why `Codec >> Type` describes the encoded side of a schema.
     on(:function) do |node, props|
       left = visit(node.input_type)
       return props.merge(left) if left.key?(TYPE)

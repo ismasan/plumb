@@ -210,6 +210,14 @@ module Plumb
     def self.wrap(callable)
       if callable.is_a?(Composable)
         callable
+      elsif callable.respond_to?(:to_composable)
+        # The context-free resolution hook for objects that become a type on
+        # demand: an Encoder class resolves to its default (declared)
+        # direction, a Codec class to its instance. Used in schema literals,
+        # `Array[Enc]`, `#/`, etc. The composition operators (#>>, #|, #&)
+        # consult #to_plumb_type BEFORE wrapping, so a composed operand can
+        # resolve against context and never reaches this branch.
+        wrap(callable.to_composable)
       elsif callable.is_a?(::Hash)
         HashClass.new(schema: callable)
       elsif callable.is_a?(::Array)
@@ -229,6 +237,22 @@ module Plumb
       end
     end
 
+    # Resolve `other` against a composition context and wrap it as a
+    # Composable — the full normalization for the RIGHT operand of a
+    # composition operator. Consults the operand's #to_plumb_type hook when it
+    # has one (raw values — procs, hash literals — don't, and skip straight to
+    # wrapping), so callers never need a #respond_to? check. EVERY custom
+    # operator implementation should route its operand through here.
+    #
+    # @param other [Object] the right operand
+    # @param op [Symbol] the composition operator being resolved (:>>, :| or :&)
+    # @param left [Composable] the left operand
+    # @return [Composable]
+    def self.resolve_operand(other, op:, left:)
+      other = other.to_plumb_type(op:, left:) if other.respond_to?(:to_plumb_type)
+      wrap(other)
+    end
+
     # A helper to wrap a block in a Step that will defer execution.
     # This so that types can be used recursively in compositions.
     # @example
@@ -242,6 +266,21 @@ module Plumb
 
     def input_type = self
     def output_type = self
+
+    # Composition-context resolution hook, consulted on the RIGHT operand of
+    # #>>, #| and #& before wrapping/type-checking — via
+    # Composable.resolve_operand, which any custom operator implementation
+    # should route its operand through. It lets an operand
+    # resolve itself against the composition context: an Encoder picks the
+    # direction to run in from what `left` produces; a Codec builds an encode
+    # rewrite of `left`'s output. The returned value replaces the operand in
+    # the composition. Default: identity — every ordinary type composes as
+    # itself.
+    #
+    # @param op [Symbol] the composition operator (:>>, :| or :&)
+    # @param left [Composable] the left operand
+    # @return [Composable]
+    def to_plumb_type(op:, left:) = self
 
     # The type that carries this node's identity for the subtype relation. A
     # value-preserving type IS its own identity (the default). A value-converting
@@ -306,7 +345,7 @@ module Plumb
     # @raise [Plumb::TypeError] when `self`'s output is not a subtype of `other`'s input.
     # @return [And]
     def >>(other)
-      other = Composable.wrap(other)
+      other = Composable.resolve_operand(other, op: :>>, left: self)
       # `X >> X` is redundant for a value-preserving validator (eg. Types::String):
       # validating the same value twice is the same as once. Gated on #idempotent?
       # so transforms — where `X >> X` would apply the change twice — never collapse.
@@ -349,7 +388,7 @@ module Plumb
     # @param other [Composable]
     # @return [Composable]
     def |(other)
-      other = Composable.wrap(other)
+      other = Composable.resolve_operand(other, op: :|, left: self)
       return self if other.is_a?(NeverClass) # X | Never == X
 
       Plumb::Subtyping.reduce_union(self, other) ||
@@ -370,7 +409,7 @@ module Plumb
     # @param other [Composable]
     # @return [Composable]
     def &(other)
-      other = Composable.wrap(other)
+      other = Composable.resolve_operand(other, op: :&, left: self)
       Plumb::Subtyping.intersect(self, other) || And.new(self, other)
     end
 

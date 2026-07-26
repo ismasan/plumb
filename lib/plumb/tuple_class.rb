@@ -24,6 +24,17 @@ module Plumb
     # tuple).
     def value_preserving? = children.all? { |c| Plumb::Subtyping.value_preserving?(c) }
 
+    # Rebuild around new children (see Plumb::Subtyping.map_children).
+    def with_children(children) = of(*children)
+
+    # As a consumer, a Tuple accepts each position relaxed to what that
+    # position's type accepts (see HashClass#accepted_type).
+    def accepted_type = Plumb::Subtyping.map_children(self) { |c| Plumb::Subtyping.accepted_type(c) }
+
+    # The value you GET after validating each position: every position type
+    # resolved to what it produces (mirror of #accepted_type).
+    def output_type = Plumb::Subtyping.map_children(self) { |c| Plumb::Subtyping.resolved_output(c) }
+
     def call(result)
       return result.invalid!(errors: 'must be an Array') unless result.value.is_a?(::Array)
       return result.invalid!(errors: 'must have the same size') unless result.value.size == @children.size

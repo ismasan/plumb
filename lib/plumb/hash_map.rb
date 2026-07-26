@@ -37,6 +37,18 @@ module Plumb
     # the hash).
     def value_preserving? = children.all? { |c| Plumb::Subtyping.value_preserving?(c) }
 
+    # Rebuild around new children (see Plumb::Subtyping.map_children).
+    # self.class (not HashMap) preserves FilteredHashMap's leniency.
+    def with_children(children) = self.class.new(children[0], children[1])
+
+    # As a consumer, a HashMap accepts keys/values relaxed to what its key and
+    # value types accept (see HashClass#accepted_type).
+    def accepted_type = Plumb::Subtyping.map_children(self) { |c| Plumb::Subtyping.accepted_type(c) }
+
+    # The value you GET after re-mapping each key/value: both resolved to what
+    # they produce (mirror of #accepted_type).
+    def output_type = Plumb::Subtyping.map_children(self) { |c| Plumb::Subtyping.resolved_output(c) }
+
     def call(result)
       return result.invalid!(errors: 'must be a Hash') unless result.value.is_a?(::Hash)
 
