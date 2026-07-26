@@ -93,6 +93,38 @@ module Plumb
       result.map(@input_type).map(@fn).map(@output_type)
     end
 
+    # Fuse `self >> other` into a single Function running both fns, dropping
+    # the redundant runtime checks at the boundary: `(A -> B) >> (B -> C)`
+    # becomes `(A -> C)` — the intermediate `B` was proven here, at build time.
+    # Returns nil (no fusion) unless:
+    #   - both #calls are the standard input->fn->output mapping (see #fusible?);
+    #   - what self produces is a DIRECT subtype of what other declares as
+    #     input. check_composable! is looser — it relaxes container fields via
+    #     accepted_type (the `encode >> decode` case), and there other's input
+    #     check does real per-field work and must keep running;
+    #   - the dropped checks are value-preserving: a coercing boundary type
+    #     changes the value, so it must keep running. self's output check needs
+    #     this only when it exists at all (a GuaranteedFunction carries none).
+    def fuse_with(other)
+      return nil unless fusible?(self) && fusible?(other)
+      return nil unless Plumb::Subtyping.subtype?(@output_type, other.input_type)
+      return nil unless Plumb::Subtyping.value_preserving?(other.input_type)
+      return nil unless is_a?(GuaranteedFunction) || Plumb::Subtyping.value_preserving?(@output_type)
+
+      fn1 = @fn
+      fn2 = other.fn
+      # other.class keeps Guaranteed-ness: the final output check survives iff
+      # `other` carried one.
+      other.class.new(@input_type, other.output_type, ->(result) { result.map(fn1).map(fn2) })
+    end
+
+    # #call must be exactly the standard input->fn->output mapping for its
+    # checks to be droppable — an exact-class whitelist (instance_of?), not
+    # is_a?: FilteredHash is a Function subclass whose custom #call skips the
+    # input check, so it must not fuse. GuaranteedFunction is listed separately
+    # because instance_of? never matches through inheritance.
+    private def fusible?(node) = node.instance_of?(Function) || node.instance_of?(GuaranteedFunction)
+
     # A Function's subtyping identity is what it produces — its declared,
     # distinct output_type. See Plumb::Subtyping.subtype? and Composable#subtype_identity.
     def subtype_identity = @output_type

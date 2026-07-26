@@ -241,6 +241,14 @@ module Plumb
       # `.where(size: 10..40)`, one `String` check.
       return narrow_attribute(left, right) if right.is_a?(AttributeValueMatch)
 
+      # Two adjacent converting steps whose boundary is provable at build time
+      # fuse into one node: `(A -> B) >> (B -> C)` becomes `(A -> C)` running
+      # both fns, dropping the redundant out/in checks between them. fuse_with
+      # carries its own subtype proof, so it is sound from #>> and #/ alike.
+      if (fused = left.fuse_with(right))
+        return fused
+      end
+
       return nil unless right.is_a?(Constraint)
 
       matchers = [] # innermost-first, excludes the root gate

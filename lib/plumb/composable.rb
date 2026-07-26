@@ -327,6 +327,12 @@ module Plumb
     # idempotent).
     def value_preserving? = false
 
+    # Fuse `self >> other` into a single node when the runtime checks at the
+    # boundary between them are provably redundant, or nil when fusion doesn't
+    # apply. A reduction rung in Subtyping.reduce_step, so both `#>>` and `#/`
+    # reach it. See Function#fuse_with, the only implementor.
+    def fuse_with(_other) = nil
+
     # Chain two composable objects together.
     # A.K.A "and" or "sequence"
     # @example
