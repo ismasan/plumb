@@ -261,7 +261,7 @@ RSpec.describe Plumb::Types do
     end
 
     it 'is shallow for longer chains: input_type is everything but the last step' do
-      # (A >> B >> C) == ((A >> B) >> C). Transform steps keep the And nesting;
+      # (A >> B >> C) == ((A >> B) >> C). Function steps keep the And nesting;
       # each step's output must be a subtype of the next step's input.
       a = Types::Integer[1..5]
       b = Types::Integer.transform(::String, :to_s)

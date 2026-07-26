@@ -442,7 +442,7 @@ Types::Integer.transform(:to_sym) # raises Plumb::TypeError (Integer has no #to_
 Types::Any.transform(:to_i)       # ok — unknown input type, no check
 ```
 
-`#transform` builds on an existing type. To declare the same input-to-output conversion standalone, from a callable, see [`Plumb::Transform[]`](#plumbtransforminput--output).
+`#transform` builds a [`Plumb::Function`](#plumbfunctioninput--output) — the underlying typed-conversion node — with a block that takes and returns a plain value. To build one standalone from a callable, or to work at the `Result` level, use `Plumb::Function[]` directly.
 
 #### `#invoke`
 
@@ -1881,12 +1881,12 @@ Piping any `#call` object onto Plumb types wraps your object in a composable ste
 Greeting = Types::String >> ->(result) { result.valid("Hello #{result.value}") }
 ```
 
-#### `Plumb::Transform[input => output]`
+#### `Plumb::Function[input => output]`
 
-To build a standalone, typed function from a callable — one not already piped onto a type — use `Plumb::Transform[]`. Declaring both ends gives you a typed function: the input is validated before your callable runs, and the value it produces is validated against the output type.
+To build a standalone, typed function from a callable — one not already piped onto a type — use `Plumb::Function[]`. Declaring both ends gives you a typed function: the input is validated before your callable runs, and the value it produces is validated against the output type.
 
 ```ruby
-Greeting = Plumb::Transform[String => String] do |result|
+Greeting = Plumb::Function[String => String] do |result|
   result.valid("Hello #{result.value}")
 end
 
@@ -1897,13 +1897,13 @@ Greeting.parse(10)    # raises Plumb::ParseError ("Must be a String")
 The block takes and returns a [`Result`](#custom-types) — unlike [`#transform`](#transform), whose block takes and returns a plain value. A callable can be passed instead of a block:
 
 ```ruby
-Greeting = Plumb::Transform[MyGreeter.new, String => String]
+Greeting = Plumb::Function[MyGreeter.new, String => String]
 ```
 
 Because both ends are declared, the resulting step takes part in [composition type checks](#composition-type-checks) and JSON Schema generation, just like `#transform`:
 
 ```ruby
-StringLength = Plumb::Transform[String => Integer] { |result| result.valid(result.value.size) }
+StringLength = Plumb::Function[String => Integer] { |result| result.valid(result.value.size) }
 StringLength.input_type  # => String
 StringLength.output_type # => Integer
 
@@ -1913,7 +1913,7 @@ Types::Integer >> StringLength # raises Plumb::TypeError at build time
 You can also pass a custom `#call(Result) => Result` interface as the first argument, to turn a callable into a typed function.
 
 ```ruby
-TypedGreeting = Plumb::Transform[Greeting.new('Mr.'), String => String]
+TypedGreeting = Plumb::Function[Greeting.new('Mr.'), String => String]
 TypedGreeting.parse('Joe') # "Mr. Joe"
 TypedGreeting.parse(10) # raises Plumb::ParseError
 ```
@@ -1923,12 +1923,12 @@ TypedGreeting.parse(10) # raises Plumb::ParseError
 Omit the types when the callable is genuinely untyped. Both ends default to `Types::Any`, and the step opts out of composition checks.
 
 ```ruby
-Greeting = Plumb::Transform[] do |result|
+Greeting = Plumb::Function[] do |result|
   result.valid("Hello #{result.value}")
 end
 ```
 
-Note that this last example doesn't validate that the input is indeed a String, whereas `Plumb::Transform[String => String]` does.
+Note that this last example doesn't validate that the input is indeed a String, whereas `Plumb::Function[String => String]` does.
 
 Either way, `Greeting` is a full Plumb step, which comes with all the Plumb methods and policies.
 
@@ -2051,7 +2051,7 @@ even <= Types::String    # => false
 
 The `#>>` check (and the [JSON Schema visitor](#json-schema)) ask what a type accepts and produces; both [default to `self`](#input_type-and-output_type). Override them when your type changes the value or is opaque about it:
 
-- a value-converting step declares a different `#output_type` (what `#transform`/`#build` do via `Plumb::Transform`);
+- a value-converting step declares a different `#output_type` (what `#transform`/`#build` do via `Plumb::Function`);
 - an opaque step (a wrapped proc, a generator) returns `Types::Any` for both, opting out of the `#>>` compatibility check.
 
 Custom types are **values/leaves** in the algebra — you compose them with the built-in combinators (`#>>`, `#|`, `#transform`, `Types::Any`) rather than re-implementing those.

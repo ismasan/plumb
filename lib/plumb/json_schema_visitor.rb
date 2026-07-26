@@ -196,13 +196,13 @@ module Plumb
       end
     end
 
-    # A conversion (`Transform`) produces a genuinely different value. A JSON
+    # A conversion (`Function`) produces a genuinely different value. A JSON
     # Schema describes accepted *inputs*, so it is built from the input side and
     # the output is dropped — and crucially NOT visited, so a transform whose
     # output type has no schema handler (eg. a custom class via #build) is fine.
     # Only when the input is untyped (eg. `Any.transform(::Integer)`) do we fall
     # back to the output type, since that is then all we know.
-    on(:transform) do |node, props|
+    on(:function) do |node, props|
       left = visit(node.input_type)
       return props.merge(left) if left.key?(TYPE)
 

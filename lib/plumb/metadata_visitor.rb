@@ -51,7 +51,7 @@ module Plumb
       visit(node.type, props)
     end
 
-    on(:transform) do |node, props|
+    on(:function) do |node, props|
       left, right = node.children.map { |child| visit(child) }
       props.merge(left).merge(right)
     end

@@ -11,8 +11,8 @@ module Plumb
     # A refinement/sequencing join, built by `Composable#>>`. Both sides
     # validate the *same* value (no conversion), so an `And` is the
     # intersection of its children: the longer the chain, the narrower the
-    # type. A value-converting step is a `Transform` instead (see
-    # lib/plumb/transform.rb).
+    # type. A value-converting step is a `Function` instead (see
+    # lib/plumb/function.rb).
     def initialize(left, right)
       @input_type = left
       @output_type = right

@@ -43,7 +43,7 @@ module Tests
 end
 
 RSpec.describe Plumb::Pipeline do
-  specify '#step(output_type, &block) adds a Transform step' do
+  specify '#step(output_type, &block) adds a Function step' do
     user = Data.define(:name)
     pipeline = Types::Any.pipeline do |pl|
       pl.step Types::Hash[name: Types::String]

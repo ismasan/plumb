@@ -126,8 +126,8 @@ RSpec.describe 'subtyping: Plumb::Subtyping.subtype? and #<=' do
     end
   end
 
-  describe '#<= over conversions (Transform)' do
-    it 'identifies a Transform by the value it produces (output_type)' do
+  describe '#<= over conversions (Function)' do
+    it 'identifies a Function by the value it produces (output_type)' do
       string_to_int = STypes::String.transform(::Integer, &:to_i)
       expect(string_to_int <= STypes::Integer).to be(true)
       expect(string_to_int <= STypes::String).to be(false)
@@ -490,7 +490,7 @@ RSpec.describe 'subtyping: Plumb::Subtyping.subtype? and #<=' do
   end
 
   describe '#subtype_identity (custom transforming types)' do
-    # A value-converting type built WITHOUT subclassing Transform. It opts into
+    # A value-converting type built WITHOUT subclassing Function. It opts into
     # the "identified by what I produce" rule purely via #subtype_identity.
     class RoundToInt
       include Plumb::Composable
@@ -512,7 +512,7 @@ RSpec.describe 'subtyping: Plumb::Subtyping.subtype? and #<=' do
       expect(to_int <= STypes::Numeric).to be(true)  # produces Integer <= Numeric
       expect(to_int <= STypes::String).to be(false)
       expect(STypes::Integer <= to_int).to be(true)  # Integer <= produced Integer
-      # projects the same way a Transform does
+      # projects the same way a Function does
       expect(to_int <= STypes::Integer.transform(STypes::Numeric) { |r| r }).to be(true)
     end
 
