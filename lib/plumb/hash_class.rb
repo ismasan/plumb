@@ -113,7 +113,7 @@ module Plumb
       # context-resolving operand — eg. an Encoder class — orients against this
       # Hash instead of defaulting to its decode direction (which would make
       # `Hash & EncoderClass` collapse to Never). Mirrors Composable#&.
-      other = And.wrap_intersection(other, left: self)
+      other = Composable.resolve_operand(other, op: :&, left: self)
       return super unless other.is_a?(HashClass)
 
       # The any-Hash top is the identity of intersection: Hash[] & X == X.

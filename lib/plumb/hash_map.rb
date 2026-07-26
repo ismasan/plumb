@@ -37,21 +37,17 @@ module Plumb
     # the hash).
     def value_preserving? = children.all? { |c| Plumb::Subtyping.value_preserving?(c) }
 
+    # Rebuild around new children (see Plumb::Subtyping.map_children).
+    # self.class (not HashMap) preserves FilteredHashMap's leniency.
+    def with_children(children) = self.class.new(children[0], children[1])
+
     # As a consumer, a HashMap accepts keys/values relaxed to what its key and
     # value types accept (see HashClass#accepted_type).
-    def accepted_type
-      self.class.new(Plumb::Subtyping.accepted_type(@key_type), Plumb::Subtyping.accepted_type(@value_type))
-    end
+    def accepted_type = Plumb::Subtyping.map_children(self) { |c| Plumb::Subtyping.accepted_type(c) }
 
     # The value you GET after re-mapping each key/value: both resolved to what
-    # they produce (mirror of #accepted_type). Idempotent — returns self when
-    # neither converts, so Subtyping.resolved_output reaches its fixpoint in one
-    # step.
-    def output_type
-      ko = Plumb::Subtyping.resolved_output(@key_type)
-      vo = Plumb::Subtyping.resolved_output(@value_type)
-      ko.equal?(@key_type) && vo.equal?(@value_type) ? self : self.class.new(ko, vo)
-    end
+    # they produce (mirror of #accepted_type).
+    def output_type = Plumb::Subtyping.map_children(self) { |c| Plumb::Subtyping.resolved_output(c) }
 
     def call(result)
       return result.invalid!(errors: 'must be a Hash') unless result.value.is_a?(::Hash)

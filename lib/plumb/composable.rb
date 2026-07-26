@@ -241,15 +241,14 @@ module Plumb
     # Composable — the full normalization for the RIGHT operand of a
     # composition operator. Consults the operand's #to_plumb_type hook when it
     # has one (raw values — procs, hash literals — don't, and skip straight to
-    # wrapping), so callers never need a #respond_to? check. Custom operator
-    # implementations should route their operand through this (or the
-    # op-specific And.wrap_left / Or.wrap_left / And.wrap_intersection).
+    # wrapping), so callers never need a #respond_to? check. EVERY custom
+    # operator implementation should route its operand through here.
     #
     # @param other [Object] the right operand
     # @param op [Symbol] the composition operator being resolved (:>>, :| or :&)
     # @param left [Composable] the left operand
     # @return [Composable]
-    def self.to_plumb_type(other, op:, left:)
+    def self.resolve_operand(other, op:, left:)
       other = other.to_plumb_type(op:, left:) if other.respond_to?(:to_plumb_type)
       wrap(other)
     end
@@ -270,9 +269,8 @@ module Plumb
 
     # Composition-context resolution hook, consulted on the RIGHT operand of
     # #>>, #| and #& before wrapping/type-checking — via
-    # Composable.to_plumb_type (or its op-specific shorthands And.wrap_left,
-    # Or.wrap_left and And.wrap_intersection), which any custom operator
-    # implementation should route its operand through. It lets an operand
+    # Composable.resolve_operand, which any custom operator implementation
+    # should route its operand through. It lets an operand
     # resolve itself against the composition context: an Encoder picks the
     # direction to run in from what `left` produces; a Codec builds an encode
     # rewrite of `left`'s output. The returned value replaces the operand in
@@ -347,7 +345,7 @@ module Plumb
     # @raise [Plumb::TypeError] when `self`'s output is not a subtype of `other`'s input.
     # @return [And]
     def >>(other)
-      other = And.wrap_left(other, left: self)
+      other = Composable.resolve_operand(other, op: :>>, left: self)
       # `X >> X` is redundant for a value-preserving validator (eg. Types::String):
       # validating the same value twice is the same as once. Gated on #idempotent?
       # so transforms — where `X >> X` would apply the change twice — never collapse.
@@ -390,7 +388,7 @@ module Plumb
     # @param other [Composable]
     # @return [Composable]
     def |(other)
-      other = Or.wrap_left(other, left: self)
+      other = Composable.resolve_operand(other, op: :|, left: self)
       return self if other.is_a?(NeverClass) # X | Never == X
 
       Plumb::Subtyping.reduce_union(self, other) ||
@@ -411,7 +409,7 @@ module Plumb
     # @param other [Composable]
     # @return [Composable]
     def &(other)
-      other = And.wrap_intersection(other, left: self)
+      other = Composable.resolve_operand(other, op: :&, left: self)
       Plumb::Subtyping.intersect(self, other) || And.new(self, other)
     end
 

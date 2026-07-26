@@ -23,7 +23,7 @@ module Plumb
     # (not bare Composable.wrap) so a context-resolving operand — an Encoder
     # orients, a Codec raises at composition — is handled like every other #|
     # rather than leaking in as an unresolved node.
-    def |(other) = Or.wrap_left(other, left: self)
+    def |(other) = Composable.resolve_operand(other, op: :|, left: self)
 
     def call(result) = result.invalid!(errors: 'no value is allowed (Never)')
 

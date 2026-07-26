@@ -220,7 +220,7 @@ module Plumb
     end
 
     # NOTE: the one-way Types::Forms coercions were replaced by the two-way
-    # Plumb::Codec::Forms — apply it to a schema written in internal types
+    # Plumb::Codec::Forms — apply it to a schema written in output types
     # (`Codec::Forms >> schema`), or use its encoders per-field.
   end
 end

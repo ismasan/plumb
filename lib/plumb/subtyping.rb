@@ -100,6 +100,15 @@ module Plumb
       a.subtype_of?(b) || b.supertype_of?(a)
     end
 
+    # `a` is STRICTLY narrower than `b` — a subtype, and not merely equivalent
+    # to it. The named form of `Composable#<`, usable where the operators are
+    # not (`a` may be a raw struct Class, where `<` means Ruby ancestry — see
+    # Plumb::Attributes).
+    def strict_subtype?(a, b) = subtype?(a, b) && !subtype?(b, a)
+
+    # `a` and `b` describe the same values — mutual subtypes.
+    def equivalent?(a, b) = subtype?(a, b) && subtype?(b, a)
+
     # A leaf type whose single child is a raw (non-Composable) Ruby matcher or
     # value — eg. Constraint, ValueClass, StaticClass. These bottom out in
     # #atomic_subtype? rather than recursing.
@@ -505,19 +514,32 @@ module Plumb
       merged = a.children.zip(b.children).map { |x, y| intersect(x, y) || And.new(x, y) }
       return Types::Never if a.is_a?(TupleClass) && merged.any? { |m| m.is_a?(NeverClass) }
 
-      rebuild_container(a, merged)
+      a.with_children(merged)
     end
 
+    # The containers that are covariant in their children — and, equivalently,
+    # the ones that answer #with_children (see #map_children).
     def container_covariant?(type)
       type.is_a?(ArrayClass) || type.is_a?(TupleClass) || type.is_a?(HashMap)
     end
 
-    def rebuild_container(type, children)
-      case type
-      when ArrayClass then type.of(children.first)
-      when TupleClass then type.of(*children)
-      when HashMap then HashMap.new(children[0], children[1])
-      end
+    # Map a container's children through `blk` and rebuild it around the
+    # results — the shared rule behind every covariant container's
+    # #accepted_type and #output_type. Each container contributes only its
+    # one-line #with_children rebuild; this owns the traversal AND the
+    # identity guard: when no child changed, the ORIGINAL node is returned,
+    # so `resolved_output`/`accepted_type` reach their fixpoint in one step
+    # and a non-converting container costs no allocation.
+    #
+    # @param type [Composable] a container responding to #with_children
+    # @yieldparam child [Composable]
+    # @return [Composable] `type` itself, or a rebuilt container
+    def map_children(type, &blk)
+      children = type.children
+      mapped = children.map(&blk)
+      return type if mapped.each_with_index.all? { |m, i| m.equal?(children[i]) }
+
+      type.with_children(mapped)
     end
 
     # Are two leaf types provably disjoint? True when NO pair of their underlying

@@ -101,9 +101,9 @@ module Plumb
     # accepts — not the input node verbatim. When the input is a Hash/container
     # whose fields are themselves converting (eg. a codec's decode schema, whose
     # `flags` field is a `String -> Integer` step), the accepted type is that
-    # input relaxed per field to the wire type it consumes. This lets an encode
+    # input relaxed per field to the type it consumes. This lets an encode
     # pipeline compose with the matching decode pipeline (`encode >> decode`):
-    # both meet at the same wire type. Mirrors HashClass#accepted_type.
+    # both meet at the same input type. Mirrors HashClass#accepted_type.
     def accepted_type = Plumb::Subtyping.accepted_type(@input_type)
   end
 

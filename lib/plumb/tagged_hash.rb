@@ -33,7 +33,7 @@ module Plumb
     # HashClass#accepted_type) — but keep the discriminator field literal, so
     # the rebuilt TaggedHash still satisfies its "tag key is a Constraint"
     # invariant. Lets `Type >> Codec` (which builds a rewritten variant with a
-    # converting field) type-check against the internal tagged hash.
+    # converting field) type-check against the output tagged hash.
     def accepted_type
       relaxed = @children.map do |child|
         schema = child._schema.each_with_object({}) do |(k, field), h|

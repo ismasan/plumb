@@ -100,12 +100,18 @@ module Plumb
       # A direction step with one or both sides substituted — used by
       # Codec::Rewriter to splice in a rewritten input type or a narrowed
       # output type, keeping each rewritten field a single Function node.
+      #
+      # The substitutions name the ENCODER's declared sides, not the step's
+      # positions, so the caller doesn't have to transpose them per direction:
+      # `input_side` always replaces the declared input, `output_side` the
+      # declared output, whichever end of the step each lands on.
       # @return [Function]
-      def step(direction, input_type: nil, output_type: nil)
+      def step(direction, input_side: nil, output_side: nil)
         base = direction == :decode ? decoding : encoding
-        return base unless input_type || output_type
+        return base unless input_side || output_side
 
-        Function.new(input_type || base.input_type, output_type || base.output_type, base.fn)
+        in_t, out_t = direction == :decode ? [input_side, output_side] : [output_side, input_side]
+        Function.new(in_t || base.input_type, out_t || base.output_type, base.fn)
       end
 
       # Composition-context direction pick when the encoder is the RIGHT
@@ -116,29 +122,17 @@ module Plumb
       # the ordinary composition check raises if it genuinely doesn't fit.
       def to_plumb_type(op:, left:)
         produced = Plumb::Subtyping.resolved_output(Composable.wrap(left))
-        case op
-        when :>>
-          pick_direction(consumes: produced)
-        else # :|, :&
-          pick_direction(produces: produced)
-        end
+        # `left >> Enc` feeds `left`'s output into the step; in a union/
+        # intersection the branches describe the same produced value.
+        pick_direction(produced, op == :>> ? :consumes : :produces)
       end
 
       # Left-position composition (`Enc >> X`, `Enc | X`, ...): a Class has no
       # Composable operators, so these singleton versions orient against the
       # right operand and delegate to the oriented step.
-      def >>(other)
-        step = pick_direction(produces: Plumb::Subtyping.accepted_type(Composable.wrap(other)))
-        step >> other
-      end
-
-      def |(other)
-        union_oriented(other) | other
-      end
-
-      def &(other)
-        union_oriented(other) & other
-      end
+      def >>(other) = oriented_against(other, :>>) >> other
+      def |(other) = oriented_against(other, :|) | other
+      def &(other) = oriented_against(other, :&) & other
 
       def /(other) = decoding / other
 
@@ -173,37 +167,41 @@ module Plumb
         Function.new(in_type, out_type, step_proc)
       end
 
-      # In a union/intersection the sibling and the encoder describe the same
-      # RESULTING value, so orient by produced types.
-      def union_oriented(other)
-        pick_direction(produces: Plumb::Subtyping.resolved_output(Composable.wrap(other)))
+      # Orientation for the LEFT-position operators above, where the encoder
+      # must PRODUCE something the sibling fits: for `>>` the sibling consumes
+      # what we produce, so orient by what it ACCEPTS; in a union/intersection
+      # both sides describe the same resulting value, so orient by what it
+      # produces.
+      def oriented_against(other, op)
+        other = Composable.wrap(other)
+        produced = op == :>> ? Plumb::Subtyping.accepted_type(other) : Plumb::Subtyping.resolved_output(other)
+        pick_direction(produced, :produces)
       end
 
-      # Both directions, keyed either by what the step must CONSUME (a `>>`
-      # neighbour's output feeding it) or by what it must PRODUCE (a union
-      # sibling's produced value, or a `>>` right side's accepted input).
-      #   consumes ⊆ input_type  -> decoding;  consumes ⊆ output_type -> encoding
-      #   produces ⊆ output_type -> decoding;  produces ⊆ input_type  -> encoding
-      # Anything else (ambiguous — resolves to the first branch — opaque, or
-      # no match) falls back to the default direction.
-      def pick_direction(consumes: nil, produces: nil)
-        first, second = consumes ? [input_type, output_type] : [output_type, input_type]
-        candidate = consumes || produces
-        return decoding if Plumb::Subtyping.subtype?(candidate, first)
-        return encoding if Plumb::Subtyping.subtype?(candidate, second)
+      # Pick a direction by matching `candidate` against the two declared sides.
+      # `orient` says which relation `candidate` stands in to this encoder:
+      #   :consumes — it is fed INTO the step (a `>>` neighbour's output), so it
+      #               must match the side the step reads;
+      #   :produces — it is what the step must yield (a union sibling's value,
+      #               or a `>>` right side's accepted input).
+      # Decode (the declared direction) wins ties and is the fallback: encode is
+      # chosen only when it is the unambiguous fit, so an ambiguous, opaque or
+      # unmatched candidate keeps the declared direction and the ordinary
+      # composition check reports it if it genuinely doesn't fit.
+      def pick_direction(candidate, orient)
+        decode_side, encode_side = orient == :consumes ? [input_type, output_type] : [output_type, input_type]
+        return encoding if Plumb::Subtyping.subtype?(candidate, encode_side) &&
+                           !Plumb::Subtyping.subtype?(candidate, decode_side)
 
         decoding
       end
     end
 
-    # The value-level contract. Subclasses implement both; a Step for a
-    # direction whose method is missing raises at build time.
-    def encode(_value)
-      raise NotImplementedError, "#{self.class} must implement #encode(value) (#{self.class.output_type.inspect} -> #{self.class.input_type.inspect})"
-    end
-
-    def decode(_value)
-      raise NotImplementedError, "#{self.class} must implement #decode(value) (#{self.class.input_type.inspect} -> #{self.class.output_type.inspect})"
-    end
+    # The value-level contract. These are also the sentinels build_step checks
+    # (`instance_method(direction).owner == Encoder`), so using an encoder in a
+    # direction it doesn't implement fails at BUILD time with a better message
+    # than these — which is why they stay deliberately plain.
+    def encode(_value) = raise(NotImplementedError, "#{self.class} must implement #encode(value)")
+    def decode(_value) = raise(NotImplementedError, "#{self.class} must implement #decode(value)")
   end
 end

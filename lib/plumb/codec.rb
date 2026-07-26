@@ -62,16 +62,10 @@ module Plumb
 
       # All registered encoders, inherited first, own last (later registrations
       # win ties in matching).
-      def encoders
-        inherited = superclass.respond_to?(:encoders) ? superclass.encoders : BLANK_ARRAY
-        inherited + own_encoders
-      end
+      def encoders = inherited_registry(:encoders, own_encoders)
 
       # All registered pass-through types, inherited first.
-      def noop_types
-        inherited = superclass.respond_to?(:noop_types) ? superclass.noop_types : BLANK_ARRAY
-        inherited + own_noop_types
-      end
+      def noop_types = inherited_registry(:noop_types, own_noop_types)
 
       # Class-level composition delegates to a memoized instance, so a Codec
       # subclass composes directly: `JSONCodec >> Person`.
@@ -86,6 +80,13 @@ module Plumb
 
       private
 
+      # A registry a subclass extends rather than replaces: whatever the
+      # ancestor exposes under `name`, plus this class's own registrations.
+      def inherited_registry(name, own)
+        inherited = superclass.respond_to?(name) ? superclass.public_send(name) : BLANK_ARRAY
+        inherited + own
+      end
+
       def own_encoders = @own_encoders ||= []
       def own_noop_types = @own_noop_types ||= []
     end
@@ -97,7 +98,7 @@ module Plumb
     def initialize(*extra_encoders)
       @encoders = self.class.encoders + extra_encoders
       @noop_types = self.class.noop_types
-      @noop_union = @noop_types.reduce { |a, b| Or.new(a, b) }
+      @noop_union = @noop_types.reduce(:|)
       freeze
     end
 
@@ -158,18 +159,12 @@ module Plumb
       minimal = matches.reject do |e|
         # e is dominated when another match's output type is strictly narrower.
         matches.any? do |o|
-          !o.equal?(e) &&
-            Plumb::Subtyping.subtype?(o.output_type, e.output_type) &&
-            !Plumb::Subtyping.subtype?(e.output_type, o.output_type)
+          !o.equal?(e) && Plumb::Subtyping.strict_subtype?(o.output_type, e.output_type)
         end
       end
 
       first = minimal.first
-      equivalent = minimal.all? do |e|
-        Plumb::Subtyping.subtype?(e.output_type, first.output_type) &&
-          Plumb::Subtyping.subtype?(first.output_type, e.output_type)
-      end
-      unless equivalent
+      unless minimal.all? { |e| Plumb::Subtyping.equivalent?(e.output_type, first.output_type) }
         raise Plumb::TypeError,
               "#{inspect}: #{at_path(path)} (#{type.inspect}) matches multiple incomparable encoders: " \
               "#{minimal.map(&:inspect).join(', ')}. Register a more specific encoder or restructure."
@@ -234,6 +229,8 @@ module Plumb
         @direction = direction # :decode | :encode
         @deferred_memo = {}.compare_by_identity
         @input_memo = {}.compare_by_identity
+        @match_memo = {}.compare_by_identity
+        @noop_memo = {}.compare_by_identity
         @input_stack = []
         @root = nil
       end
@@ -245,25 +242,42 @@ module Plumb
 
       private
 
-      def visit(type, path)
-        return visit_deferred(type, path) if type.is_a?(Deferred)
-        # Before encoder matching: a Static's fixed value would otherwise
-        # match an encoder atomically (`Static[a_date]` is a subtype of Date)
-        # and get replaced by a step that expects encoded input, losing the
-        # static behaviour (eg. the default value in a `.default(...)`).
-        return visit_static(type, path) if type.is_a?(StaticClass)
+      # Encoder matching and the noop check are pure functions of the (frozen)
+      # type node, the codec and the direction — but each costs a subtype? walk
+      # per registered encoder, and the same type object recurs across the
+      # fields of a schema (a shared `Types::Date` constant, a repeated
+      # `Types::String`). Memoize both per rewrite. As with @input_memo, `path`
+      # only feeds error text, so the first visit's path is the one reported.
+      def encoder_for(type, path)
+        @match_memo.fetch(type) { @match_memo[type] = @codec.encoder_for(type, path) }
+      end
 
-        # Or/And chains and transparent wrappers also recurse BEFORE encoder
-        # matching: they can carry generator guards (`(Undefined >> Static) |
-        # T`, the #default shape) that are subtype-wise invisible — the whole
-        # composition IS a subtype of T — but would be dropped by a wholesale
-        # replacement. Recursing rewrites the data-bearing parts and keeps the
-        # machinery; an encoder with a union output type still matches at
-        # branch level. Untouched subtrees come back identical, so there is
-        # no shortcut to take here — a whole-composite noop check would let a
-        # container-top noop (`noop Types::Array`) swallow a rewritable union
+      def noop?(type)
+        @noop_memo.fetch(type) { @noop_memo[type] = @codec.noop?(type, @direction) }
+      end
+
+      def visit(type, path)
+        # These nodes are handled BEFORE encoder matching, because a wholesale
+        # replacement would drop machinery that is subtype-wise invisible:
+        #
+        # - a Static's fixed value matches an encoder atomically
+        #   (`Static[a_date]` is a subtype of Date), and replacing it with a
+        #   step expecting encoded input loses the static behaviour (eg. the
+        #   default value in a `.default(...)`);
+        # - Or/And chains and transparent wrappers can carry generator guards
+        #   (`(Undefined >> Static) | T`, the #default shape) — the whole
+        #   composition IS a subtype of T, so an encoder would match and
+        #   swallow the guard. Recursing rewrites the data-bearing parts and
+        #   keeps the machinery; an encoder with a union output type still
+        #   matches at branch level.
+        #
+        # Untouched subtrees come back identical, so there is no shortcut to
+        # take here — a whole-composite noop check would let a container-top
+        # noop (`noop Types::Array`) swallow a rewritable union
         # (`Array[Date] | String`).
         case type
+        when Deferred then return visit_deferred(type, path)
+        when StaticClass then return visit_static(type, path)
         when Or then return visit_or(type, path)
         when And then return visit_and(type, path)
         when Metadata then return rebuild(type, type.type, path) { |t| Metadata.new(t, type.metadata) }
@@ -271,17 +285,8 @@ module Plumb
         when Composable::Node then return rebuild(type, type.type, path) { |t| t.as_node(type.node_name, type.args) }
         end
 
-        if (enc = @codec.encoder_for(type, path))
-          # An encoder whose own input type contains its output type re-matches
-          # here while we rewrite that input (enc is on the stack). If that
-          # output is noop-covered it's a literal acceptance, not a recursive
-          # encoding — leave it (eg. Forms' NilEncoder input `String[''] | Nil`,
-          # so a nullable field decodes a literal nil). Otherwise replace()
-          # raises the genuine input-type cycle.
-          return type if @input_stack.include?(enc) && @codec.noop?(type, @direction)
-
-          return replace(type, enc, path)
-        end
+        enc = encoder_for(type, path)
+        return replace(type, enc, path) if enc
 
         case type
         when HashClass then visit_hash(type, path)
@@ -342,7 +347,7 @@ module Plumb
         # encoders always take precedence over pass-through types. Otherwise a
         # static default whose value happens to satisfy a broad noop (eg. a
         # BigDecimal under the Numeric noop) would emit raw instead of encoding.
-        if (enc = @codec.encoder_for(type, path))
+        if (enc = encoder_for(type, path))
           encoded = replace(type, enc, path).parse(value)
           And.new(ValueClass.new(value), StaticClass.new(encoded.freeze))
         elsif @codec.noop_value?(value)
@@ -360,7 +365,15 @@ module Plumb
       # output, the narrowed type) are spliced into the Step, so each rewritten
       # field stays a single node.
       def replace(type, enc, path)
+        # An encoder whose own input type contains its output type re-matches
+        # while we rewrite that input (enc is on the stack). If that output is
+        # noop-covered it's a literal acceptance, not a recursive encoding —
+        # leave the type alone (eg. Forms' NilEncoder input `String[''] | Nil`,
+        # so a nullable field decodes a literal nil). Otherwise it's a genuine
+        # input-type cycle.
         if @input_stack.include?(enc)
+          return type if noop?(type)
+
           raise Plumb::TypeError,
                 "#{@codec.inspect}: encoder input-type cycle: #{(@input_stack + [enc]).map(&:inspect).join(' -> ')}"
         end
@@ -386,12 +399,7 @@ module Plumb
         # generic encoder's member-specialized input is never that base type, so
         # it is always spliced — the step reports the specific input, not the top.
         input_arg = rewritten_input.equal?(enc.input_type) ? nil : rewritten_input
-        narrowed = narrowed_side(type, enc)
-        if @direction == :decode
-          enc.step(:decode, input_type: input_arg, output_type: narrowed)
-        else
-          enc.step(:encode, input_type: narrowed, output_type: input_arg)
-        end
+        enc.step(@direction, input_side: input_arg, output_side: narrowed_side(type, enc))
       end
 
       # When the matched type is strictly narrower than the encoder's declared
@@ -401,10 +409,8 @@ module Plumb
       # its conversion on an already-decoded value would be wrong; the
       # encoder's declared type stands in.
       def narrowed_side(type, enc)
-        output = enc.output_type
-        return nil if type == output
         return nil unless Plumb::Subtyping.value_preserving?(type)
-        return nil unless Plumb::Subtyping.subtype?(type, output) && !Plumb::Subtyping.subtype?(output, type)
+        return nil unless Plumb::Subtyping.strict_subtype?(type, enc.output_type)
 
         type
       end
@@ -503,7 +509,7 @@ module Plumb
       end
 
       def noop_or_fail(type, path)
-        if @codec.noop?(type, @direction)
+        if noop?(type)
           return type if @direction == :decode
 
           # Encode: the value at this position is the type's OUTPUT — pass
