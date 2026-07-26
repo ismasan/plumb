@@ -262,8 +262,8 @@ module Plumb
     # takes as input (its resolved #input_type): right for plain matchers and for
     # conversion/consumer types (Function, Stream, Pipeline — they accept their
     # declared input, so they need no override). Two kinds of type override it:
-    #   - a refinement (And): its #input_type is only the base (left) type and
-    #     would drop the constraint it adds, so it accepts its resolved *output*;
+    #   - a refinement (And): its #input_type is only the type the chain opens
+    #     with and would drop the constraint it adds, so it accepts its *output*;
     #   - a Hash: it relaxes each field to what that field accepts.
     # Consulted by Plumb::Subtyping when checking `#>>`.
     def accepted_type = Plumb::Subtyping.resolved_input(self)

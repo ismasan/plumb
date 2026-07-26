@@ -180,9 +180,9 @@ module Plumb
     # disjunction is a *refinement* of the base, not a different type: render the
     # base, then fold the (type-less) disjunction's `anyOf` into that same spec.
     on(:refined_union) do |node, props|
-      and_node = node.type
-      props = visit(and_node.input_type, props) # base -> {type: …}
-      visit(and_node.output_type, props)        # Or(suffixes) -> merge anyOf into it
+      base, disjunction = node.type.children # the And's two sides, not its io types
+      props = visit(base, props)             # base -> {type: …}
+      visit(disjunction, props)              # Or(suffixes) -> merge anyOf into it
     end
 
     on(:and) do |node, props|

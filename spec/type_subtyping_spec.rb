@@ -206,6 +206,81 @@ RSpec.describe 'subtyping: Plumb::Subtyping.subtype? and #<=' do
       # a refinement accepts the constraint it passes (its output), not the base
       expect(STypes::Integer[1..10].accepted_type).to eq(STypes::Integer[1..10].output_type)
     end
+
+    it 'a filtered Hash/HashMap accepts any hash-like, not its declared schema' do
+      # #filtered is lenient at runtime — it takes any hash and drops the fields
+      # that don't fit — so as a consumer it must accept more than its
+      # #input_type declares, or `>>` would reject producers it handles fine.
+      filtered = STypes::Hash[name: STypes::String, age: STypes::Integer].filtered
+      expect(filtered.input_type).to eq(STypes::Hash[name: STypes::String, age: STypes::Integer])
+      expect(Plumb::Subtyping.accepted_type(filtered)).to eq(STypes::Interface[:each_pair])
+
+      filtered_map = STypes::Hash[STypes::String, STypes::Integer].filtered
+      expect(Plumb::Subtyping.accepted_type(filtered_map)).to eq(STypes::Interface[:each_pair])
+    end
+  end
+
+  # The engine assumes a node's #input_type / #output_type are themselves
+  # resolved — an And resolves one hop at construction on that basis. Guard it,
+  # and record where it does NOT hold (see the exception below), which is why
+  # Subtyping.resolved_input/resolved_output walk to a fixpoint.
+  describe 'io types are self-resolved' do
+    money = Class.new
+    node_kinds = {
+      'plain type' => STypes::String,
+      'refinement' => STypes::Integer[1..5],
+      'where-clause' => STypes::String.where(size: 1..10),
+      'transform' => STypes::String.transform(::Integer, &:to_i),
+      'chain' => STypes::String.transform(::Integer, &:to_i) >> STypes::Integer.transform(::Integer) { |i| i * 2 },
+      'union' => STypes::String | STypes::Integer,
+      'coercing union' => STypes::String.transform(::Integer, &:to_i) | STypes::Integer,
+      'hash' => STypes::Hash[name: STypes::String],
+      'filtered hash' => STypes::Hash[name: STypes::String].filtered,
+      'hash map' => STypes::Hash[STypes::String, STypes::Integer],
+      'array' => STypes::Array[STypes::String],
+      'tuple' => STypes::Tuple[STypes::String, STypes::Integer],
+      'stream' => STypes::Stream[STypes::String],
+      'static' => STypes::Static['x'],
+      'interface' => STypes::Interface[:to_s],
+      'opaque step' => Plumb::Step.new(->(r) { r }),
+      'function' => Plumb::Function[String => Integer] { |r| r.valid(r.value.size) },
+      'metadata-wrapped' => STypes::String.metadata(foo: 1),
+      'policy-wrapped' => STypes::String.default('x'),
+      'build' => STypes::Integer.build(money) { |_i| money.new },
+      'deferred' => STypes::Any.defer { STypes::String },
+      'pipeline' => STypes::Any.pipeline { |pl| pl.step(STypes::String) }
+    }.freeze
+
+    node_kinds.each do |name, type|
+      specify name do
+        %i[input_type output_type].each do |io|
+          once = type.public_send(io)
+          expect(once.public_send(io)).to eq(once), "#{name}##{io} needs a second hop to resolve"
+        end
+      end
+    end
+
+    it 'does NOT hold for a step whose DECLARED input is itself converting' do
+      # Known exception. Lax::Integer is `Lax::Numeric.transform(::Integer, :to_i)`,
+      # and a Function reports its declared input verbatim — here a coercing union
+      # that resolves further. `Lax::Numeric` is the honest answer to "what do I
+      # declare I consume"; the wider resolved type is "what will I actually
+      # accept". Bridging that gap is exactly what the fixpoint in
+      # Subtyping.resolved_input (and so #accepted_type) is for — do not replace
+      # it with a single hop.
+      declared = STypes::Lax::Integer.input_type
+      expect(declared).to eq(STypes::Lax::Numeric)
+      expect(declared.input_type).not_to eq(declared)
+
+      resolved = Plumb::Subtyping.resolved_input(STypes::Lax::Integer)
+      expect(resolved).to eq(declared.input_type.input_type)
+      expect(resolved).not_to eq(declared)
+
+      # and #accepted_type must report the resolved type, not the declared one:
+      # this is the assertion that fails if the fixpoint is ever swapped for a
+      # single hop.
+      expect(Plumb::Subtyping.accepted_type(STypes::Lax::Integer)).to eq(resolved)
+    end
   end
 
   describe 'composition type-checking (#>>)' do
@@ -265,6 +340,21 @@ RSpec.describe 'subtyping: Plumb::Subtyping.subtype? and #<=' do
       # but a field that consumes an incompatible type still raises
       bad = STypes::Hash[price: STypes::String.build(money)] # its :price consumes a String
       expect { front >> bad }.to raise_error(Plumb::TypeError)
+    end
+
+    it 'lets any hash producer feed a filtered Hash/HashMap (it never rejects)' do
+      schema = STypes::Hash[name: STypes::String, age: STypes::Integer]
+      producer = STypes::Hash[name: STypes::String] # missing :age
+
+      # unfiltered, the missing field is a genuine mismatch
+      expect { producer >> schema }.to raise_error(Plumb::TypeError)
+      # filtered, the consumer drops what doesn't fit rather than rejecting,
+      # so the same chain must build — and pass the fields it can.
+      expect { producer >> schema.filtered }.not_to raise_error
+      expect((producer >> schema.filtered).parse(name: 'x', extra: 1)).to eq(name: 'x')
+
+      filtered_map = STypes::Hash[STypes::String, STypes::Integer].filtered
+      expect { STypes::Hash[STypes::Symbol, STypes::Integer] >> filtered_map }.not_to raise_error
     end
 
     it 'a #check refines its base type, so `check >> typed` composes' do

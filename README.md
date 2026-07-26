@@ -658,12 +658,21 @@ TODO: document custom visitors.
 
 #### `#input_type` and `#output_type`
 
-Every type exposes the type it expects as input and the type it produces as output. For a sequence `A >> B`, the input type is `A` and the output type is `B`.
+Every type exposes the type it expects as input and the type it produces as output.
 
 ```ruby
 StringToInt = Types::String.transform(Integer, &:to_i)
 StringToInt.input_type  # Types::String
 StringToInt.output_type # Integer
+```
+
+They resolve through a composition, reporting what the chain as a whole consumes and produces — not its individual steps. The steps themselves remain available as `#children`:
+
+```ruby
+chain = Types::String.transform(Integer, &:to_i) >> Types::Integer.transform(Integer) { |i| i * 2 }
+chain.input_type  # Types::String — the chain can only be called with a String
+chain.output_type # Integer       — it can only produce an Integer
+chain.children    # [(Types::String -> Integer), (Types::Integer -> Integer)]
 ```
 
 For a plain type, both are the type itself. Unions distribute over both sides:

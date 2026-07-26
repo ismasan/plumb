@@ -546,7 +546,7 @@ module Plumb
     def steps(type)
       type = type.type if type.is_a?(Composable::Node) && type.node_name == :refined_union
       case type
-      when And then steps(type.input_type) + steps(type.output_type)
+      when And then type.children.flat_map { |c| steps(c) }
       when Constraint then type.base ? steps(type.base) + [Constraint.new(type.matcher)] : [type]
       else [type]
       end
@@ -608,12 +608,12 @@ module Plumb
       end
     end
 
-    # #output_type / #input_type are shallow (one level): an And's output_type is
-    # its right child, which may itself be an opaque Step (output Any) or another
-    # composite. Follow the chain to a fixpoint so the composition check sees the
-    # effective produced/accepted type (and so opaque steps resolve to Any).
-    # Memoized per node in TypeCache (frozen nodes only), so re-resolving a chain
-    # that was already walked — eg. each step of A >> B >> C >> D — is O(1).
+    # Every node resolves its own #input_type / #output_type (an And does it at
+    # construction, an Or maps over its branches), so this is normally a single
+    # hop. The loop remains for nodes that delegate through a wrapper chain, and
+    # bottoms out when a type is its own io type. Memoized per node in TypeCache
+    # (frozen nodes only) — worth it for Or, which allocates a fresh Or of its
+    # resolved branches on every call.
     def resolved_output(type, depth = 0)
       TypeCache.fetch(:resolved_output, type) do
         nxt = type.output_type
