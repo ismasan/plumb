@@ -377,8 +377,9 @@ RSpec.describe 'subtyping: Plumb::Subtyping.subtype? and #<=' do
       # equal matcher built separately still collapses
       expect(STypes::String >> STypes::Any[::String]).to eq(STypes::String)
       # but a transform is NOT idempotent — `X >> X` must apply it twice
+      # (it fuses into a single Function running both fns; see Function#fuse_with)
       plus5 = STypes::Any.transform(::Integer) { |v| v + 5 }
-      expect(plus5 >> plus5).to be_a(Plumb::And)
+      expect(plus5 >> plus5).to be_a(Plumb::Function)
       expect((plus5 >> plus5).resolve(10).value).to eq(20)
     end
 
