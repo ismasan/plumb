@@ -25,7 +25,18 @@ module Plumb
       @left = left
       @right = right
       @input_type = left.input_type
-      @output_type = right.output_type
+      # A value-preserving right NARROWS what the left produces, it does not
+      # replace it, so the chain produces the intersection of the two — eg.
+      # `(String|Integer -> String).where(size: 10)` produces a String of size
+      # 10, not the bare `(size === 10)`. A converting right replaces the value
+      # outright, so its own output stands. A pure refinement (`String >> (size
+      # === 10)`) already IS that intersection, so it is its own output type.
+      @output_type = if Plumb::Subtyping.value_preserving?(right)
+                       lo = left.output_type
+                       lo.equal?(left) ? self : And.new(lo, right)
+                     else
+                       right.output_type
+                     end
       @children = [left, right].freeze
       freeze
     end
@@ -38,11 +49,14 @@ module Plumb
       result.map(@left).map(@right)
     end
 
-    # As a consumer a refinement accepts the constraint it actually passes — its
-    # resolved output — not its #input_type, which is only the type the chain
-    # opens with and would ignore the refinement (eg. `Integer[1..10].input_type`
-    # is just Integer, but it only accepts values in 1..10).
-    def accepted_type = Plumb::Subtyping.resolved_output(self)
+    # As a consumer a refinement accepts the constraint it actually passes — the
+    # right side's resolved output — not its #input_type, which is only the type
+    # the chain opens with and would ignore the refinement (eg.
+    # `Integer[1..10].input_type` is just Integer, but it only accepts values in
+    # 1..10). Deliberately the RIGHT CHILD's output, not `#output_type`: that is
+    # the whole intersection (including the left's own gate), and accepting
+    # against it would make `#>>` stricter than it has ever been.
+    def accepted_type = Plumb::Subtyping.resolved_output(children.last)
 
     # A conjunction preserves the value only if BOTH steps do — a transform on
     # either side changes it. Recurses through the cached accessor so shared

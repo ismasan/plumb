@@ -207,6 +207,18 @@ RSpec.describe 'subtyping: Plumb::Subtyping.subtype? and #<=' do
       expect(STypes::Integer[1..10].accepted_type).to eq(STypes::Integer[1..10].output_type)
     end
 
+    it 'an And accepts its RIGHT SIDE, not the whole intersection it produces' do
+      # An And's #output_type is the intersection (base ∧ refinement), but as a
+      # CONSUMER it accepts only what the right side gates on — accepting
+      # against the intersection would make `#>>` stricter than it has ever
+      # been. The two are deliberately different; keep them so.
+      refined = STypes::String.where(size: 0..)
+
+      expect(refined.accepted_type).to eq(refined.children.last)
+      expect(refined.accepted_type).not_to eq(refined.output_type)
+      expect(refined.output_type).to be(refined) # the intersection
+    end
+
     it 'a filtered Hash/HashMap accepts any hash-like, not its declared schema' do
       # #filtered is lenient at runtime — it takes any hash and drops the fields
       # that don't fit — so as a consumer it must accept more than its
@@ -305,6 +317,37 @@ RSpec.describe 'subtyping: Plumb::Subtyping.subtype? and #<=' do
       expect(array.output_type).to be(array)
       expect(Plumb::Subtyping.resolved_output(STypes::Hash[age: STypes::Lax::Integer]))
         .to eq(STypes::Hash[age: STypes::Integer])
+    end
+
+    it 'is idempotent for a REFINED member, which narrows without converting' do
+      # A `where` chain is an And, and an And produces the intersection of its
+      # sides — so a refined member is its own produced type and the composite
+      # is unchanged. (Were the And to report only its right side, this would
+      # rebuild as `Array[(size === 3)]`, silently dropping the String gate.)
+      hash  = STypes::Hash[name: STypes::String.where(size: 3)]
+      array = STypes::Array[STypes::String.where(size: 3)]
+      tuple = STypes::Tuple[STypes::String.where(size: 3), STypes::Integer]
+      map   = STypes::Hash[STypes::Symbol, STypes::String.where(size: 3)]
+
+      expect(hash.output_type).to be(hash)
+      expect(array.output_type).to be(array)
+      expect(tuple.output_type).to be(tuple)
+      expect(map.output_type).to be(map)
+    end
+
+    it 'intersects a refinement with what the step before it produced' do
+      # the refinement narrows the conversion's output rather than replacing it
+      converting = (STypes::String | STypes::Integer).transform(::String, &:to_s)
+      refined = converting.where(size: 10)
+
+      expect(refined.output_type).to eq(STypes::String >> refined.children.last)
+      expect(refined.output_type <= STypes::String).to be(true)
+      # a pure refinement already IS that intersection, so it is its own output
+      plain = STypes::String.where(size: 10)
+      expect(plain.output_type).to be(plain)
+      # ...while a CONVERTING right replaces the value, so its output stands
+      chain = STypes::String.transform(::Integer, &:to_i) >> STypes::Integer.transform(::Integer) { |i| i * 2 }
+      expect(chain.output_type).to eq(STypes::Integer)
     end
   end
 

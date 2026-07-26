@@ -50,6 +50,23 @@ RSpec.describe Plumb do
     expect { Types::Integer.policy(:test_present) }.to raise_error(Plumb::Policies::UnknownPolicyError)
   end
 
+  it 'resolves per-type policies through a #where refinement' do
+    # A refinement narrows without changing the type, so a refined Array is
+    # still an Array and must reach the Array-specific policy — not silently
+    # fall back to the generic one. `:options` is registered both ways: the
+    # Array version checks each ELEMENT, the generic one checks the whole value.
+    refined = Types::Array[Types::String].where(size: 1..3)
+    expect(Plumb.resolve_base_types(refined)).to eq([::Array])
+
+    type = refined.options(%w[a b])
+    assert_result(type.resolve(%w[a]), %w[a], true)      # element-wise, via the Array policy
+    assert_result(type.resolve(%w[a z]), %w[a z], false) # 'z' is not an option
+    assert_result(type.resolve(%w[a b a b]), %w[a b a b], false) # size 4 fails the refinement
+
+    # the same holds for a scalar refinement
+    expect(Plumb.resolve_base_types(Types::String.where(size: 1..3))).to eq([::String])
+  end
+
   it 'can register policies for given interfaces' do
     type = (Types::String | Types::Array).policy(the_size: 2)
     assert_result(type.resolve('ye'), 'ye', true)

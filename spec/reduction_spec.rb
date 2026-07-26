@@ -282,8 +282,13 @@ RSpec.describe 'composition reduction (>>)' do
 
       expect(u.node_name).to eq(:refined_union)
       expect(u.type).to be_a(Plumb::And)
-      expect(u.type.input_type).to eq(RTypes::String)  # base
-      expect(u.type.output_type).to be_a(Plumb::Or)    # disjunction of bare suffixes
+      base, suffixes = u.type.children
+      expect(base).to eq(RTypes::String)               # base
+      expect(suffixes).to be_a(Plumb::Or)              # disjunction of bare suffixes
+      # the io types report what the factored union consumes and produces — a
+      # String in, a String narrowed by the disjunction out — not its two sides.
+      expect(u.type.input_type).to eq(RTypes::String)
+      expect(u.type.output_type).to eq(RTypes::String >> suffixes)
     end
 
     it 'is runtime-equivalent to the un-factored union' do
