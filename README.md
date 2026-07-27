@@ -1826,10 +1826,6 @@ Pipe2 = DebuggablePipeline.new do |pl|
 end
 ```
 
-### Plumb::Schema
-
-TODO
-
 ### Recursive types
 
 You can use a proc to defer evaluation of recursive definitions.
@@ -2386,7 +2382,6 @@ Types::DateTime.to_json_schema
 ## TODO:
 
 - [ ] benchmarks and performace. Compare with `Parametric`, `ActiveModel::Attributes`, `ActionController::StrongParameters`
-- [ ] flesh out `Plumb::Schema`
 - [x] `Plumb::Struct`
 - [x] flesh out and document `Plumb::Pipeline`
 - [ ] document custom visitors
