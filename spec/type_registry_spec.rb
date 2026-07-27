@@ -6,21 +6,21 @@ module Tests
   module TestRegistry
     extend Plumb::TypeRegistry
 
-    Foo = Plumb::Step.new
-    Bar = Plumb::Step.new
+    Foo = Plumb::Composable.wrap(->(r) { r })
+    Bar = Plumb::Composable.wrap(->(r) { r })
 
     module Child
-      Bar = Plumb::Step.new
+      Bar = Plumb::Composable.wrap(->(r) { r })
     end
   end
 
   module Host
     include TestRegistry
 
-    MyString = Plumb::Step.new
+    MyString = Plumb::Composable.wrap(->(r) { r })
 
     module Child
-      MyBar = Plumb::Step.new
+      MyBar = Plumb::Composable.wrap(->(r) { r })
     end
   end
 

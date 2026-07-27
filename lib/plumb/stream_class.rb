@@ -69,9 +69,9 @@ module Plumb
       result.valid(enum)
     end
 
-    # @return [Step] a step that resolves to an Enumerator that filters out invalid elements
+    # @return [Composable] a step that resolves to an Enumerator that filters out invalid elements
     def filtered
-      self >> Step.new(nil, 'filtered') do |result|
+      self >> Function.opaque(inspect: 'filtered') do |result|
         set = result.value.lazy.filter_map { |e| e.value if e.valid? }
         result.valid(set)
       end

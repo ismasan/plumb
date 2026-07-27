@@ -22,10 +22,6 @@ module Plumb
       end
     end
 
-    on(:step) do |node, props|
-      props.merge(node._metadata)
-    end
-
     on(:hash) do |_node, props|
       props
     end

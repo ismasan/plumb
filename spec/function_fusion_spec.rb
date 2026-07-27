@@ -34,13 +34,29 @@ RSpec.describe 'Function fusion' do
     assert_result(chain.resolve('x'), 'bbbbxaacc', true)
   end
 
-  it 'fuses untyped functions' do
+  it 'does NOT fuse opaque (untyped) functions' do
     f1 = Plumb::Function[->(r) { r.valid(r.value * 2) }]
     f2 = Plumb::Function[->(r) { r.valid(r.value + 1) }]
     chain = f1 >> f2
 
-    expect(chain).to be_instance_of(Plumb::Function)
+    # Fusing would be sound (Any <= Any) but pointless — the only checks dropped
+    # are Any no-ops — and it would replace both fns with one composite proc.
+    # An opaque function IS a wrapped callable, and callers reach that callable
+    # through #fn (see Plumb::Attributes.struct_class), so it must stay intact.
+    expect(chain).to be_instance_of(Plumb::And)
+    expect(chain.children.map(&:fn)).to eq([f1.fn, f2.fn])
     assert_result(chain.resolve(3), 7, true)
+  end
+
+  it 'keeps a wrapped struct class reachable across composition' do
+    struct = Class.new do
+      include Plumb::Attributes
+      attribute :name, Plumb::Types::String
+    end
+    chain = Plumb::Composable.wrap(struct) >> ->(r) { r.valid(r.value.name.upcase) }
+
+    expect(Plumb::Attributes.struct_class(chain.children.first)).to be(struct)
+    assert_result(chain.resolve(name: 'ada'), 'ADA', true)
   end
 
   it 'short-circuits the fn chain when an fn invalidates' do

@@ -56,10 +56,10 @@ RSpec.describe Plumb::Types do
   end
 
   specify '#>>' do
-    step1 = Plumb::Step.new { |r| r.valid(r.value + 5) }
-    step2 = Plumb::Step.new { |r| r.valid(r.value - 2) }
-    step3 = Plumb::Step.new { |r| r.invalid }
-    step4 = ->(minus) { Plumb::Step.new { |r| r.valid(r.value - minus) } }
+    step1 = Plumb::Composable.wrap(->(r) { r.valid(r.value + 5) })
+    step2 = Plumb::Composable.wrap(->(r) { r.valid(r.value - 2) })
+    step3 = Plumb::Composable.wrap(->(r) { r.invalid })
+    step4 = ->(minus) { Plumb::Composable.wrap(->(r) { r.valid(r.value - minus) }) }
     pipeline = Types::Any >> step1 >> step2 >> step3 >> ->(r) { r.valid(r.value + 1) }
 
     expect(pipeline.resolve(10).valid?).to be(false)
@@ -68,13 +68,18 @@ RSpec.describe Plumb::Types do
     expect((step1 >> ->(r) { r.valid(r.value.to_s) }).resolve(10).value).to eq('15')
   end
 
-  specify 'with custom #metadata' do
+  specify 'a wrapped callable does not contribute its own #metadata' do
+    # #metadata collects USER ANNOTATIONS only (see MetadataVisitor); a callable
+    # defining #metadata is not an annotation channel. Use #metadata(...).
     klass = Class.new do
-      def metadata = { foo: 'bar', type: self.class }
+      def metadata = { foo: 'bar' }
       def call(result) = result
     end
     type = (Types::Any >> klass.new) | Types::String
-    expect(type.metadata).to eq(foo: 'bar', type: klass)
+    expect(type.metadata).to eq({})
+
+    annotated = (Types::Any >> Plumb::Composable.wrap(klass.new).metadata(foo: 'bar')) | Types::String
+    expect(annotated.metadata).to eq(foo: 'bar')
   end
 
   describe '#transform' do
@@ -541,11 +546,11 @@ RSpec.describe Plumb::Types do
     end
 
     specify ':rescue' do
-      type = Plumb::Step.new do |r|
+      type = Plumb::Composable.wrap(lambda do |r|
         raise ArgumentError, 'nope' unless r.value == 10
 
         r
-      end
+      end)
 
       rescued = type.policy(:rescue, ArgumentError)
       result = rescued.resolve(10)

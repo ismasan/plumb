@@ -231,7 +231,7 @@ module Plumb
                        end
         Types::Array[element_type]
       elsif callable.respond_to?(:call)
-        Step.new(callable)
+        Function.opaque(callable)
       else
         Constraint.new(callable)
       end
@@ -663,7 +663,7 @@ module Plumb
     # Mode 1.b: #policy(:name) a single policy without an argument
     # Mode 2: #policy(p1: value, p2: value) multiple policies with arguments
     # The latter mode will be expanded to multiple #policy calls.
-    # @return [Step]
+    # @return [Composable]
     def policy(*args, &blk)
       case args
       in [::Symbol => name, *rest] # #policy(:name, arg)
@@ -760,7 +760,7 @@ module Plumb
       generator ||= block
       raise ArgumentError, 'expected a generator' unless generator.respond_to?(:call)
 
-      Step.new(->(r) { r.valid(generator.call) }, 'generator') >> self
+      Function.opaque(inspect: 'generator') { |r| r.valid(generator.call) } >> self
     end
 
     # Build a Plumb::Pipeline with this object as the starting step.
@@ -790,14 +790,14 @@ module Plumb
     # Ex 1: Types::String.invoke(:downcase)
     # Ex 2: Types::Array.invoke(:[], 1)
     # Ex 3 chain of methods: Types::String.invoke([:downcase, :to_sym])
-    # @return [Step]
+    # @return [Composable]
     def invoke(*args, &block)
       case args
       in [::Symbol => method_name, *rest]
-        self >> Step.new(
-          ->(result) { result.valid(result.value.public_send(method_name, *rest, &block)) },
-          [method_name.inspect, rest.inspect].join(' ')
-        )
+        label = [method_name.inspect, rest.inspect].join(' ')
+        self >> Function.opaque(inspect: label) do |result|
+          result.valid(result.value.public_send(method_name, *rest, &block))
+        end
       in [Array => methods] if methods.all? { |m| m.is_a?(Symbol) }
         methods.reduce(self) { |step, method| step.invoke(method) }
       else
