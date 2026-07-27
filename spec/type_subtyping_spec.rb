@@ -254,7 +254,7 @@ RSpec.describe 'subtyping: Plumb::Subtyping.subtype? and #<=' do
       'stream' => STypes::Stream[STypes::String],
       'static' => STypes::Static['x'],
       'interface' => STypes::Interface[:to_s],
-      'opaque step' => Plumb::Step.new(->(r) { r }),
+      'opaque step' => Plumb::Composable.wrap(->(r) { r }),
       'function' => Plumb::Function[String => Integer] { |r| r.valid(r.value.size) },
       'metadata-wrapped' => STypes::String.metadata(foo: 1),
       'policy-wrapped' => STypes::String.default('x'),

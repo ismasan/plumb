@@ -20,10 +20,10 @@ module Types
   # It implements the #call(Result) => Result interface.
   # required by all Plumb steps.
   # URI => Image
-  Download = Plumb::Step.new do |result|
+  Download = Plumb::Composable.wrap(lambda do |result|
     io = ::URI.open(result.value)
     result.valid(Image.new(result.value.to_s, io))
-  end
+  end)
 
   # A configurable file-system cache to read and write files from.
   class Cache
@@ -32,12 +32,13 @@ module Types
       FileUtils.mkdir_p(dir)
     end
 
-    # Wrap the #reader and #wruter methods into Plumb steps
+    # Wrap the #reader and #writer methods into Plumb steps
     # A step only needs #call(Result) => Result to work in a pipeline,
-    # but wrapping it in Plumb::Step provides the #>> and #| methods for composability,
-    # as well as all the other helper methods provided by the Composable module.
-    def read = Plumb::Step.new(method(:reader))
-    def write = Plumb::Step.new(method(:writer))
+    # but wrapping it with Plumb::Composable.wrap provides the #>> and #| methods
+    # for composability, as well as all the other helper methods provided by the
+    # Composable module.
+    def read = Plumb::Composable.wrap(method(:reader))
+    def write = Plumb::Composable.wrap(method(:writer))
 
     private
 

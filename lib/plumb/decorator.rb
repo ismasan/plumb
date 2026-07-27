@@ -31,7 +31,7 @@ module Plumb
              when Function
                left, right = visit_children(type)
                # type.class preserves a GuaranteedFunction across decoration.
-               type.class.new(left, right, type.fn)
+               type.class.new(left, right, type.fn, inspect: type.inspect_label)
              when Or
                left, right = visit_children(type)
                Or.new(left, right)

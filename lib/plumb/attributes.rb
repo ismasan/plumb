@@ -115,14 +115,16 @@ module Plumb
 
     # The struct class behind `node`, or nil. Structs appear in two shapes: a
     # Plumb::Attributes class itself (Types::Data subclasses are Composable
-    # classes), or the opaque Step that Composable.wrap builds around a plain
-    # `include Plumb::Attributes` class. This is the one owner of that
-    # representation fact — used by #build_nested and Codec's rewriter.
+    # classes), or the opaque Function that Composable.wrap builds around a plain
+    # `include Plumb::Attributes` class — the class is the wrapped callable, so
+    # it is reached via #fn (a Function's #children are its types). This is the
+    # one owner of that representation fact — used by #build_nested and Codec's
+    # rewriter.
     def self.struct_class(node)
       return node if node.is_a?(::Class) && node <= Attributes
-      return nil unless node.is_a?(Plumb::Step)
+      return nil unless node.is_a?(Plumb::Function) && node.opaque?
 
-      callable = node.children.first
+      callable = node.fn
       callable.is_a?(::Class) && callable <= Attributes ? callable : nil
     end
 
@@ -199,7 +201,7 @@ module Plumb
       # Add a step to the processing pipeline that runs before attribute validation.
       # This allows you to transform or validate the input data before it's assigned to attributes.
       #
-      # @param st [Plumb::Step, nil] A step object to add to the pipeline
+      # @param st [Plumb::Composable, #call, nil] A step object to add to the pipeline
       # @param block [Proc, nil] A block to use as a step (if st is nil)
       # @return [Class] Returns self for method chaining
       #
@@ -243,7 +245,7 @@ module Plumb
 
       MUST_BE_HASH = ['Must be a Hash of attributes'].freeze
 
-      # The Plumb::Step interface
+      # The Plumb::Callable interface
       # @param result [Plumb::Result::Valid]
       # @return [Plumb::Result::Valid, Plumb::Result::Invalid]
       def call(result)
@@ -306,9 +308,12 @@ module Plumb
               child = node.children.first
               child = __plumb_struct_class__ if child == Types::Any
               Types::Array[build_nested(name, child, &block)]
-            elsif node.is_a?(Plumb::Step)
-              build_nested(name, node, &block)
-            elsif node.is_a?(Class) && node <= Plumb::Attributes
+            # An opaque function is a wrapped callable — possibly a struct class,
+            # possibly not; #build_nested raises if it isn't. Deliberately NOT
+            # every Function: a typed one is a #transform / #build / coercion,
+            # which a nested-attributes block has no business rewriting.
+            elsif (node.is_a?(Plumb::Function) && node.opaque?) ||
+                  (node.is_a?(Class) && node <= Plumb::Attributes)
               build_nested(name, node, &block)
             else
               node

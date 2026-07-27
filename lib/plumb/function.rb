@@ -19,7 +19,8 @@ module Plumb
     #   Plumb::Function[callable, String => Integer]
     #
     # The callable takes and returns a Result (unlike Composable#transform, whose
-    # block takes a value). With no types, both ends default to Types::Any.
+    # block takes a value). With no types, both ends default to Types::Any and
+    # this delegates to .opaque (use that directly if you want an #inspect label).
     # When input and output are the same type and there's nothing to apply, this
     # is just that type, so it's returned as-is.
     #
@@ -60,7 +61,43 @@ module Plumb
               "Should be Plumb::Function[#{input_type} => #{output_type}] { |r| r.valid(new_value_here) }"
       end
 
+      return opaque(fn) if input_type == Types::Any && output_type == Types::Any
+
       new(input_type, output_type, fn)
+    end
+
+    # Build an OPAQUE function around a bare `#call(Result) => Result` callable
+    # — see #opaque?. This is what `Composable.wrap` produces for anything
+    # callable, and the canonical builder for the no-declared-types case:
+    # `Function[callable]` is sugar for it and returns the same thing.
+    #
+    # It exists separately only because it takes an `inspect` label, which `.[]`
+    # cannot: declaring any keyword there would make Ruby route the bare hash in
+    # `Function[callable, String => Integer]` into keywords ("unknown keyword:
+    # String") and break that form.
+    #
+    # A GuaranteedFunction, because an opaque function's output check IS `Any`,
+    # which no value can fail: skipping it is provably redundant rather than a
+    # shortcut, which is exactly what that subclass encodes. (The input check is
+    # `Any` too and equally redundant, but #call has to run *some* input check
+    # for typed functions, so that hop stays.)
+    #
+    # Takes the callable positionally, or as a block:
+    #
+    #   Plumb::Function.opaque(some_callable)
+    #   Plumb::Function.opaque(inspect: 'filtered') { |result| result.valid(...) }
+    #
+    # @param callable [#call, nil] Result => Result
+    # @param inspect [String, nil] label to #inspect as, instead of the types
+    # @yield [Result] Result => Result
+    # @return [GuaranteedFunction]
+    def self.opaque(callable = nil, inspect: nil, &block)
+      raise ArgumentError, 'expected a callable or a block, not both' if callable && block
+
+      fn = callable || block
+      raise ArgumentError, 'expected a callable or a block' unless fn.respond_to?(:call)
+
+      GuaranteedFunction.new(Types::Any, Types::Any, fn, inspect:)
     end
 
     def self.__set_types(inout)
@@ -74,20 +111,34 @@ module Plumb
     private_class_method :__set_types
 
     # `fn` is the value-level callable — `#call(Result) => Result`. Exposed so
-    # the Decorator can rebuild the node around it.
-    attr_reader :children, :input_type, :output_type, :fn
+    # the Decorator can rebuild the node around it, and so an opaque function
+    # can be resolved back to the object it wraps (see Plumb::Attributes.struct_class).
+    # `inspect_label` is the optional label an opaque function is built with;
+    # exposed only so the Decorator can carry it across a rebuild.
+    attr_reader :children, :input_type, :output_type, :fn, :inspect_label
 
-    def initialize(input_type, output_type, fn = Plumb::NOOP)
+    # @param inspect [String, nil] label to #inspect as, instead of the types
+    def initialize(input_type, output_type, fn = Plumb::NOOP, inspect: nil)
       @input_type = input_type
       @output_type = output_type
       @fn = fn
+      @inspect_label = inspect
       @children = [input_type, output_type].freeze
       freeze
     end
 
     private def _inspect
-      %((#{@input_type.inspect} -> #{@output_type.inspect}))
+      @inspect_label || %((#{@input_type.inspect} -> #{@output_type.inspect}))
     end
+
+    # An OPAQUE function wraps a callable whose types are unknown — both ends
+    # are Any (top), which is what `Composable.wrap` builds around any bare
+    # `#call(Result) => Result` object. Every other construction path (#transform,
+    # #build, coercions, Encoder.step) declares at least an output type, so this
+    # identifies exactly "a wrapped callable, not a typed conversion". Callers
+    # that need to reach the wrapped object, distinguish it from a real
+    # transform, or refuse to optimise across it use this.
+    def opaque? = @input_type == Types::Any && @output_type == Types::Any
 
     def call(result)
       result.map(@input_type).map(@fn).map(@output_type)
@@ -118,12 +169,21 @@ module Plumb
       other.class.new(@input_type, other.output_type, ->(result) { result.map(fn1).map(fn2) })
     end
 
-    # #call must be exactly the standard input->fn->output mapping for its
+    # Is `node` eligible to fuse at all? Two requirements.
+    #
+    # Its #call must be exactly the standard input->fn->output mapping for its
     # checks to be droppable — an exact-class whitelist (instance_of?), not
     # is_a?: FilteredHash is a Function subclass whose custom #call skips the
     # input check, so it must not fuse. GuaranteedFunction is listed separately
     # because instance_of? never matches through inheritance.
-    private def fusible?(node) = node.instance_of?(Function) || node.instance_of?(GuaranteedFunction)
+    #
+    # And it must not be OPAQUE. Two Any-ended functions would technically fuse
+    # (`Any <= Any`), but the only checks dropped are no-ops, so there is nothing
+    # to win — while fusing would hide both wrapped callables behind a composite
+    # proc, where #fn can no longer reach them (see Attributes.struct_class).
+    private def fusible?(node)
+      (node.instance_of?(Function) || node.instance_of?(GuaranteedFunction)) && !node.opaque?
+    end
 
     # A Function's subtyping identity is what it produces — its declared,
     # distinct output_type. See Plumb::Subtyping.subtype? and Composable#subtype_identity.
@@ -139,9 +199,11 @@ module Plumb
     def accepted_type = Plumb::Subtyping.accepted_type(@input_type)
   end
 
-  # A Function whose proc is known *at build time* to produce a value of
-  # output_type (eg. a `:to_i` coercion always yields an Integer), so the runtime
-  # output check is provably redundant. Choosing the class at build time means
+  # A Function whose output check is known *at build time* to be redundant, so
+  # it is simply not run. Two ways to earn that: the proc provably produces
+  # output_type (eg. a `:to_i` coercion always yields an Integer), or the
+  # output_type is `Any`, which nothing can fail — the opaque case, see
+  # Function.opaque. Choosing the class at build time means
   # #call carries no per-call `guaranteed?` branch — the check is simply absent.
   # It inherits Function's node_name (:function) and `is_a?(Function)`, so
   # visitors, JSON-schema, subtyping and the decorator treat it as a Function;

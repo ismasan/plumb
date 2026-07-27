@@ -122,10 +122,6 @@ module Plumb
       visit_children(node, props)
     end
 
-    on(:step) do |node, props|
-      props.merge(stringify_keys(node._metadata))
-    end
-
     on(:interface) do |_node, props|
       props
     end
