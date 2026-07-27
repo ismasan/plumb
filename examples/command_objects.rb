@@ -65,7 +65,7 @@ module Types
       FileUtils.mkdir_p(dir)
     end
 
-    # The Plumb::Step interface to make these objects composable.
+    # The Plumb::Callable interface to make these objects composable.
     # @param result [Plumb::Result::Valid]
     # @return [Plumb::Result::Valid, Plumb::Result::Invalid]
     def call(result)
