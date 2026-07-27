@@ -46,6 +46,34 @@ module CodecSpecTypes
     children: Types::Array[Types::Any.defer { Tree }]
   ]
 
+  # Converting steps that are NOT structs: the codec must bridge their accepted
+  # side on decode just the same. See 'converting steps' below.
+  Record = Struct.new(:on)
+
+  # Accepts a Date (needs decoding from a String), produces a String.
+  class DateToString
+    extend Plumb::Implementation[Types::Date => Types::String]
+
+    def self._call(result) = result.valid(result.value.iso8601)
+  end
+
+  # Accepts a typed Hash — subtype of the `noop Types::Hash`, so the noop check
+  # alone would wave it through unrewritten.
+  class RecordStep
+    extend Plumb::Implementation[Types::Hash[on: Types::Date] => Record]
+
+    def self._call(result) = result.valid(Record.new(result.value[:on]))
+  end
+
+  RecordFunction = Types::Hash[on: Types::Date].build(Record) { |h| Record.new(h[:on]) }
+
+  # Accepts something the codec has no encoder for.
+  class RegexpStep
+    extend Plumb::Implementation[Types::Any[::Regexp] => Types::String]
+
+    def self._call(result) = result.valid(result.value.source)
+  end
+
   DATE = ::Date.new(2024, 1, 1).freeze
   RANGE = ::Date.new(2024, 1, 1)..::Date.new(2024, 2, 1)
   ENCODED_PERSON = { name: 'Joe', dates: { from: '2024-01-01', to: '2024-02-01' } }.freeze
@@ -565,6 +593,52 @@ module CodecSpecTypes
         schema = Plumb::JSONSchemaVisitor.call(JSONCodec >> Company)
         expect(schema.dig('properties', 'founded')).to eq('type' => 'string')
         expect(schema['required']).to eq(%w[name founded])
+      end
+    end
+
+    # A struct is one converting node among others (`Hash[...] -> Person`); on
+    # decode the codec rewrites what such a node ACCEPTS and puts that in front,
+    # whatever built it — a Function, a Plumb::Implementation, or Types::Data.
+    describe 'converting steps (decode bridges what they accept)' do
+      it 'decodes into a step whose accepted type matches an encoder' do
+        decoder = JSONCodec >> Types::Hash[on: DateToString]
+        expect(decoder.parse({ on: '2024-01-01' })).to eq({ on: '2024-01-01' })
+        expect(decoder.to_json_schema.dig('properties', 'on')).to eq('type' => 'string')
+      end
+
+      it 'decodes into a step whose accepted type is a typed Hash' do
+        # NOT covered by the generic `noop Types::Hash`: the schema it accepts
+        # carries a Date, which the encoded document does not.
+        decoder = JSONCodec >> RecordStep
+        record = decoder.parse({ on: '2024-01-01' })
+        expect(record).to be_a(Record)
+        expect(record.on).to eq(DATE)
+      end
+
+      it 'treats a Function, an Implementation and a struct alike' do
+        equivalents = [RecordStep, RecordFunction, Types::Data[on: Types::Date]]
+        decoded = equivalents.map { |t| (JSONCodec >> t).parse({ on: '2024-01-01' }) }
+        expect(decoded.map(&:on)).to eq([DATE, DATE, DATE])
+        expect(equivalents.map { |t| (JSONCodec >> t).to_json_schema.dig('properties', 'on') })
+          .to eq([{ 'type' => 'string' }] * 3)
+      end
+
+      it 'leaves the encode direction alone (it rewrites what the step produces)' do
+        encoder = Types::Hash[on: DateToString] >> JSONCodec
+        expect(encoder.parse({ on: DATE })).to eq({ on: '2024-01-01' })
+      end
+
+      it 'leaves a step whose accepted type is already native untouched' do
+        step = Types::Integer.transform(::String, &:to_s)
+        schema = Types::Hash[n: step]
+        rewritten = JSONCodec >> schema
+        expect(rewritten).to be(schema) # identical node, nothing spliced in
+        expect(rewritten.parse({ n: 3 })).to eq({ n: '3' })
+      end
+
+      it 'raises for an accepted type the codec cannot decode, naming the step' do
+        expect { JSONCodec >> Types::Hash[a: RegexpStep] }
+          .to raise_error(Plumb::TypeError, /field `a\.<.*RegexpStep.* input>`/)
       end
     end
 
