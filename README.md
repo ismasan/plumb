@@ -1963,6 +1963,20 @@ company = decoder.parse({ name: 'ACME', founded: '2024-01-01' }) # => #<Company 
 encoder.parse(company) # => { name: 'ACME', founded: '2024-01-01' }
 ```
 
+A field whose type is a **converting step** — a `#transform`/`#build` Function, a [`Plumb::Implementation`](#include-plumbimplementationinput--output-to-declare-a-class-types), a struct class — is decoded by rewriting what it *accepts* and putting that in front of it, so the step is fed the decoded value. A `Types::Data` class is one such node (`Hash[…] -> Person`); so is a hand-written equivalent, and both are handled the same way:
+
+```ruby
+class ParseRecord
+  extend Plumb::Implementation[Types::Hash[on: Types::Date] => Record]
+
+  def self._call(result) = result.valid(Record.new(result.value[:on]))
+end
+
+(JSONCodec >> ParseRecord).parse({ on: '2024-01-01' }) # => #<Record on: Date>
+```
+
+Its accepted `Date` is decoded from a string first; the step itself is preserved and still validates what it is handed. A step whose accepted type is already native is left untouched; one whose accepted type the codec can't decode raises, naming the step.
+
 A field that matches no encoder and no noop is a composition-time error naming the field path:
 
 ```ruby

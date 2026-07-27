@@ -218,8 +218,11 @@ module Plumb
     #      recurse into their children — AFTER encoder matching, so an encoder
     #      can target a specific composite shape, but BEFORE the noop check,
     #      so a generic `noop Types::Hash` can't swallow a structured schema;
-    #   4. leaves pass through when noop-covered, otherwise raise with the
-    #      dotted field path.
+    #   4. decoding, a converting leaf (a Function, a Plumb::Implementation, a
+    #      struct) has what it ACCEPTS rewritten through the codec and put in
+    #      front of it, so the step is fed the decoded value (see #bridge_input);
+    #   5. remaining leaves pass through when noop-covered, otherwise raise with
+    #      the dotted field path.
     #
     # Untouched subtrees keep their identity (the original node is returned),
     # so noop pass-through adds no nodes.
@@ -231,6 +234,7 @@ module Plumb
         @input_memo = {}.compare_by_identity
         @match_memo = {}.compare_by_identity
         @noop_memo = {}.compare_by_identity
+        @bridge_memo = {}.compare_by_identity
         @input_stack = []
         @root = nil
       end
@@ -298,9 +302,54 @@ module Plumb
           if (struct = Plumb::Attributes.struct_class(type))
             visit_struct(type, struct, path)
           else
-            noop_or_fail(type, path)
+            visit_leaf(type, path)
           end
         end
+      end
+
+      # A leaf: nothing to recurse into structurally. It survives when the
+      # format already carries it (the noop check), or — decoding — when the
+      # codec can bridge what it CONSUMES.
+      def visit_leaf(type, path)
+        bridge_input(type, path) || noop_or_fail(type, path)
+      end
+
+      # DECODE: a converting leaf (a Function, a Plumb::Implementation — any node
+      # whose accepted type is a distinct node) consumes values the encoded
+      # document does not carry: `Hash[time: Time] -> Thing` wants a Time, a JSON
+      # document has a String. Rewrite what it ACCEPTS through this codec and put
+      # that in front, so the step is fed the decoded value and is itself
+      # preserved. This is exactly the rule #visit_struct applies to a struct's
+      # schema — a struct IS such a node (`Hash[...] -> Person`) — generalized to
+      # every converting node. (Structs keep their own branch: encoding, they
+      # also need the `#attributes` extraction.)
+      #
+      # Returns nil when it does not apply: a leaf that accepts itself (any plain
+      # matcher), an opaque one, or one whose accepted side is already native —
+      # there the rewrite comes back identical and the noop check decides.
+      #
+      # ORDERING: this must run BEFORE the noop check, not after. A step
+      # accepting a typed Hash is "covered" by a generic `noop Types::Hash` — the
+      # same container-top shadowing #visit's ordering avoids for a HashClass
+      # node — so deferring to the noop check passes it through unrewritten and
+      # yields a decoder that type-errors at runtime.
+      def bridge_input(type, path)
+        return nil unless @direction == :decode
+
+        accepted = Plumb::Subtyping.accepted_type(type)
+        return nil if accepted.equal?(type) || accepted.is_a?(AnyClass)
+
+        rewritten = @bridge_memo.fetch(type) do
+          @bridge_memo[type] = visit(accepted, path + ["<#{type.inspect} input>"])
+        end
+        return nil if rewritten.equal?(accepted)
+
+        # The same node shape #visit_struct builds: ONE Function, whose input is
+        # the decoded form and whose output type IS the step (a Function's output
+        # stage calls it). So the JSON Schema describes the encoded side only —
+        # an `And` would merge the step's own input type back in and leak the
+        # decoded type into the wire description.
+        Function.new(rewritten, type, Plumb::NOOP)
       end
 
       # A struct (Types::Data / Plumb::Attributes) is a Hash schema plus a
