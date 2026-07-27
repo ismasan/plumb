@@ -67,6 +67,11 @@ module Plumb
     # define a #node_name method on the Composable instance
     # #node_name is used by Visitors to determine the type of node.
     def self.included(base)
+      # An anonymous class (`Class.new { include Composable }`) has no name to
+      # derive from: leave #node_name to the instance method below, which reads
+      # the class name at call time (by then it may have been assigned one).
+      return unless base.name
+
       nname = base.name.split('::').last
       nname.gsub!(/([a-z\d])([A-Z])/, '\1_\2')
       nname.downcase!
@@ -99,7 +104,7 @@ module Plumb
 
     def inspect = name.to_s
 
-    def node_name = self.class.name.split('::').last.to_sym
+    def node_name = (self.class.name || 'anonymous').split('::').last.to_sym
   end
 
   # Override #=== and #== for Composable instances.

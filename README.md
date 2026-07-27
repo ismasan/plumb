@@ -2125,7 +2125,7 @@ class Greeting
   
   # The step interface
   def call(result)
-    result.valid("#{gr} #{result.value}")
+    result.valid("#{@gr} #{result.value}")
   end
   
   # This is optional, but it allows you to control your object's #inspect
@@ -2153,6 +2153,91 @@ end
 ```
 
 This is how [Plumb::Types::Data](#typesdata) is implemented.
+
+#### Include `Plumb::Implementation[input => output]` to declare a class' types
+
+`Plumb::Composable` makes your instances composable, but Plumb knows nothing about what they accept or produce — they're opaque, so they opt out of [composition type-checks](#composition-type-checks) and subtype checks.
+
+`Plumb::Implementation[Input => Output]` is `Composable` plus a declared type pair. It makes your instances behave like a [`Plumb::Function`](#plumbfunctioninput--output): your class owns its `#initialize` and its state, and implements a private `#_call(Result) => Result`.
+
+The mixin owns the public `#call`, which runs the declared checks around your `#_call`:
+
+```
+result.map(input_type).map(_call).map(output_type)
+```
+
+ie. the input is validated (and coerced, if the input type converts) before `#_call` sees it, and what it returns is validated against the output type.
+
+```ruby
+class UserFinder
+  include Plumb::Implementation[Types::UUID::V4 => User]
+
+  def initialize(user_scope)
+    @user_scope = user_scope
+  end
+
+  private def _call(result)
+    user = User.where(level: @user_scope).find_by(id: result.value)
+    return result.invalid(errors: 'no user!') unless user
+
+    result.valid(user)
+  end
+end
+```
+
+Instances are now fully typed steps:
+
+```ruby
+finder = UserFinder.new('admin')
+
+finder.parse(some_uuid)      # => a User. Raises Plumb::ParseError unless the input is a UUID
+finder >> some_other_step    # composition, type-checked at build time
+Types::UUID::V4 >> finder    # ...on both sides
+Types::Integer >> finder     # => Plumb::TypeError: Integer is not a subtype of UUID::V4
+
+finder <= User               # => true. Like a Function, it is identified by what it PRODUCES
+finder.to_json_schema        # describes the INPUT side, like any other conversion
+
+Types::Hash[user: finder]    # use it anywhere a type is expected
+```
+
+Both sides are wrapped with `Plumb::Composable.wrap`, so raw Ruby classes and hash literals work too: `Plumb::Implementation[{id: Types::String} => User]`.
+
+Instances report `#node_name` `:function`, so every visitor, JSON Schema handler and policy that understands a conversion node understands yours. Define your own `#node_name` after the include if you have visitors of your own. Everything else is the [regular extension surface](#participating-in-subtype--composition-checks): override `#subtype_of?`, `#value_preserving?` etc. as needed.
+
+`include Plumb::Implementation` with no pair declares `Any => Any` — the opaque case, equivalent to `Plumb::Function.opaque`.
+
+Subclassing needs no ceremony: `#_call` is an ordinary method, so an override is found by normal lookup and the inherited `#call` keeps checking around it. `super` reaches the parent's `#_call` directly, with no repeated checks.
+
+```ruby
+class AdminFinder < UserFinder
+  # input already validated as a UUID; the User you return is still checked
+  private def _call(result) = result.valid(super.value.becomes(Admin))
+end
+```
+
+#### Extend `Plumb::Implementation[input => output]` to make the class itself a typed step
+
+Just as with [`Plumb::Composable`](#extend-a-class-with-plumbcomposable-to-make-the-class-itself-a-composable-step), `extend` instead of `include` puts the whole interface on the class: no instantiation, the class implements `self._call(result)` and answers `.input_type` / `.output_type`.
+
+```ruby
+class ParseUUID
+  extend Plumb::Implementation[Types::String => Types::UUID::V4]
+
+  def self._call(result) = result.valid(result.value.downcase)
+end
+
+ParseUUID.parse('E1D3...')            # the class IS the step
+ParseUUID >> UserFinder.new('admin')  # composes like any other type
+Types::Hash[id: ParseUUID]
+ParseUUID.to_json_schema
+```
+
+The two forms are alternatives — pick one per class. The extended form deliberately does **not** take over the class' own `#name`, `#inspect`, `#==` or `#<=` (on a class, `<=` means Ruby module ancestry), so ask for the subtype relation explicitly instead:
+
+```ruby
+Plumb::Subtyping.subtype?(ParseUUID, Types::String) # => true
+```
 
 #### Participating in subtype & composition checks
 
