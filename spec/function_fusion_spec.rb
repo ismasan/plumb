@@ -147,6 +147,60 @@ RSpec.describe 'Function fusion' do
     end
   end
 
+  # `>>` is associative, so `(a >> b) >> c` is `a >> (b >> c)`. Without re-associating,
+  # one non-fusable step at the head blocks every later step from ever reducing: a
+  # chain guarded by a type gate builds And(gate, step1), and since only
+  # Function-to-Function fuses, step2 onwards could never join.
+  describe 'associativity: a non-fusable head no longer blocks the tail' do
+    let(:strip) { Types::String.transform(::String, &:strip) }
+    let(:upcase) { Types::String.transform(::String, &:upcase) }
+    let(:length) { Types::String.transform(::Integer, &:length) }
+
+    it 'fuses the tail behind a leading type gate' do
+      chain = Types::String >> strip >> upcase
+
+      expect(chain.children.size).to eq(2)
+      expect(chain.children.first).to eq(Types::String)
+      expect(chain.children.last).to be_a(Plumb::Function) # strip and upcase, fused
+      expect(chain.parse('  hi  ')).to eq('HI')
+    end
+
+    it 'keeps collapsing as further steps are added' do
+      chain = Types::String >> strip >> upcase >> length
+
+      # The head stays a direct child however many steps follow. Unfused this would be
+      # a nested And three deep, with the gate buried at the bottom.
+      expect(chain.children.first).to eq(Types::String)
+      expect(chain.children.size).to eq(2)
+      expect(chain.children.last.output_type).to eq(Plumb::Composable.wrap(::Integer))
+      expect(chain.parse('  hi  ')).to eq(2)
+    end
+
+    it 'fuses behind a refinement head too' do
+      chain = Types::String.present >> strip >> upcase
+
+      expect(chain.parse('  hi  ')).to eq('HI')
+      expect(chain.resolve('').valid?).to be(false) # the head still gates
+    end
+
+    it 'leaves a chain alone when the tail cannot fuse' do
+      # A trailing refinement is not a Function, so there is nothing to fuse into. Built
+      # with `#/` because narrowing what the chain produces is exactly what `#>>`
+      # refuses — that rule is unrelated to fusion.
+      chain = (Types::String >> strip) / Types::String[/\A[A-Z]+\z/]
+
+      expect(chain.resolve('  HI  ').valid?).to be(true)
+      expect(chain.resolve('  hi  ').valid?).to be(false)
+    end
+
+    it 'preserves order and errors through the re-association' do
+      chain = Types::String >> strip >> length
+
+      assert_result(chain.resolve('  abc  '), 3, true)
+      assert_result(chain.resolve(42), 42, false)
+    end
+  end
+
   # A covariant container is a FUNCTOR, so the second functor law holds: mapping `f`
   # then mapping `g` is mapping `f >> g`. The left form traverses twice and builds an
   # intermediate collection; the right traverses once.

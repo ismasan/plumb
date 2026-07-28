@@ -324,17 +324,26 @@ RSpec.describe Plumb::Types do
     end
 
     it 'resolves through longer chains, past the intermediate steps' do
-      # (A >> B >> C) == ((A >> B) >> C). Function steps keep the And nesting,
-      # but the chain as a whole only accepts what its first step accepts and
-      # only produces what its last step produces.
+      # (A >> B >> C) == ((A >> B) >> C): the chain as a whole only accepts what its
+      # first step accepts and only produces what its last step produces.
       a = Types::Integer[1..5]
       b = Types::Integer.transform(::String, :to_s)
       c = Types::String.transform(::Integer, :to_i)
       chain = a >> b >> c
       expect(chain.input_type).to eq(a)
       expect(chain.output_type).to eq(Types::Integer)
-      # the nesting is still there — it is just not what the io types report
-      expect(chain.children).to eq([a >> b, c])
+      # `b` and `c` are adjacent conversions with a provable boundary, so they fuse
+      # into one — `>>` is associative, so a non-fusable head no longer blocks the
+      # tail from reducing (see And#fuse_with).
+      expect(chain.children.size).to eq(2)
+      expect(chain.children.first).to eq(a)
+      # a GuaranteedFunction here: `:to_i` provably produces an Integer, and fusion
+      # preserves that (its output check was already known redundant)
+      expect(chain.children.last).to be_a(Plumb::Function)
+      expect(chain.children.last.input_type).to eq(Types::Integer)
+      expect(chain.children.last.output_type).to eq(Plumb::Composable.wrap(::Integer))
+      assert_result(chain.resolve(3), 3, true)
+      assert_result(chain.resolve(9), 9, false)
       assert_result(chain.resolve(3), 3, true)
     end
 

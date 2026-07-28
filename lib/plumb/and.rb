@@ -58,5 +58,24 @@ module Plumb
     # Accepting against the RIGHT child's output instead (what Intersection does)
     # would demand that the upstream already produce what this chain's last step
     # emits.
+
+    # Fuse `self >> other` by RE-ASSOCIATING. `>>` is associative — `(a >> b) >> c`
+    # runs a, b, c in exactly the order `a >> (b >> c)` does — so when the tail can
+    # absorb `other`, rebuild around the fused tail.
+    #
+    # Without this, one non-fusable step at the head blocks every later step from ever
+    # reducing: a pipeline guarded by a type gate builds `And(gate, step1)`, and since
+    # only Function-to-Function fuses, `step2` onwards could never join. Now the whole
+    # converting tail collapses behind the gate.
+    #
+    # The soundness proof stays with the node that owns it: this only re-associates,
+    # and the actual fusion is `@right.fuse_with(other)`, which carries its own
+    # boundary check (see Function#fuse_with). Nil when the tail declines, so a chain
+    # that cannot fuse is left exactly as it was. Recursion is bounded by the chain's
+    # depth — an And whose right is itself an And descends one level.
+    def fuse_with(other)
+      fused = @right.fuse_with(other)
+      fused && Conjunction.build(@left, fused)
+    end
   end
 end

@@ -239,25 +239,35 @@ RSpec.describe Plumb::Pipeline do
     end
 
     # A step's input type is what the pipeline currently produces: the previous step's
-    # output, or the pipeline's initial type when it is the first step.
+    # output, or the pipeline's initial type when it is the first step. Observed while
+    # building, since adjacent steps then fuse and the seam stops being a separate node.
     it 'derives each block step\'s input type from the step before it' do
+      pl = Plumb::Pipeline.new(type: Types::String, freeze_after: false)
+
+      pl.step(::Integer) { |r| r.valid(r.value.length) }
+      first = pl.children.first.children.last
+      expect(first.input_type).to eq(Types::String)                      # the initial type
+      expect(first.output_type).to eq(Plumb::Composable.wrap(::Integer))
+
+      pl.step(::Date) { |r| r.valid(::Date.new(2024, 1, r.value)) }
+      expect(pl.output_type).to eq(Plumb::Composable.wrap(::Date))
+      expect(pl.parse('abcd')).to eq(::Date.new(2024, 1, 4))
+    end
+
+    # The derivation survives fusion: the collapsed step reports the pipeline's initial
+    # type as its input, not Types::Any. Using Any would have produced `(Any -> Date)`.
+    it 'keeps the chain\'s ends after the steps fuse' do
       pipeline = Plumb::Pipeline.new(type: Types::String) do |pl|
         pl.step(::Integer) { |r| r.valid(r.value.length) }
         pl.step(::Date) { |r| r.valid(::Date.new(2024, 1, r.value)) }
       end
+      fused = pipeline.children.first.children.last
 
-      steps = []
-      collect = ->(t) { t.is_a?(Plumb::Conjunction) ? t.children.each { |c| collect.call(c) } : steps << t }
-      collect.call(pipeline.children.first)
-      functions = steps.grep(Plumb::Function)
-
-      expect(functions.map { |f| [f.input_type, f.output_type] }).to eq(
-        [
-          [Types::String, Plumb::Composable.wrap(::Integer)],  # initial type -> Integer
-          [Plumb::Composable.wrap(::Integer), Plumb::Composable.wrap(::Date)] # previous output -> Date
-        ]
-      )
-      expect(pipeline.parse('abcd')).to eq(::Date.new(2024, 1, 4))
+      expect(fused).to be_instance_of(Plumb::Function)
+      expect(fused.input_type).to eq(Types::String)
+      expect(fused.output_type).to eq(Plumb::Composable.wrap(::Date))
+      expect(pipeline.input_type).to eq(Types::String)
+      expect(pipeline.output_type).to eq(Plumb::Composable.wrap(::Date))
     end
 
     it 'fuses consecutive block steps into a single Function' do
