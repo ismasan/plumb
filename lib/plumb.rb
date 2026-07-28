@@ -68,6 +68,21 @@ module Plumb
     return [node] if node.is_a?(::Class)
     return [] unless node.respond_to?(:node_name)
 
+    # A Composable::Node only RE-LABELS the type it wraps, so it has the same base
+    # types — the same reason :metadata and :policy resolve through their wrapped
+    # type below. It cannot be a `when` branch: its node_name is whatever #as_node
+    # was given (:email, :boolean, :uuid, :refined_union, or anything a caller
+    # invents), so there is no name to match on.
+    #
+    # Without this, EVERY #as_node type reported no base types at all — it fell to
+    # the `else` branch, and a Node exposes no #children. That silently skipped the
+    # build-time checks that treat an empty list as "unknown base, allow":
+    # `Types::Email[1..20]` did not raise (though `Types::String[1..20]` does), and
+    # neither did `Types::Boolean.transform(:to_sym)`. It also blocked
+    # Subtyping.disjoint_atomic?, so `Types::Email & Types::Integer` stayed a
+    # runtime intersection instead of collapsing to Never.
+    return resolve_base_types(node.type) if node.is_a?(Composable::Node)
+
     case node.node_name
     when :or, :union
       node.children.flat_map { |child| resolve_base_types(child) }
