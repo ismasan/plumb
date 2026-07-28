@@ -249,6 +249,62 @@ RSpec.describe Plumb::Types do
     expect(failed.errors).to eq(['Must be a String', 'Must be a Integer'])
   end
 
+  # Combining the errors of failed alternatives is a monoid: `nil` is the identity
+  # and concatenation is the operation. The law that matters is ASSOCIATIVITY —
+  # `(A|B)|C` and `A|(B|C)` describe the same set of alternatives, so they owe the
+  # same errors. Taking only `errors.first` from the right-hand side made a
+  # right-nested union drop every alternative after the first.
+  describe 'union error accumulation' do
+    let(:a) { Types::String['a'] }
+    let(:b) { Types::String['b'] }
+    let(:c) { Types::String['c'] }
+    let(:all) { ['Must be equal to a', 'Must be equal to b', 'Must be equal to c'] }
+
+    it 'is associative' do
+      left_nested = Plumb::Or.new(Plumb::Or.new(a, b), c)
+      right_nested = Plumb::Or.new(a, Plumb::Or.new(b, c))
+
+      expect(left_nested.resolve('zzz').errors).to eq(all)
+      expect(right_nested.resolve('zzz').errors).to eq(all)
+    end
+
+    it 'reports every alternative however the union was nested' do
+      expect((a | (b | c)).resolve('zzz').errors).to eq(all)
+      expect(((a | b) | c).resolve('zzz').errors).to eq(all)
+    end
+
+    it 'does not mutate the errors of the result it was handed' do
+      inner = Plumb::Or.new(a, b)
+      inner_errors = inner.resolve('zzz').errors.dup
+      Plumb::Or.new(inner, c).resolve('zzz')
+
+      expect(inner.resolve('zzz').errors).to eq(inner_errors)
+    end
+
+    describe '.merge_errors' do
+      it 'treats nil as the identity' do
+        expect(Plumb::Disjunction.merge_errors(nil, 'x')).to eq('x')
+        expect(Plumb::Disjunction.merge_errors('x', nil)).to eq('x')
+        expect(Plumb::Disjunction.merge_errors(nil, nil)).to be_nil
+      end
+
+      it 'is associative over any mix of scalars and lists' do
+        combos = [['a', 'b', 'c'], [%w[a b], 'c', 'd'], ['a', %w[b c], %w[d e]], [%w[a b], %w[c d], 'e']]
+        combos.each do |x, y, z|
+          merge = ->(l, r) { Plumb::Disjunction.merge_errors(l, r) }
+          expect(merge.call(merge.call(x, y), z)).to eq(merge.call(x, merge.call(y, z))), "for #{[x, y, z].inspect}"
+        end
+      end
+
+      # A record's / an array's errors are a Hash keyed by field or index. That
+      # structure is meaningful and this operation is never applied to it — a Hash
+      # is one alternative's errors, not a list of alternatives.
+      it 'keeps a structured error as a single alternative' do
+        expect(Plumb::Disjunction.merge_errors({ a: 'bad' }, 'x')).to eq([{ a: 'bad' }, 'x'])
+      end
+    end
+  end
+
   describe '#input_type and #output_type' do
     it 'returns self for a leaf type' do
       expect(Types::String.input_type).to eq(Types::String)

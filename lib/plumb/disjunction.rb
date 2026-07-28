@@ -97,14 +97,49 @@ module Plumb
       right_result = @right.call(result.reset(original))
       return right_result if right_result.valid?
 
-      # Both branches failed. Merge errors (same flattening as before) and reuse
-      # right's already-invalid cursor in place rather than allocating another.
-      # OR can be really expensive in composite ORed types.
-      left_errors = left_raw.is_a?(Array) ? left_raw : [left_raw]
-      right_errors = right_result.errors.is_a?(Array) ? right_result.errors.first : right_result.errors
-      left_errors << right_errors
+      # Both branches failed. Combine the two error sets, then reuse right's
+      # already-invalid cursor in place rather than allocating another — a union can
+      # be expensive in composite ORed types. `right_result.errors` is read BEFORE
+      # #invalid! overwrites it.
+      merged = Disjunction.merge_errors(left_raw, right_result.errors)
+      right_result.invalid!(errors: merged)
+    end
 
-      right_result.invalid!(errors: left_errors)
+    # Combining the errors of failed ALTERNATIVES is a monoid: `nil` is the identity,
+    # concatenation is the operation. Associativity is the law that matters here —
+    # `(A|B)|C` and `A|(B|C)` describe the same set of alternatives, so they owe the
+    # same errors.
+    #
+    # The previous merge took only `errors.first` from the right-hand side, so a
+    # right-nested union silently dropped every alternative after the first:
+    #
+    #   ((A|B)|C).resolve(bad).errors  => [a, b, c]
+    #   (A|(B|C)).resolve(bad).errors  => [a, b]        <- c lost
+    #
+    # Left-nesting hid it, because Ruby's `|` is left-associative — but explicit
+    # parens reach it, and so does any rebuild through Disjunction.build.
+    #
+    # Non-destructive: it never appends to the left result's own array, which has
+    # already been handed out as an #errors value. That copy is the only cost —
+    # measured at one extra Array per merge, and only for a union of three or more
+    # alternatives (a two-branch merge allocates exactly what it always did). It buys
+    # not having to reason about who owns an errors array, on a path whose three
+    # existing comments are all about in-place mutation hazards.
+    #
+    # ONLY for alternatives. A record's or an array's errors are a Hash keyed by
+    # field/index and stay that way — that structure is meaningful, and this
+    # operation is never applied to it.
+    #
+    # @param left [Object, nil] the left alternative's errors
+    # @param right [Object, nil] the right alternative's errors
+    # @return [Object, nil]
+    def self.merge_errors(left, right)
+      return right if left.nil?
+      return left if right.nil?
+
+      merged = left.is_a?(::Array) ? left.dup : [left]
+      right.is_a?(::Array) ? merged.concat(right) : merged.push(right)
+      merged
     end
   end
 end
