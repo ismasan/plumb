@@ -31,6 +31,36 @@ RSpec.describe Plumb do
       expect(Plumb.resolve_base_types(Types::String[/a/] | Types::String[/b/])).to eq([::String])
     end
 
+    # It must DESCEND, never follow #output_type. A composition's #output_type is not
+    # guaranteed to be a smaller node: for a `where`-refined container of records
+    # with a coercing field it is a DIFFERENT And whose own #output_type is itself,
+    # so following it ping-pongs until the stack blows. This shape is what
+    # bench/plumb_hash.rb builds (`Array[Term].where(size: 1..).default([])`), and it
+    # blew up on load without ever failing a spec.
+    describe 'terminates on a composition whose output type cycles' do
+      let(:record) { Types::Hash[age: Types::Lax::Integer] } # a coercing field
+      let(:refined) { Types::Array[record].where(size: 1..) }
+
+      it 'resolves the base types' do
+        expect(Plumb.resolve_base_types(refined)).to eq([::Array])
+      end
+
+      it 'does not recurse when the output type is reached directly' do
+        expect(Plumb.resolve_base_types(refined.output_type)).to eq([::Array])
+      end
+
+      # #policy is the caller that made this surface: it resolves base types to pick
+      # a type-specific policy.
+      it 'lets a policy be applied to it' do
+        expect { refined.default([].freeze) }.not_to raise_error
+        expect(refined.default([].freeze).parse).to eq([])
+      end
+
+      it 'still parses' do
+        expect(refined.parse([{ age: '3' }])).to eq([{ age: 3 }])
+      end
+    end
+
     # What the empty list was costing: every caller treats it as "unknown base,
     # allow", so build-time checks were silently skipped on any #as_node type.
     describe 'restores the build-time checks it was skipping' do

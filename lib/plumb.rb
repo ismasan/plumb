@@ -90,15 +90,22 @@ module Plumb
     when :function
       resolve_base_types(node.output_type)
     when :intersection
-      # An Intersection IS its own #output_type, so following that would recurse
-      # forever. It narrows a single value, so its base types are its LEFT's —
+      # A meet narrows a single value, so its base types are its LEFT's —
       # `String.where(size: 1..3)` is still a String.
       resolve_base_types(node.children[0])
     when :and
-      # A composition resolves through what it PRODUCES. And#output_type already
-      # encodes whether the right side narrowed the left's output or replaced it,
-      # so deferring to it keeps that rule in one place.
-      resolve_base_types(node.output_type)
+      # A composition: descend into whichever side carries the resulting type. A
+      # value-preserving right NARROWS what the left produces (so the type is the
+      # left's), a converting right REPLACES it.
+      #
+      # Deliberately NOT `resolve_base_types(node.output_type)`, even though
+      # And#output_type encodes exactly this rule. #output_type is not guaranteed to
+      # be a strictly smaller node: for `Array[<record with a coercing field>]
+      # .where(size: 1..)` it is a DIFFERENT And whose own #output_type is itself, so
+      # following it ping-pongs until the stack blows. Descending into a child always
+      # terminates.
+      left, right = node.children
+      resolve_base_types(Plumb::Subtyping.value_preserving?(right) ? left : right)
     when :constraint
       # A refinement matcher carries its base type — resolve that (eg.
       # `Integer[1..10]` => [Integer], `User.check {}` => the User's base types).
