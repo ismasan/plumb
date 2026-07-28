@@ -190,33 +190,42 @@ module Plumb
     #     changes the value, so it must keep running. self's output check needs
     #     this only when it exists at all (a GuaranteedFunction carries none).
     def fuse_with(other)
-      return nil unless fusible?(self) && fusible?(other)
+      return nil unless fusable_step? && other.fusable_step?
       return nil unless Plumb::Subtyping.subtype?(@output_type, other.input_type)
       return nil unless Plumb::Subtyping.value_preserving?(other.input_type)
       return nil unless is_a?(GuaranteedFunction) || Plumb::Subtyping.value_preserving?(@output_type)
 
       fn1 = @fn
       fn2 = other.fn
-      # other.class keeps Guaranteed-ness: the final output check survives iff
-      # `other` carried one.
-      other.class.new(@input_type, other.output_type, ->(result) { result.map(fn1).map(fn2) },
-                      identity: [identity, other.identity])
+      # Rebuild as one of the two standard classes, not `other.class`: a subclass
+      # is fusable because it kept #call, which says nothing about its
+      # constructor, and this one takes (input, output, fn). Guaranteed-ness is
+      # what has to survive — the final output check runs iff `other` carried one.
+      klass = other.is_a?(GuaranteedFunction) ? GuaranteedFunction : Function
+      klass.new(@input_type, other.output_type, ->(result) { result.map(fn1).map(fn2) },
+                identity: [identity, other.identity])
     end
 
-    # Is `node` eligible to fuse at all? Two requirements.
+    # DERIVED, not declared: fusable iff #call was not replaced. The two that ARE
+    # the standard mapping are Function's full input -> fn -> output and
+    # GuaranteedFunction's input -> fn (whose missing output check is provably
+    # redundant, not skipped).
     #
-    # Its #call must be exactly the standard input->fn->output mapping for its
-    # checks to be droppable — an exact-class whitelist (instance_of?), not
-    # is_a?: FilteredHash is a Function subclass whose custom #call skips the
-    # input check, so it must not fuse. GuaranteedFunction is listed separately
-    # because instance_of? never matches through inheritance.
+    # Asking the method table rather than trusting a list makes the answer
+    # fail-safe — a new subclass with custom semantics is excluded because it
+    # overrode #call, not because someone remembered to exclude it. FilteredHash
+    # (per-field validation, neither boundary check) is caught that way, so this
+    # file no longer has to know that class exists.
     #
-    # And it must not be OPAQUE. Two Any-ended functions would technically fuse
-    # (`Any <= Any`), but the only checks dropped are no-ops, so there is nothing
-    # to win — while fusing would hide both wrapped callables behind a composite
-    # proc, where #fn can no longer reach them (see Attributes.struct_class).
-    private def fusible?(node)
-      (node.instance_of?(Function) || node.instance_of?(GuaranteedFunction)) && !node.opaque?
+    # Excluded when OPAQUE, too: two Any-ended functions would technically fuse
+    # (`Any <= Any`), but the only checks dropped are no-ops, so there is nothing to
+    # win — while fusing would hide both wrapped callables behind a composite proc,
+    # where #fn can no longer reach them (see Attributes.struct_class).
+    def fusable_step?
+      return false if opaque?
+
+      owner = method(:call).owner
+      owner.equal?(Function) || owner.equal?(GuaranteedFunction)
     end
 
     # A Function's subtyping identity is what it produces — its declared,

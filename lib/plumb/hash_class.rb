@@ -429,6 +429,9 @@ module Plumb
 
     def accepted_type = FilteredHash.each_pair_interface
 
+    # Neither boundary check runs — the per-field validation in HashClass#filtered
+    # subsumes both. Overriding #call is also what excludes this node from fusion,
+    # with nothing further to declare. @see Function#fusable_step?
     def call(result) = fn.call(result)
 
     private def _inspect = "#{input_type.inspect}.filtered"

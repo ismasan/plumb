@@ -337,8 +337,16 @@ module Plumb
     # Fuse `self >> other` into a single node when the runtime checks at the
     # boundary between them are provably redundant, or nil when fusion doesn't
     # apply. A reduction rung in Optimizer.reduce_step, so both `#>>` and `#/`
-    # reach it. See Function#fuse_with, the only implementor.
+    # reach it. Implemented by Function (transform fusion) and CovariantFusion
+    # (the functor law for containers).
     def fuse_with(_other) = nil
+
+    # Can Function#fuse_with drop this node's boundary checks? Only the node
+    # knows: the answer is yes exactly when its #call runs the standard
+    # input -> fn -> output mapping, so the checks removed at a seam are checks
+    # it would really have run. Default false — a node opts in by saying so.
+    # @see Function#fusable_step?
+    def fusable_step? = false
 
     # Chain two composable objects together.
     # A.K.A "and" or "sequence"

@@ -145,6 +145,36 @@ RSpec.describe 'Function fusion' do
       expect(custom_call >> prepend).to be_a(Plumb::And)
       assert_result((append >> custom_call).resolve('x'), 'XAA', true)
     end
+
+    it 'excludes a filtered Hash, which runs neither boundary check' do
+      filtered = Types::Hash[name: Types::String].filtered
+      to_hash = Plumb::Function[Types::Any => Types::Hash[name: Types::String]] { |r| r.valid(name: r.value.to_s) }
+
+      expect(to_hash >> filtered).to be_a(Plumb::And)
+      expect(filtered.fusable_step?).to be(false)
+    end
+  end
+
+  # Eligibility is DERIVED from whether #call was replaced, so a subclass that
+  # changes nothing about execution still fuses — and the fused node is rebuilt as
+  # a plain Function, since keeping #call says nothing about the constructor.
+  describe 'Function subclasses that keep the standard #call' do
+    it 'fuses one that only adds behaviour beside #call' do
+      subclass = Class.new(Plumb::Function) { def node_name = :custom }
+      other = subclass.new(Types::String, Types::String, ->(r) { r.valid("#{r.value}!") })
+
+      expect(append >> other).to be_instance_of(Plumb::Function)
+      assert_result((append >> other).resolve('x'), 'xaa!', true)
+    end
+
+    it 'fuses one whose constructor differs, without calling it' do
+      subclass = Class.new(Plumb::Function) do
+        def initialize(suffix) = super(Types::String, Types::String, ->(r) { r.valid(r.value + suffix) })
+      end
+
+      expect(append >> subclass.new('?')).to be_instance_of(Plumb::Function)
+      assert_result((append >> subclass.new('?')).resolve('x'), 'xaa?', true)
+    end
   end
 
   # `>>` is associative, so `(a >> b) >> c` is `a >> (b >> c)`. Without re-associating,
