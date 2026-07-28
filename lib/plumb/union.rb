@@ -5,24 +5,18 @@ require 'plumb/disjunction'
 
 module Plumb
   # THE LATTICE JOIN — the least upper bound of two types, dual to
-  # {Plumb::Intersection}. Built by `Composable#|` when every branch returns its
-  # value untouched.
-  #
-  # Because no branch converts, the node describes exactly "a value in either
-  # set" — it consumes and produces the same thing, so it IS its own input and
+  # {Plumb::Intersection}. Built by `#|` when every branch returns its value
+  # untouched, so the node describes exactly "a value in either set" and is its own
   # output type. That is the difference from {Plumb::Or}, whose ends differ.
   class Union
     include Composable
     include Disjunction
 
-    # No branch converts, so the join describes exactly the values that come out
-    # of it: it IS its own output type. No lazy rebuild, no identity guard, no
-    # allocation — the mapping Or needs exists only because a converting branch
-    # makes the two ends differ.
+    # No lazy rebuild, no identity guard, no allocation — the mapping Or needs exists
+    # only because a converting branch makes its ends differ.
     #
-    # #input_type is NOT symmetric with this and is inherited from Disjunction: a
-    # branch may accept more than it describes (a bare-matcher Constraint accepts
-    # Any), so the input side still has to map. See Disjunction#input_type.
+    # NOT symmetric with #input_type, which is inherited from Disjunction: a branch may
+    # accept more than it describes, so the input side still has to map.
     def output_type = self
 
     # An invariant of the node: Disjunction.build only produces a Union when every

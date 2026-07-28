@@ -1,30 +1,15 @@
 # frozen_string_literal: true
 
 module Plumb
-  # The runtime shared by the two two-branch "either side" nodes: {Plumb::Or}
-  # (left-biased choice) and {Plumb::Union} (the lattice join). The dual of
-  # {Plumb::Conjunction}.
+  # The runtime shared by {Plumb::Or} (left-biased choice) and {Plumb::Union} (the
+  # lattice join) — the dual of {Plumb::Conjunction}. Both try `left` and retry
+  # `right` with the original value on failure, and differ only in how types flow:
   #
-  # Both execute identically — try `left`, and on failure retry `right` with the
-  # original value — and differ only in how types flow:
-  #
-  #   - a CHOICE has branches that may CONVERT, so it is a computation. Its
-  #     branches can accept inputs the join of their outputs would reject
-  #     (`Integer | String.transform(:to_i)` accepts a String but produces an
-  #     Integer), so its input and output types genuinely differ.
-  #   - a UNION is a type: every branch returns its value untouched, so the node
-  #     describes exactly "a value in one of these sets" and is its own output.
-  #
-  # The distinction is decided once, structurally, by {Disjunction.build}.
-  #
-  # It matters less here than for Conjunction — Or was already close to a lattice
-  # join, because #input_type/#output_type map over the branches rather than
-  # picking one — but it removes the same class of runtime re-derivation: a Union
-  # needs no #value_preserving? recursion over its children and no rebuild of
-  # itself in #output_type.
+  #   - a CHOICE may have CONVERTING branches, so its ends genuinely differ:
+  #     `Integer | String.transform(:to_i)` accepts a String but produces an Integer.
+  #   - a UNION is a type — every branch returns its value untouched — so it is its
+  #     own output type, needing no #value_preserving? recursion and no rebuild.
   module Disjunction
-    # Build the right node for `left` or `right`.
-    #
     # @param left [Composable]
     # @param right [Composable]
     # @return [Union, Or]
@@ -38,9 +23,7 @@ module Plumb
 
     attr_reader :children
 
-    # Both nodes wrap and freeze identically — the mixin's thesis is that they differ
-    # only in how TYPES flow, so the construction belongs here rather than in two
-    # copies.
+    # Identical for both nodes, which differ only in how types flow.
     def initialize(left, right)
       @left = Composable.wrap(left)
       @right = Composable.wrap(right)
@@ -50,23 +33,19 @@ module Plumb
 
     # (A | B).input_type == A.input_type | B.input_type — shared by both nodes.
     #
-    # A Union cannot shortcut this to `self` the way it can #output_type. A branch
-    # may ACCEPT more than it describes: a bare-matcher Constraint (`Constraint(/d/)`,
-    # no base) reports `input_type` Any, because it narrows arbitrary input rather
-    # than gating a type. So `String[/d/] | String[/c/]`, once factored to bare
-    # suffixes, consumes Any — and a Union claiming to consume only itself would
-    # make `String >> that` fail the composition check.
+    # A Union cannot shortcut this to `self` the way it can #output_type, because a
+    # branch may ACCEPT more than it describes: a bare-matcher Constraint reports
+    # `input_type` Any, so a factored `String[/d/] | String[/c/]` consumes Any, and a
+    # Union claiming to consume only itself would fail `String >> that`.
     #
     # Rebuilt through .build, not the receiver's class: a disjunction may be a
-    # computation, but its projections are types. `(String->Integer | Integer->String)`
-    # consumes `String | Integer` — a plain join with no conversion left in it — so
-    # the projection is a Union and compares equal to a hand-written one.
+    # computation, but its projections are types, so
+    # `(String->Integer | Integer->String).input_type` is a Union and compares equal
+    # to a hand-written `String | Integer`.
     #
-    # Computed lazily: building it in #initialize would recurse forever, since each
-    # node would build its own. When both children are their own input type (the
-    # common leaf case) return self rather than a structurally-equal copy, so
-    # Subtyping.resolved_input converges on identity without allocating; results are
-    # memoized per node at the consuming end.
+    # Lazy, or #initialize would recurse building its own io types. Returns self when
+    # both children are their own input type, so Subtyping.resolved_input converges on
+    # identity without allocating.
     def input_type
       l = @left.input_type
       r = @right.input_type
@@ -106,29 +85,17 @@ module Plumb
     end
 
     # Combining the errors of failed ALTERNATIVES is a monoid: `nil` is the identity,
-    # concatenation is the operation. Associativity is the law that matters here —
-    # `(A|B)|C` and `A|(B|C)` describe the same set of alternatives, so they owe the
-    # same errors.
+    # concatenation the operation. ASSOCIATIVITY is the law that matters — `(A|B)|C`
+    # and `A|(B|C)` are the same set of alternatives and owe the same errors, so
+    # taking only `errors.first` from the right (as this once did) drops every
+    # alternative after the first in a right-nested union.
     #
-    # The previous merge took only `errors.first` from the right-hand side, so a
-    # right-nested union silently dropped every alternative after the first:
+    # Non-destructive: never appends to the left result's own array, which has already
+    # been handed out as an #errors value. Costs one extra Array, and only for three or
+    # more alternatives.
     #
-    #   ((A|B)|C).resolve(bad).errors  => [a, b, c]
-    #   (A|(B|C)).resolve(bad).errors  => [a, b]        <- c lost
-    #
-    # Left-nesting hid it, because Ruby's `|` is left-associative — but explicit
-    # parens reach it, and so does any rebuild through Disjunction.build.
-    #
-    # Non-destructive: it never appends to the left result's own array, which has
-    # already been handed out as an #errors value. That copy is the only cost —
-    # measured at one extra Array per merge, and only for a union of three or more
-    # alternatives (a two-branch merge allocates exactly what it always did). It buys
-    # not having to reason about who owns an errors array, on a path whose three
-    # existing comments are all about in-place mutation hazards.
-    #
-    # ONLY for alternatives. A record's or an array's errors are a Hash keyed by
-    # field/index and stay that way — that structure is meaningful, and this
-    # operation is never applied to it.
+    # ONLY for alternatives — a record's or array's errors are a Hash keyed by
+    # field/index, which is meaningful structure this is never applied to.
     #
     # @param left [Object, nil] the left alternative's errors
     # @param right [Object, nil] the right alternative's errors

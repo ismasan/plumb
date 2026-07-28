@@ -5,27 +5,22 @@ module Plumb
   # block and rebuild the node around the results — or return the ORIGINAL node
   # when no sub-type changed.
   #
-  # That identity guard is the whole reason this is worth having in one place.
-  # Every rewriting pass depends on it (an untouched subtree must come back
-  # `equal?`, so callers can tell "nothing happened" from "rebuilt identically",
-  # and so a no-op pass allocates nothing), and it has to hold uniformly across a
-  # dozen node shapes. {Plumb::Decorator} is the cautionary tale: it grew its own
-  # `case` over five node types and silently did not recurse into any container or
-  # wrapper, so a decorator block never saw a schema's fields.
+  # The identity guard is why this belongs in one place: every rewriting pass depends
+  # on an untouched subtree coming back `equal?` — so a caller can tell "nothing
+  # happened" from "rebuilt identically", and a no-op pass allocates nothing — and it
+  # must hold uniformly across a dozen node shapes. {Plumb::Decorator} is the
+  # cautionary tale: it grew its own `case` over five node types and silently recursed
+  # into no container or wrapper, so a block never saw a schema's fields.
   #
-  # Each node contributes only its own rebuild. Where a node's #children already
-  # ARE its Composable sub-types, that is the one-line #with_children hook (the
-  # protocol {Plumb::Subtyping.map_children} already used for covariant
-  # containers); the nodes whose sub-types live elsewhere — a Metadata's #type, a
-  # record's keyed fields — are handled below.
+  # Each node contributes only its own rebuild, via the one-line #with_children hook
+  # where its #children already ARE its sub-types. Nodes whose sub-types live
+  # elsewhere — a Metadata's #type, a record's keyed fields — are handled below.
   #
-  # NOT EXHAUSTIVE, and deliberately so for now: `map` dispatches on a closed list
-  # of node classes, so a composite it does not name — `Plumb::Implementation`, or a
-  # user-defined one — is returned untouched rather than traversed. Generalizing
-  # means moving the whole map-and-rebuild operation onto the node as a
-  # `#map_subtypes(&blk)` hook (the four branches below are exactly the cases a
-  # plain `#with_children(array)` cannot express: a wrapper's child is `#type`, a
-  # record's children are keyed). Worth doing when a third pass needs it.
+  # NOT EXHAUSTIVE, deliberately for now: `map` dispatches on a closed class list, so
+  # a composite it does not name (`Plumb::Implementation`, or a user-defined one) is
+  # returned untouched. Generalizing means a `#map_subtypes(&blk)` hook on each node —
+  # the four branches below are the cases a plain `#with_children(array)` cannot
+  # express. Worth doing when a third pass needs it.
   #
   # DELIBERATELY NOT MAPPED, both matching what every existing pass already does:
   #

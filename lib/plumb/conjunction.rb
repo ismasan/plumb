@@ -1,38 +1,24 @@
 # frozen_string_literal: true
 
 module Plumb
-  # The runtime shared by the two two-sided "both sides run" nodes: {Plumb::And}
-  # (sequential composition) and {Plumb::Intersection} (the lattice meet). Both
-  # execute as `left` then `right`; they differ ONLY in how types flow through
-  # them, which is what each class defines.
+  # The runtime shared by {Plumb::And} (sequential composition) and
+  # {Plumb::Intersection} (the lattice meet). Both execute as `left` then `right`;
+  # they differ only in how types flow, which each class defines.
   #
-  # Splitting them is the point of this design. A single node serving both roles
-  # cannot answer the type questions correctly, because the two roles disagree:
-  #
-  #   - a COMPOSITION is a morphism `source -> target`. It is identified for
-  #     subtyping by what it PRODUCES, like a Function.
-  #   - an INTERSECTION is a type. Both sides describe the SAME value, so it is
-  #     identified by itself, and the subtype rule for it is the meet rule
-  #     (`(a ∧ b) <= c` when either conjunct is).
-  #
-  # Applying the meet rule to a composition is unsound: it makes
-  # `String >> (String -> Integer)` a subtype of String, even though the chain
-  # produces an Integer — so the node lands under two disjoint types at once.
-  #
-  # Which of the two a given pair is is decided structurally, once, by
-  # {Conjunction.build}: it is an Intersection exactly when neither side changes
-  # the value. Callers that know which they mean may instantiate directly.
+  # They must be separate nodes because the two roles disagree about identity: a
+  # COMPOSITION is a morphism, identified by what it PRODUCES (like a Function),
+  # while an INTERSECTION is a type, identified by itself and subject to the meet
+  # rule (`(a ∧ b) <= c` when either conjunct is). Applying the meet rule to a
+  # composition is unsound — it makes `String >> (String -> Integer)` a subtype of
+  # String as well as Integer, two disjoint types.
   module Conjunction
-    # Build the right node for `left` then `right`.
+    # An Intersection exactly when neither side changes the value (a refinement:
+    # both sides narrow one value, order irrelevant); otherwise a pipeline whose
+    # ends differ, an And.
     #
-    # Both sides value-preserving => the pair is a refinement: each side narrows
-    # the same value, order does not matter, and the result is a type
-    # (Intersection). Otherwise some side converts, so the pair is a pipeline
-    # whose ends differ (And).
-    #
-    # This is the single decision point: every construction site routes through
-    # here, so the distinction is settled once at build time instead of
-    # re-derived from `#value_preserving?` at each use site.
+    # The single decision point — every construction site routes through here, so
+    # the distinction is settled once rather than re-derived from
+    # `#value_preserving?` at each use site.
     #
     # @param left [Composable]
     # @param right [Composable]
@@ -51,10 +37,9 @@ module Plumb
       result.map(@left).map(@right)
     end
 
-    # Rebuild around new children, RECLASSIFYING by what they are: a rewrite that
-    # swaps a check for a conversion turns a meet into a composition. Preserving
-    # the class instead would leave an Intersection that lies about
-    # #value_preserving?, which every reduction gates on.
+    # Rebuilds by RECLASSIFYING: a rewrite that swaps a check for a conversion turns
+    # a meet into a composition, and preserving the class would leave an Intersection
+    # lying about #value_preserving?, which every reduction gates on.
     # @see Plumb::NodeMapper
     def with_children(children) = Conjunction.build(children[0], children[1])
 

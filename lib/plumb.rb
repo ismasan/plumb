@@ -68,19 +68,12 @@ module Plumb
     return [node] if node.is_a?(::Class)
     return [] unless node.respond_to?(:node_name)
 
-    # A transparent wrapper (Policy / Metadata / #as_node Node) only RE-LABELS the
-    # type it wraps, so it has the same base types. Peel them all here rather than
-    # branch on each: Subtyping already owns that concept, and a Node cannot be a
-    # `when` branch anyway — its node_name is whatever #as_node was given (:email,
-    # :boolean, :refined_union, or anything a caller invents).
-    #
-    # Until Nodes were peeled, EVERY #as_node type reported no base types at all —
-    # it fell to the `else` branch, and a Node exposes no #children. That silently
-    # skipped the build-time checks that treat an empty list as "unknown base,
-    # allow": `Types::Email[1..20]` did not raise (though `Types::String[1..20]`
-    # does), and neither did `Types::Boolean.transform(:to_sym)`. It also blocked
-    # Subtyping.disjoint_atomic?, so `Types::Email & Types::Integer` stayed a
-    # runtime intersection instead of collapsing to Never.
+    # A transparent wrapper (Policy / Metadata / #as_node Node) only RE-LABELS the type
+    # it wraps, so it has the same base types. Peeled here rather than per branch: a
+    # Node's node_name is whatever #as_node was given, so it cannot be a `when` at all,
+    # and every #as_node type would report NO base types — which callers read as
+    # "unknown base, allow", silently skipping build-time checks like
+    # `Types::Email[1..20]`.
     unwrapped = Plumb::Subtyping.unwrap_transparent(node)
     return resolve_base_types(unwrapped) unless unwrapped.equal?(node)
 
@@ -94,16 +87,13 @@ module Plumb
       # `String.where(size: 1..3)` is still a String.
       resolve_base_types(node.children[0])
     when :and
-      # A composition: descend into whichever side carries the resulting type. A
-      # value-preserving right NARROWS what the left produces (so the type is the
-      # left's), a converting right REPLACES it.
+      # Descend into whichever side carries the resulting type: a value-preserving right
+      # NARROWS what the left produces, a converting right REPLACES it.
       #
-      # Deliberately NOT `resolve_base_types(node.output_type)`, even though
-      # And#output_type encodes exactly this rule. #output_type is not guaranteed to
-      # be a strictly smaller node: for `Array[<record with a coercing field>]
-      # .where(size: 1..)` it is a DIFFERENT And whose own #output_type is itself, so
-      # following it ping-pongs until the stack blows. Descending into a child always
-      # terminates.
+      # Deliberately NOT `node.output_type`, which encodes the same rule but is not
+      # guaranteed to be a smaller node — for `Array[<record with a coercing field>]
+      # .where(size: 1..)` it is a DIFFERENT And whose own output type is itself, so
+      # following it ping-pongs until the stack blows. A child always terminates.
       left, right = node.children
       resolve_base_types(Plumb::Subtyping.value_preserving?(right) ? left : right)
     when :constraint

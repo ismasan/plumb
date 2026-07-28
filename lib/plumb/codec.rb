@@ -515,15 +515,14 @@ module Plumb
       end
 
       # A MEET: a data-bearing type refined by pure filters (a #where's
-      # AttributeValueMatch, a #check Constraint, ...). Every side constrains the
-      # SAME value and nothing in it converts, so the sides may be flattened and
-      # reordered freely — which is what makes the partition below sound.
+      # AttributeValueMatch, a #check Constraint, ...). Every side constrains the SAME
+      # value and nothing converts, so the sides may be flattened and reordered freely,
+      # which is what makes the partition sound.
       #
-      # Rewrite the data type(s). On DECODE the codec replaces the schema, so the
-      # refinements are the only validation of the decoded value — keep them AFTER
-      # the input -> output conversion. On ENCODE the value was already validated
-      # upstream (this runs on what the schema produced), so the refinements are
-      # redundant and would run on the encoded form — drop them.
+      # On DECODE the codec replaces the schema, so the refinements are the only
+      # validation of the decoded value — keep them AFTER the conversion. On ENCODE the
+      # value was already validated upstream and they would run on the encoded form, so
+      # drop them.
       def visit_intersection(type, path)
         steps = flatten_intersection(type)
         refinements, data = steps.partition { |s| pure_refinement?(s) }
@@ -555,15 +554,13 @@ module Plumb
       # carries no encodable type (see #pure_refinement?), so the codec has nothing
       # to rewrite in it, and it validates whatever the step before it produced.
       #
-      # DECODE also rewrites AT MOST ONE data step — the first that faces the wire.
-      # `And(a, b)` feeds the input to `a`; `b` receives what `a` produced. Once `a`
-      # is rewritten to accept the encoded form while still producing what it
-      # produced, `b`'s input is unchanged and `b` needs nothing. Rewriting it too
-      # decodes twice: #bridge_input splices `b`'s own decode step in front of it,
-      # so the already-decoded value from `a` is fed to a step expecting the encoded
-      # form, and the pipeline rejects everything. A step is only treated as having
-      # consumed the wire if its rewrite actually CHANGED it — an all-native head
-      # leaves the wire for the next step.
+      # DECODE rewrites AT MOST ONE data step — the first facing the wire. `And(a, b)`
+      # feeds the input to `a`, and `b` receives what `a` produced, so once `a` accepts
+      # the encoded form while still producing what it produced, `b` needs nothing.
+      # Rewriting it too decodes twice: #bridge_input splices `b`'s own decode step in
+      # front, the already-decoded value hits a step expecting the encoded form, and the
+      # pipeline rejects everything. A step only counts as having consumed the wire if
+      # its rewrite actually CHANGED it.
       def visit_composition(type, path)
         left, right = type.children
         l = pure_refinement?(left) ? left : visit(left, path)

@@ -15,18 +15,14 @@ module Plumb
   #     end
   #   end
   #
-  # The block is called on EVERY node, bottom-up: a node's sub-types are visited
-  # (and possibly replaced) before the block sees the node itself. Returning a node
-  # unchanged is a no-op, and a subtree in which nothing changed comes back as the
-  # identical object.
+  # The block is called on EVERY node, bottom-up: sub-types are visited (and possibly
+  # replaced) before the block sees the node itself. Returning a node unchanged is a
+  # no-op, and an unchanged subtree comes back as the identical object.
   #
-  # Traversal is {Plumb::NodeMapper}'s, so it reaches a record's fields, a
-  # container's element type, and the inside of a Metadata / Policy / #as_node
-  # wrapper. See NodeMapper for the shapes it does not reach.
-  #
-  # It stops at a Constraint's base type (rebuilding one would drop a custom
-  # `#check` message) and at a Deferred (forcing it would loop on a
-  # self-referential type).
+  # Traversal is {Plumb::NodeMapper}'s, so it reaches a record's fields, a container's
+  # element type and the inside of a Metadata / Policy / #as_node wrapper. It stops at
+  # a Constraint's base (rebuilding one would drop a custom `#check` message) and at a
+  # Deferred (forcing it would loop on a self-referential type).
   class Decorator
     def self.call(type, &block)
       new(block).visit(type)

@@ -5,54 +5,35 @@ require 'plumb/subtyping'
 module Plumb
   # THE REWRITE RULES — the optimisation pass over the type AST.
   #
-  # Plumb's operators do not build the tree you wrote; they build an equivalent
-  # tree with the provably-redundant runtime work removed. `Integer[0..100] >>
-  # Integer[0..]` validates `::Integer` once, not twice; `Integer | Numeric`
-  # collapses to `Numeric`; `String[/a/] | String[/b/]` checks `String` once and
-  # branches only on the suffixes.
+  # The operators do not build the tree you wrote; they build an equivalent one with
+  # the provably-redundant runtime work removed. `Integer[0..100] >> Integer[0..]`
+  # validates `::Integer` once; `Integer | Numeric` collapses to `Numeric`;
+  # `String[/a/] | String[/b/]` checks `String` once and branches on the suffixes.
   #
-  # These are a different kind of thing from {Plumb::Subtyping}: the relation
-  # ANSWERS questions about types, while these REWRITE one AST into another. Keeping
-  # them apart makes the dependency one-way (Optimizer -> Subtyping, never back)
-  # and gives every rule a name to review.
+  # A different kind of thing from {Plumb::Subtyping}: the relation ANSWERS questions
+  # about types, these REWRITE one AST into another. Keeping them apart makes the
+  # dependency one-way (Optimizer -> Subtyping, never back).
   #
-  # WHEN IT RUNS. Eagerly, at build time, from the operators — not as a deferred
-  # pass. This is deliberate: reductions are observable through `#inspect`, `#==`
-  # and the visitors, so a type's identity is its REDUCED form. `(Integer[0..100]
-  # >> Integer[0..]) == Integer[0..100]` is a documented property.
+  # Runs EAGERLY at build time, not as a deferred pass, because reductions are
+  # observable through `#inspect`, `#==` and the visitors — a type's identity is its
+  # reduced form, and `(Integer[0..100] >> Integer[0..]) == Integer[0..100]` is a
+  # documented property.
   #
-  # WHAT EVERY RULE MUST PRESERVE. A rewrite is only sound if, for every input,
-  # the rewritten type agrees with the original on all four of:
+  # EVERY RULE MUST PRESERVE, for every input: validity, output value, errors, and
+  # execution order. The last is easy to lose and invisible to most tests, since it
+  # only shows up when a step has a side effect — which is why absorption and factoring
+  # are gated on `#value_preserving?`. spec/invariants_spec.rb asserts all four, order
+  # via probes that log each step as it runs.
   #
-  #   1. VALIDITY      — valid stays valid, invalid stays invalid
-  #   2. OUTPUT VALUE  — the same Ruby object/value comes out
-  #   3. ERRORS        — the same accumulated error payload
-  #   4. EXECUTION ORDER — steps run in the same order, the same number of times
+  # THE RULES, in the order tried:
   #
-  # (4) is the one that is easy to lose and invisible to most tests, because it
-  # only shows up when a step has a side effect. It is why absorption and
-  # factoring are gated on `#value_preserving?`: dropping or sharing a step is
-  # only safe when that step cannot change the value. spec/invariants_spec.rb
-  # asserts all four, (4) via probes that log each step as it runs.
+  #   `left >> right` / `left / right`   reduce_step, then redundant_refinement?
+  #                                      (#>> only), else Conjunction.build
+  #   `left | right`                     reduce_union, then factor_union,
+  #                                      else Disjunction.build
   #
-  # THE RULES, in the order they are tried.
-  #
-  # For `left >> right` and `left / right` (#rewrite_step):
-  #   1. reduce_step             structural: fold a duplicated base-type gate,
-  #                             intersect attribute clauses, fuse adjacent
-  #                             transforms
-  #   2. redundant_refinement?   subsumption: drop a `right` that `left` already
-  #                             guarantees (#>> only — see #rewrite_refinement)
-  #   3. otherwise              Conjunction.build
-  #
-  # For `left | right` (#rewrite_union):
-  #   1. reduce_union            absorption: drop the narrower branch
-  #   2. factor_union            distribution: pull out a shared value-preserving
-  #                             prefix so it is checked once
-  #   3. otherwise              Disjunction.build
-  #
-  # The meet (`#&`) is NOT here: computing a greatest lower bound is lattice
-  # algebra, not a rewrite, so it stays in Subtyping.intersect.
+  # The meet (`#&`) is NOT here — a greatest lower bound is lattice algebra, not a
+  # rewrite, so it stays in Subtyping.intersect.
   module Optimizer
     module_function
 
@@ -66,14 +47,13 @@ module Plumb
         (redundant_refinement?(left, right) ? left : Conjunction.build(left, right))
     end
 
-    # The rule set for `left / right` — the escape-hatch composition, and the
-    # refinement builders (#[], #where, #value) that route through it.
+    # For `left / right` — the escape hatch, and the refinement builders (#[], #where,
+    # #value) that route through it.
     #
-    # STRUCTURAL REDUCTION ONLY: absorption is deliberately skipped. `#/` exists
-    # to assert a narrowing the checker cannot prove, so dropping the asserted
-    # refinement as "already guaranteed" would discard the cast the caller
-    # explicitly asked for. reduce_step still removes a duplicated type gate,
-    # which is pure bookkeeping.
+    # STRUCTURAL REDUCTION ONLY: absorption is deliberately skipped, because `#/` exists
+    # to assert a narrowing the checker cannot prove, and dropping it as "already
+    # guaranteed" would discard the cast the caller asked for. reduce_step still removes
+    # a duplicated type gate, which is pure bookkeeping.
     #
     # @param left [Composable]
     # @param right [Composable]
@@ -288,23 +268,21 @@ module Plumb
     # (`a ∪ b == b` when `a <= b`), so the narrower is dropped — and duplicate
     # branches dedupe. Returns the surviving type, or nil when nothing can go.
     #
-    # A JOIN IS N-ARY. `A | B | C` is stored as a nested pair
-    # (`Union(Union(A, B), C)`) but means one flat set of branches, so absorption
-    # has to see the whole set. Comparing only the two operands makes the result
-    # depend on the order they were written:
+    # A JOIN IS N-ARY. `A | B | C` is stored as a nested pair but means one flat branch
+    # set, so absorption has to see all of it — comparing only the two operands makes
+    # the result depend on the order they were written:
     #
     #   Numeric | String | Integer   =>  Numeric | String        (Integer absorbed)
     #   Integer | String | Numeric   =>  (Integer | String) | Numeric
     #
     # Both accept the same values, but the second keeps `Integer` even though
-    # `Integer <= Numeric`, because `subtype?(Union(Integer, String), Numeric)`
-    # requires EVERY branch to be within Numeric and `String` is not. The redundant
-    # branch then costs a failed match on every value that falls through to it.
+    # `Integer <= Numeric`, because `subtype?(Union(Integer, String), Numeric)` requires
+    # EVERY branch to be within Numeric. The redundant branch then costs a failed match
+    # on every value falling through to it.
     #
-    # So: flatten both operands into the branch set, absorb across all of it, and
-    # re-fold. Order among survivors is preserved (a join is commutative, so this is
-    # free to do, and keeping it stable avoids churning `#inspect` and the order of
-    # a JSON Schema's `anyOf`).
+    # So flatten, absorb across the set, re-fold. Order among survivors is preserved —
+    # a join is commutative, and keeping it stable avoids churning `#inspect` and a
+    # JSON Schema's `anyOf` order.
     def reduce_union(a, b)
       branches = union_branches(a) + union_branches(b)
       survivors = absorb_branches(branches)
@@ -316,10 +294,8 @@ module Plumb
       end
     end
 
-    # The branch set of a join, flattening nested Unions.
-    #
-    # ONLY Union, never Or: a choice is left-biased and its branches may convert, so
-    # its order is semantic and dropping one is not a type-level decision.
+    # ONLY Union, never Or: a choice is left-biased and its branches may convert, so its
+    # order is semantic and dropping one is not a type-level decision.
     def union_branches(type)
       type.is_a?(Union) ? type.children.flat_map { |c| union_branches(c) } : [type]
     end
@@ -334,16 +310,12 @@ module Plumb
       end
     end
 
-    # Does `wider`'s value set cover `narrower`'s, such that dropping `narrower`
-    # from a join changes nothing?
+    # Does `wider` cover `narrower`, such that dropping `narrower` changes nothing?
     #
-    # Guarded to VALUE-PRESERVING branches. `Subtyping.subtype?` identifies a
-    # Function by its OUTPUT type, so `subtype?(String->Integer, Numeric)` holds even
-    # though that branch accepts Strings a bare Numeric rejects — absorbing there
-    # would silently drop a coercion. Only when both branches pass values through
-    # unchanged does the relation reflect the accepted input domain.
-    #
-    # Identical branches dedupe regardless: the survivor IS the dropped node.
+    # Guarded to VALUE-PRESERVING branches: `subtype?` identifies a Function by its
+    # OUTPUT type, so `subtype?(String->Integer, Numeric)` holds even though that branch
+    # accepts Strings a bare Numeric rejects, and absorbing would drop a coercion.
+    # Identical branches dedupe regardless — the survivor IS the dropped node.
     def absorbs?(wider, narrower)
       return true if wider == narrower
       return false unless Subtyping.value_preserving?(wider) && Subtyping.value_preserving?(narrower)

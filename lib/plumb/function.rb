@@ -90,9 +90,9 @@ module Plumb
     # @param callable [#call, nil] Result => Result
     # @param inspect [String, nil] label to #inspect as, instead of the types
     # @param identity [Object, nil] what the step IS, for #==. An opaque function
-    #   declares no types at all, so its callable is ALL that distinguishes it —
-    #   pass a deterministic token when the block is built fresh on each call but
-    #   the step it implements is always the same (see Composable#invoke).
+    #   declares no types, so its callable is all that distinguishes it; pass a
+    #   deterministic token when the block is built fresh per call (see
+    #   Composable#invoke).
     # @yield [Result] Result => Result
     # @return [GuaranteedFunction]
     def self.opaque(callable = nil, inspect: nil, identity: nil, &block)
@@ -133,22 +133,19 @@ module Plumb
       freeze
     end
 
-    # Two functions are equal when they declare the same types AND apply the same
-    # transformation.
+    # Equal when they declare the same types AND apply the same transformation.
     #
     # The default Composable#== compares #children, which for a Function is only
-    # `[input_type, output_type]` — so it called ANY two `String -> Integer` steps
-    # equal regardless of what they do, and any two OPAQUE functions equal
-    # regardless of their callable (both ends being Any). A reducer that reads #==
-    # as node identity then silently dropped one of them: `wrap(proc_a) &
-    # wrap(proc_b)` returned just `proc_a`, and one of the two checks vanished.
+    # `[input_type, output_type]` — so it called any two `String -> Integer` steps
+    # equal regardless of what they do, and any two OPAQUE functions equal regardless
+    # of their callable. A reducer reading #== as node identity then dropped one:
+    # `wrap(proc_a) & wrap(proc_b)` returned just `proc_a`.
     #
-    # Compared on #identity, not #fn: #transform wraps the caller's callable in a
-    # FRESH lambda per call, so comparing #fn would make two identically-built
-    # transforms unequal — and with them every schema containing one. #identity is
-    # the caller's own callable, or whatever deterministic token the builder chose
-    # (see Composable#build). So a transform built the same way twice stays equal,
-    # while two anonymous blocks — which cannot be proven equivalent — do not.
+    # Compared on #identity, not #fn, because #transform wraps the caller's callable in
+    # a FRESH lambda per call — comparing #fn would make two identically-built
+    # transforms unequal, and with them every schema containing one. #identity is the
+    # caller's own callable, or a deterministic token the builder chose (see
+    # Composable#build), so two anonymous blocks still compare unequal.
     def ==(other)
       other.is_a?(self.class) &&
         other.input_type == input_type &&
