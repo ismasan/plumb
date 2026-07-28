@@ -22,9 +22,7 @@ module Plumb
   #
   # Traversal is {Plumb::NodeMapper}'s, so it reaches a record's fields, a
   # container's element type, and the inside of a Metadata / Policy / #as_node
-  # wrapper. It previously carried its own `case` over five node types and recursed
-  # into NONE of those, so a block never saw a schema's fields at all. See
-  # NodeMapper for the shapes it still does not reach.
+  # wrapper. See NodeMapper for the shapes it does not reach.
   #
   # It stops at a Constraint's base type (rebuilding one would drop a custom
   # `#check` message) and at a Deferred (forcing it would loop on a

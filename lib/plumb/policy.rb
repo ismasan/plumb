@@ -37,8 +37,8 @@ module Plumb
     def output_type = @step.output_type
 
     # The standard Step interface.
-    # @param result [Result::Valid]
-    # @return [Result::Valid, Result::Invalid]
+    # @param result [Result]
+    # @return [Result]
     def call(result) = @step.call(result)
 
     private def _inspect = @step.inspect

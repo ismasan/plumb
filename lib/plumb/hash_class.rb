@@ -357,7 +357,7 @@ module Plumb
     # a subtype of `key_type`, and each value type is a subtype of `value_type`.
     # A catch-all `_: T` carries the Any key matcher, so `Any <= key_type` fails
     # unless the map accepts any key — an open Hash is NOT a subtype of a
-    # Symbol-keyed map (this is what the old `@inclusive` guard expressed).
+    # Symbol-keyed map.
     def hashmap_subtype?(other)
       return false if _schema.empty?
 

@@ -642,10 +642,10 @@ module CodecSpecTypes
       end
     end
 
-    # A PIPELINE (`And`) is not a meet: position is meaning. It used to be
-    # rewritten as if it were one — flattened, refinements partitioned out and
-    # re-appended at the end, and every step's input bridged — which broke any
-    # chain where a refinement sat before a conversion.
+    # A PIPELINE (`And`) is not a meet: position is meaning. Rewriting one as if it
+    # were a meet — flattening it, partitioning refinements out and re-appending
+    # them at the end, bridging every step's input — breaks any chain where a
+    # refinement sits before a conversion.
     describe 'pipelines (a conversion with refinements around it)' do
       # `Date.where(year:) >> (Date -> String)` is
       # And( Intersection(Constraint(::Date), AVM(year)), Function(Date -> String) ).

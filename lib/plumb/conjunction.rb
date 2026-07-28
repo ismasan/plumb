@@ -30,10 +30,9 @@ module Plumb
     # (Intersection). Otherwise some side converts, so the pair is a pipeline
     # whose ends differ (And).
     #
-    # This is the single decision point — every construction site routes through
-    # here rather than re-deriving the distinction from `#value_preserving?` at
-    # use time, which is what the old shape had to do (see the deleted branch in
-    # And#initialize and Optimizer.reduce_step).
+    # This is the single decision point: every construction site routes through
+    # here, so the distinction is settled once at build time instead of
+    # re-derived from `#value_preserving?` at each use site.
     #
     # @param left [Composable]
     # @param right [Composable]
@@ -52,10 +51,10 @@ module Plumb
       result.map(@left).map(@right)
     end
 
-    # Rebuild around new children, RECLASSIFYING by what they are — a rewrite that
-    # swaps a check for a conversion turns a meet into a composition, and keeping
-    # the old class would leave an Intersection that lies about #value_preserving?.
-    # Reclassifying is what makes the distinction structural rather than nominal.
+    # Rebuild around new children, RECLASSIFYING by what they are: a rewrite that
+    # swaps a check for a conversion turns a meet into a composition. Preserving
+    # the class instead would leave an Intersection that lies about
+    # #value_preserving?, which every reduction gates on.
     # @see Plumb::NodeMapper
     def with_children(children) = Conjunction.build(children[0], children[1])
 

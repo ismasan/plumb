@@ -3,11 +3,10 @@
 require 'spec_helper'
 require 'yaml'
 
-# CHARACTERISATION HARNESS for the type/computation split refactor.
+# CHARACTERISATION HARNESS for Plumb's internal representation.
 #
-# The refactor changes Plumb's internal representation — splitting the
-# overloaded `And`/`Or` nodes, relocating the reduction rules — while promising
-# that `expression.resolve(value)` keeps preserving:
+# Plumb's AST gets rebuilt from time to time — nodes split, reduction rules move.
+# Whatever the internals do, `expression.resolve(value)` must keep preserving:
 #
 #   - validity
 #   - the resulting value
@@ -16,32 +15,32 @@ require 'yaml'
 #
 # This file pins exactly that, as a CORPUS rather than type-by-type. The rest of
 # the suite asserts what each type does; this asserts that the whole set keeps
-# doing it while the AST underneath is rebuilt.
+# doing it however the AST underneath is arranged.
 #
 # RULES OF ENGAGEMENT
 #
 #   - The `resolve` expectations below (validity / value / errors) and the
-#     execution-order probes MUST NOT be edited during the refactor. A failure
-#     here is a regression, not a spec that needs updating.
+#     execution-order probes are the oracle. A failure in them is a regression,
+#     not a spec that needs updating.
 #
-#   - The AST SHAPE snapshot (spec/fixtures/ast_shapes.yml) is different: the
-#     refactor deliberately changes node classes. When a shape changes, the diff
-#     must be reviewed and the fixture regenerated on purpose:
+#   - The AST SHAPE snapshot (spec/fixtures/ast_shapes.yml) is different: node
+#     classes are expected to change. When a shape changes, review the diff and
+#     regenerate the fixture on purpose:
 #
 #         REGENERATE_AST_SHAPES=1 bundle exec rspec spec/invariants_spec.rb
 #
-#     then read `git diff spec/fixtures/ast_shapes.yml` and confirm every line
-#     is an intended change. Regenerating to make a red build green is how a
-#     silent behaviour change gets through.
+#     then read `git diff spec/fixtures/ast_shapes.yml` and confirm every line is
+#     an intended change. Regenerating to make a red build green is how a silent
+#     behaviour change gets through.
 #
 #     That regenerability also makes it a WEAK ORACLE — it records what the code
-#     does, not what it should do — so it is scaffolding, not a permanent asset.
-#     A mutation sweep confirmed it currently catches nothing that named specs
-#     elsewhere do not (the last gap, Intersection#value_preserving?, is now
-#     pinned by spec/node_contracts_spec.rb). Keep it while the internals are
-#     churning, because forcing a look at the AST diff is useful then; delete it
-#     — fixture included — once they settle. Re-run the sweep before doing so.
-RSpec.describe 'refactor invariants' do
+#     does, not what it should do — so it is scaffolding, not a permanent asset. A
+#     mutation sweep found it catches nothing that named specs elsewhere do not
+#     (the last gap, Intersection#value_preserving?, is pinned by
+#     spec/node_contracts_spec.rb). Keep it while the internals are churning,
+#     because forcing a look at the AST diff is useful then; delete it — fixture
+#     included — once they settle. Re-run the sweep before doing so.
+RSpec.describe 'internal representation invariants' do
   # A single corpus entry: a built type plus the inputs it is exercised with.
   #
   # @param label [String] stable key — also the snapshot key, so don't rename
@@ -380,7 +379,7 @@ RSpec.describe 'refactor invariants' do
   end
 
   # ---------------------------------------------------------------------------
-  # 1. Behaviour: validity, value, errors.  DO NOT EDIT during the refactor.
+  # 1. Behaviour: validity, value, errors.  This is the oracle — do not edit.
   # ---------------------------------------------------------------------------
   describe 'resolve preserves validity, value and errors' do
     CORPUS.each do |entry|
@@ -425,7 +424,7 @@ RSpec.describe 'refactor invariants' do
   end
 
   # ---------------------------------------------------------------------------
-  # 2. Execution order.  DO NOT EDIT during the refactor.
+  # 2. Execution order.  Also the oracle — do not edit.
   #
   # An optimisation rewrite that reorders, duplicates or drops a step is
   # invisible to the value/validity assertions above whenever the steps are
@@ -596,9 +595,8 @@ RSpec.describe 'refactor invariants' do
   # ---------------------------------------------------------------------------
   # 4. Subtyping relation snapshot.
   #
-  # The split changes what `<=` answers for converting chains (deliberately —
-  # it fixes an unsoundness). Pin the whole relation over a smaller grid so the
-  # change is enumerable rather than discovered one spec at a time.
+  # Pin the whole relation over a small grid, so a change to it is enumerable in
+  # one diff rather than discovered one spec at a time.
   # ---------------------------------------------------------------------------
   describe 'subtype relation' do
     RELATION_FIXTURE = ::File.expand_path('fixtures/subtype_relation.yml', __dir__)
@@ -675,13 +673,11 @@ RSpec.describe 'refactor invariants' do
 
     # A type may not be a subtype of two PROVABLY DISJOINT types.
     #
-    # This was the failing assertion that motivated the refactor: `Subtyping`
-    # applied the meet rule (`(a1 ∧ a2) <= b` if either conjunct is) to every
-    # `And`, but an `And` built by `#>>` around a transform is a COMPOSITION, so
-    # `String >> (String -> Integer)` reported as a subtype of both String and
-    # Integer. Fixed by splitting the node: a composition is now projected onto
-    # what it produces (And#subtype_identity) and only a genuine Intersection
-    # gets the meet rule.
+    # The trap this guards: applying the meet rule (`(a1 ∧ a2) <= b` if either
+    # conjunct is) to a COMPOSITION rather than only to a genuine Intersection.
+    # `String >> (String -> Integer)` would then be a subtype of both String and
+    # Integer. A composition is instead projected onto what it produces — see
+    # And#subtype_identity.
     it 'never places a type under two disjoint types' do
       disjoint = [%w[String Integer], %w[String Numeric]]
       GRID.each do |label, type|

@@ -9,8 +9,8 @@ RSpec.describe Plumb do
 
   describe '.resolve_base_types' do
     # A Composable::Node only re-labels the type it wraps, so it has the same base
-    # types. It used to report none at all: its node_name is arbitrary, so it fell
-    # through to the `else` branch, and a Node exposes no #children.
+    # types. Easy to miss: its node_name is arbitrary, so it matches no `when`
+    # branch, and a Node exposes no #children to fall back on.
     {
       'Types::Email' => [::String],
       'Types::UUID::V4' => [::String],
@@ -85,9 +85,9 @@ RSpec.describe Plumb do
       expect(type2.parse(2)).to eq(6)
     end
 
-    # The block used to be called on five node types only, so it never saw a
-    # record's fields, a container's element type, or the inside of a
-    # Metadata/Policy/#as_node wrapper. Traversal is Plumb::NodeMapper's now.
+    # The block must reach a record's fields, a container's element type and the
+    # inside of a Metadata/Policy/#as_node wrapper — traversal is
+    # Plumb::NodeMapper's, so anything it reaches, a decorator reaches.
     describe 'reaches nested types' do
       def nodes_seen(type)
         seen = []

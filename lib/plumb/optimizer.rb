@@ -11,11 +11,10 @@ module Plumb
   # collapses to `Numeric`; `String[/a/] | String[/b/]` checks `String` once and
   # branches only on the suffixes.
   #
-  # Those rules used to live in {Plumb::Subtyping}, mixed in with the subtype
-  # relation itself. They are a different kind of thing: the relation ANSWERS
-  # questions about types, while these REWRITE one AST into another. Separating
-  # them makes the dependency one-way (Optimizer -> Subtyping, never back) and
-  # gives every rule a name to review.
+  # These are a different kind of thing from {Plumb::Subtyping}: the relation
+  # ANSWERS questions about types, while these REWRITE one AST into another. Keeping
+  # them apart makes the dependency one-way (Optimizer -> Subtyping, never back)
+  # and gives every rule a name to review.
   #
   # WHEN IT RUNS. Eagerly, at build time, from the operators — not as a deferred
   # pass. This is deliberate: reductions are observable through `#inspect`, `#==`
@@ -113,9 +112,9 @@ module Plumb
     def reduce_step(left, right)
       # A refinement narrows by each conjunct in turn: `left / (b ∧ c)` is
       # `(left / b) / c`. Being an Intersection IS the condition — it is only
-      # built when both sides preserve the value — so this no longer needs a
-      # runtime Subtyping.value_preserving? test. A composition (And) carries a transform,
-      # is a barrier, and falls through to the Constraint check below, which bails.
+      # built when both sides preserve the value — so no runtime value-preservation
+      # test is needed here. A composition (And) carries a transform, is a barrier,
+      # and falls through to the Constraint check below, which bails.
       if right.is_a?(Intersection)
         l = reduce_step(left, right.children[0]) || Conjunction.build(left, right.children[0])
         return reduce_step(l, right.children[1]) || Conjunction.build(l, right.children[1])

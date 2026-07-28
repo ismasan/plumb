@@ -246,8 +246,8 @@ module Plumb
       MUST_BE_HASH = ['Must be a Hash of attributes'].freeze
 
       # The Plumb::Callable interface
-      # @param result [Plumb::Result::Valid]
-      # @return [Plumb::Result::Valid, Plumb::Result::Invalid]
+      # @param result [Plumb::Result]
+      # @return [Plumb::Result]
       def call(result)
         return result if result.value.is_a?(self)
         return result.invalid(errors: MUST_BE_HASH) unless result.value.respond_to?(:to_h)

@@ -47,8 +47,8 @@ module Plumb
     def input_type = StreamClass.each_interface
 
     # The [Step] interface
-    # @param result [Result::Valid]
-    # @return [Result::Valid, Result::Invalid]
+    # @param result [Result]
+    # @return [Result]
     def call(result)
       result = input_type.call(result)
       return result unless result.valid?

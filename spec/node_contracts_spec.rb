@@ -30,11 +30,12 @@ RSpec.describe 'two-sided node contracts' do
   # gate every reduction is guarded by (Optimizer.reduce_union, factor_union,
   # redundant_refinement?, Subtyping.intersect's subsumption drops), and
   # Optimizer.reduce_step's `right.is_a?(Intersection)` shortcut is only sound
-  # while it holds — so a lying node re-opens the silently-dropped-side bug class.
+  # while it holds — so a lying node lets a reduction silently drop a side.
   #
-  # Two paths used to produce one: And#output_type hand-picked `Intersection.new`
-  # after testing only its RIGHT operand, and #with_children preserved the node's
-  # class across a rewrite that had swapped a check for a conversion.
+  # Two ways to build one, both covered below: deciding the node class from only
+  # ONE operand (`left.output_type` need not preserve values even when `right`
+  # does), and preserving the class across a rewrite that swapped a check for a
+  # conversion.
   describe 'the value_preserving? invariant' do
     def assert_honest(node)
       return unless node.is_a?(Plumb::Conjunction) || node.is_a?(Plumb::Disjunction)

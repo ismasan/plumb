@@ -544,12 +544,12 @@ module Plumb
       # position is meaning. Nothing may be flattened out of it, reordered, or
       # lifted — visit both sides IN PLACE.
       #
-      # The meet treatment above must not be applied here. It used to be (both
-      # arrived as `Conjunction`), and it silently broke any refinement sitting
-      # BEFORE a conversion: `Date.where(year: 2024) >> Date.transform(::String)`
-      # is `And(Intersection(Date, AVM), Function)`, and flattening across the And
-      # put the `year` check last — after the Date became a String, where it could
-      # never pass. The rewritten decoder rejected every input.
+      # The meet treatment above must NOT be applied here. Doing so silently breaks
+      # any refinement sitting BEFORE a conversion:
+      # `Date.where(year: 2024) >> Date.transform(::String)` is
+      # `And(Intersection(Date, AVM), Function)`, and flattening across the And puts
+      # the `year` check last — after the Date has become a String, where it can
+      # never pass, so the decoder rejects every input.
       #
       # A refinement child is left exactly where it is rather than visited: it
       # carries no encodable type (see #pure_refinement?), so the codec has nothing

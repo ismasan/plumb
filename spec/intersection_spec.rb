@@ -206,10 +206,10 @@ RSpec.describe 'intersection (#&) and Never' do
     end
   end
 
-  # A meet may narrow or collapse, but it must never DISCARD a side. Both ways it
-  # used to: two opaque callables compared #== (their children are both Any), and
-  # two same-typed conversions are mutual subtypes because subtype? identifies a
-  # conversion by its output. Either path returned just the left operand.
+  # A meet may narrow or collapse, but it must never DISCARD a side. Two ways it
+  # can: two opaque callables compare #== (their children are both Any), and two
+  # same-typed conversions are mutual subtypes because subtype? identifies a
+  # conversion by its output. Either would let the reducer return just the left.
   describe 'never silently drops a side' do
     it 'keeps both opaque callables' do
       log = []

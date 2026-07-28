@@ -189,7 +189,7 @@ module Plumb
   #  Composable mixes in composition methods to classes.
   # such as #>>, #|, #not, and others.
   # Any Composable class can participate in Plumb compositions.
-  # A host object only needs to implement the Step interface `call(Result::Valid) => Result::Valid | Result::Invalid`
+  # A host object only needs to implement the Step interface `call(Result) => Result`
   module Composable
     include Callable
 
@@ -209,8 +209,8 @@ module Plumb
     #
     # @example
     #   ten = Composable.wrap(10)
-    #   ten.resolve(10) # => Result::Valid
-    #   ten.resolve(11) # => Result::Invalid
+    #   ten.resolve(10) # => a valid Result
+    #   ten.resolve(11) # => an invalid Result
     #
     # @param callable [Object]
     # @return [Composable]
@@ -545,7 +545,7 @@ module Plumb
       # `And(self, matcher)`): the matcher records `self` as its base, so it
       # subtypes and composes as "a `self` narrowed by the matcher". When `self`
       # is the Any top the matcher stands alone (`Any[String]` == the String
-      # matcher), preserving the old collapsing behaviour. Routed through
+      # matcher), matching the collapsing `AnyClass#>>` provides. Routed through
       # Constraint.narrow so stacked Range refinements intersect
       # (`Integer[0..100][10..]` == `Integer[10..100]`).
       Constraint.narrow((is_a?(AnyClass) ? nil : self), *args)

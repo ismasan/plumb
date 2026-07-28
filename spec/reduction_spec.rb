@@ -394,7 +394,7 @@ RSpec.describe 'composition reduction (>>)' do
 
         assert_result(u.resolve('a!'), 'a!', true)
         assert_result(u.resolve('b!'), 'b!', true)
-        assert_result(u.resolve('c!'), 'c!', true) # third branch, previously behind a re-checked base
+        assert_result(u.resolve('c!'), 'c!', true) # third branch, folded into the shared prefix
         assert_result(u.resolve('zzz'), 'zzz', false)
         expect(u.resolve(9).valid?).to be(false)
       end

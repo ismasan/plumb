@@ -27,19 +27,16 @@ module Plumb
       # A value-preserving right NARROWS what the left produces, it does not
       # replace it, so the chain produces the MEET of the two — eg.
       # `(String -> Integer)` followed by `where(size: 10)` produces an Integer of
-      # size 10, not the bare `(size === 10)`. That meet is exactly an
-      # Intersection, which is why this can now say so directly instead of
-      # building a second And to stand in for it.
+      # size 10, not the bare `(size === 10)`. A converting right replaces the
+      # value outright, so its own output stands.
       #
-      # A converting right replaces the value outright, so its own output stands.
-      # Built through Conjunction.build, not Intersection.new: the meet's
-      # `value_preserving? == true` is an INVARIANT, and `left.output_type` need not
-      # be value-preserving (a record's output drops undeclared keys, a Static
-      # replaces the value). Hand-picking Intersection here produced a node that
-      # lied about the one flag every reduction gates on.
+      # Conjunction.build, not Intersection.new: a meet's `value_preserving?` is an
+      # invariant, and `left.output_type` need not preserve values (a record's
+      # output drops undeclared keys, a Static replaces the value), so only the
+      # classifier may decide which node this is.
       #
       # The `lo.equal?(left)` guard is the fixpoint: a left that IS its own output
-      # type would otherwise have this recurse building output types forever.
+      # type would otherwise recurse building output types forever.
       @output_type = if Plumb::Subtyping.value_preserving?(right)
                        lo = left.output_type
                        lo.equal?(left) ? self : Conjunction.build(lo, right)
@@ -56,11 +53,10 @@ module Plumb
     # rule from being applied to a chain that converts. @see Composable#subtype_identity
     def subtype_identity = @output_type
 
-    # Deliberately NO #accepted_type override. As the consumer of `left >> self`,
-    # a composition accepts what it consumes — its #input_type, which is the
-    # default. (The old shared node overrode this to the RIGHT child's output,
-    # which is right for a refinement and wrong here: it would demand that the
-    # upstream already produce what this chain's last step emits.) The refinement
-    # behaviour now lives on Intersection, which is the node it was written for.
+    # Deliberately NO #accepted_type override: as the consumer of `left >> self`, a
+    # composition accepts what it consumes — its #input_type, which is the default.
+    # Accepting against the RIGHT child's output instead (what Intersection does)
+    # would demand that the upstream already produce what this chain's last step
+    # emits.
   end
 end

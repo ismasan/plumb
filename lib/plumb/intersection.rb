@@ -23,18 +23,17 @@ module Plumb
       @left = left
       @right = right
       @input_type = left.input_type
-      # A meet IS its own output type: it describes the value that comes out.
-      # There is nothing to resolve through, which is the whole difference from
-      # And — and the reason the old shared node needed a conditional here.
+      # A meet IS its own output type: it describes the value that comes out, so
+      # there is nothing to resolve through. That is the whole difference from And.
       @output_type = self
       @children = [left, right].freeze
       freeze
     end
 
-    # An invariant of the node, not a computation over its children: Conjunction.build
-    # only produces an Intersection when both sides preserve the value. Callers
-    # can therefore test `is_a?(Intersection)` where they used to test
-    # `is_a?(And) && value_preserving?(node)` (see Optimizer.reduce_step).
+    # An invariant of the node, not a computation over its children:
+    # Conjunction.build only produces an Intersection when both sides preserve the
+    # value. So `is_a?(Intersection)` alone answers "is this a pure refinement?" —
+    # see Optimizer.reduce_step, which relies on exactly that.
     def value_preserving? = true
 
     # As a consumer, a refinement accepts the constraint it actually passes — the
