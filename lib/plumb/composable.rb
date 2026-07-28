@@ -338,7 +338,7 @@ module Plumb
     # Whether this type returns its input value UNCHANGED on success — a
     # coreflexive refinement (a pure filter). Lets `#|` absorb a redundant
     # branch (`Integer | Numeric == Numeric`) without dropping a coercion. See
-    # Subtyping.reduce_union, which memoizes this per frozen node in TypeCache.
+    # Optimizer.reduce_union, which memoizes this per frozen node in TypeCache.
     # Default false; refinements opt in, transforms stay false. A covariant
     # container (Array/Tuple/HashMap) preserves the value exactly when all its
     # element/child types do — so `Array[Integer] >> Array[Numeric]` collapses
@@ -350,7 +350,7 @@ module Plumb
 
     # Fuse `self >> other` into a single node when the runtime checks at the
     # boundary between them are provably redundant, or nil when fusion doesn't
-    # apply. A reduction rung in Subtyping.reduce_step, so both `#>>` and `#/`
+    # apply. A reduction rung in Optimizer.reduce_step, so both `#>>` and `#/`
     # reach it. See Function#fuse_with, the only implementor.
     def fuse_with(_other) = nil
 
@@ -386,8 +386,7 @@ module Plumb
       # `self` already subsumes (`String.where(size: 3..10) >> .where(size: 0..)`
       # -> the former). A non-redundant `other` (a transform, or a narrowing
       # refinement) stays an And.
-      Plumb::Subtyping.reduce_step(self, other) ||
-        (Plumb::Subtyping.redundant_refinement?(self, other) ? self : Conjunction.build(self, other))
+      Plumb::Optimizer.rewrite_step(self, other)
     end
 
     # Compose like #>> but WITHOUT the strict subtype check — the escape hatch
@@ -409,7 +408,7 @@ module Plumb
     # Chain two composable objects together as a disjunction ("or").
     # When one value-preserving branch subsumes the other (`Integer | Numeric`,
     # or `X | X`), the union absorbs to the wider branch — see
-    # Subtyping.reduce_union. Functions/containers never reduce (they may accept
+    # Optimizer.reduce_union. Functions/containers never reduce (they may accept
     # inputs the survivor rejects), so coercion unions are preserved.
     #
     # @param other [Composable]
@@ -418,9 +417,7 @@ module Plumb
       other = Composable.resolve_operand(other, op: :|, left: self)
       return self if other.is_a?(NeverClass) # X | Never == X
 
-      Plumb::Subtyping.reduce_union(self, other) ||
-        Plumb::Subtyping.factor_union(self, other) ||
-        Disjunction.build(self, other)
+      Plumb::Optimizer.rewrite_union(self, other)
     end
 
     # Intersection ("and"/meet) — the symmetric dual of #|. Builds the greatest
@@ -581,7 +578,7 @@ module Plumb
     # (eg. `Generic[::URI::HTTP]` narrows a URI to an HTTP URI). When `self` is
     # the Any top type the constraint stands alone (`Any[::String]` == the
     # String matcher), preserving the collapsing that `AnyClass#>>` provides.
-    # Applies the same base-type reduction as #>> (see Subtyping.reduce_step), so
+    # Applies the same base-type reduction as #>> (see Optimizer.reduce_step), so
     # `Integer[0..40] / Integer[2..10]` re-parents to `Integer[0..40][2..10]`
     # rather than re-checking `::Integer`. `reduce_step` bails for a non-Constraint
     # constraint (eg. #value's ValueClass), leaving the And.
@@ -590,7 +587,7 @@ module Plumb
     private def constrain(constraint)
       return constraint if is_a?(AnyClass)
 
-      Plumb::Subtyping.reduce_step(self, constraint) || Conjunction.build(self, constraint)
+      Plumb::Optimizer.rewrite_refinement(self, constraint)
     end
 
     #  Support #as_node.

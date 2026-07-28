@@ -5,7 +5,7 @@ require 'spec_helper'
 
 # Rung-1 structural reduction of `left >> right`: when `right` re-asserts a base
 # TYPE that `left` already guarantees, that duplicated gate is dropped by
-# re-parenting `right`'s refinements onto `left` (see Plumb::Subtyping.reduce_step).
+# re-parenting `right`'s refinements onto `left` (see Plumb::Optimizer.reduce_step).
 RSpec.describe 'composition reduction (>>)' do
   module RTypes
     include Plumb::Types
@@ -377,7 +377,7 @@ RSpec.describe 'composition reduction (>>)' do
         left   = Plumb::And.new(coerce, RTypes::Integer[1..])
         right  = Plumb::And.new(coerce, RTypes::Integer[0..0])
 
-        expect(Plumb::Subtyping.factor_union(left, right)).to be_nil
+        expect(Plumb::Optimizer.factor_union(left, right)).to be_nil
       end
     end
 
@@ -484,7 +484,7 @@ end
 
 # A record `left >> right` reduces to `left` when `right` merely re-validates
 # left's output without dropping or converting anything (see
-# Subtyping.redundant_record_refinement?).
+# Optimizer.redundant_record_refinement?).
 RSpec.describe 'record (Hash) composition reductions' do
   module HRTypes
     include Plumb::Types

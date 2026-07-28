@@ -33,7 +33,7 @@ module Plumb
     # This is the single decision point — every construction site routes through
     # here rather than re-deriving the distinction from `#value_preserving?` at
     # use time, which is what the old shape had to do (see the deleted branch in
-    # And#initialize and Subtyping.reduce_step).
+    # And#initialize and Optimizer.reduce_step).
     #
     # @param left [Composable]
     # @param right [Composable]

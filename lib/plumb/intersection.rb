@@ -34,7 +34,7 @@ module Plumb
     # An invariant of the node, not a computation over its children: Conjunction.build
     # only produces an Intersection when both sides preserve the value. Callers
     # can therefore test `is_a?(Intersection)` where they used to test
-    # `is_a?(And) && value_preserving?(node)` (see Subtyping.reduce_step).
+    # `is_a?(And) && value_preserving?(node)` (see Optimizer.reduce_step).
     def value_preserving? = true
 
     # As a consumer, a refinement accepts the constraint it actually passes — the
