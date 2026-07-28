@@ -3,6 +3,9 @@
 require 'spec_helper'
 
 RSpec.describe 'Function fusion' do
+  STRIP = Types::String.transform(::String, &:strip)
+  TO_SYM = Types::String.transform(::Symbol, &:to_sym)
+
   subject(:fused) { append >> prepend }
 
   let(:append) { Plumb::Function[String => String] { |r| r.valid(r.value + 'aa') } }
@@ -141,6 +144,66 @@ RSpec.describe 'Function fusion' do
       expect(append >> custom_call).to be_a(Plumb::And)
       expect(custom_call >> prepend).to be_a(Plumb::And)
       assert_result((append >> custom_call).resolve('x'), 'XAA', true)
+    end
+  end
+
+  # A covariant container is a FUNCTOR, so the second functor law holds: mapping `f`
+  # then mapping `g` is mapping `f >> g`. The left form traverses twice and builds an
+  # intermediate collection; the right traverses once.
+  describe 'container fusion (the functor law)' do
+    let(:strip) { Types::String.transform(::String, &:strip) }
+    let(:to_sym) { Types::String.transform(::Symbol, &:to_sym) }
+
+    {
+      'Array' => [-> { Types::Array[STRIP] >> Types::Array[TO_SYM] }, -> { Types::Array[STRIP >> TO_SYM] }],
+      'Tuple' => [-> { Types::Tuple[STRIP, STRIP] >> Types::Tuple[TO_SYM, TO_SYM] },
+                  -> { Types::Tuple[STRIP >> TO_SYM, STRIP >> TO_SYM] }],
+      'HashMap' => [-> { Types::Hash[Types::Symbol, STRIP] >> Types::Hash[Types::Symbol, TO_SYM] },
+                    -> { Types::Hash[Types::Symbol, STRIP >> TO_SYM] }],
+      'Stream' => [-> { Types::Stream[STRIP] >> Types::Stream[TO_SYM] }, -> { Types::Stream[STRIP >> TO_SYM] }]
+    }.each do |label, (two_passes, one_pass)|
+      it "fuses two #{label} maps into one" do
+        expect(two_passes.call).to eq(one_pass.call)
+        expect(two_passes.call).to be_instance_of(one_pass.call.class) # not an And
+      end
+    end
+
+    # The law is about the mapping; fusion must not disturb validity, value OR the
+    # errors. Two passes report stage by stage (a first-stage failure means the second
+    # never runs), so the boundary guard below is what keeps the two agreeing.
+    it 'is indistinguishable from two passes, including on failures' do
+      two = Types::Array[strip] >> Types::Array[to_sym]
+      one = Types::Array[strip >> to_sym]
+
+      [[' a ', 'b'], [], ['x'], [1], ['a', 2], [nil]].each do |input|
+        a = two.resolve(input)
+        b = one.resolve(input)
+        expect([a.valid?, a.value, a.errors]).to eq([b.valid?, b.value, b.errors]), "for #{input.inspect}"
+      end
+    end
+
+    # Fusion carries its own proof rather than trusting the caller's: `#>>` type-checks
+    # the containers first but `#/` deliberately does not, and both reach #fuse_with.
+    # Without a provable element boundary the right map could reject what the left
+    # produced, which is exactly the case where one pass would report errors two
+    # passes do not.
+    describe 'declines when the element boundary is not provable' do
+      it 'does not fuse a narrowing element type' do
+        expect(Types::Array[strip] / Types::Array[Types::String[/^a/]]).to be_a(Plumb::Conjunction)
+      end
+
+      it 'does not fuse an opaque element check' do
+        opaque = Types::Any.check('opaque') { |_v| true }
+        expect(Types::Array[strip] / Types::Array[opaque]).to be_a(Plumb::Conjunction)
+      end
+
+      it 'does not fuse across different functors' do
+        expect(Types::Array[strip] / Types::Stream[to_sym]).to be_a(Plumb::Conjunction)
+      end
+
+      it 'does not fuse containers of different arity' do
+        expect(Types::Tuple[strip, strip] / Types::Tuple[to_sym]).to be_a(Plumb::Conjunction)
+      end
     end
   end
 end

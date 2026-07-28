@@ -16,6 +16,7 @@ module Plumb
   #   end
   class StreamClass
     include Composable
+    include CovariantFusion
 
     attr_reader :children
 

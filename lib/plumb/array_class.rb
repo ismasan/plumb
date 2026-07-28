@@ -8,6 +8,7 @@ require 'plumb/stream_class'
 module Plumb
   class ArrayClass
     include Composable
+    include CovariantFusion
 
     attr_reader :children
 
