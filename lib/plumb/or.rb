@@ -34,5 +34,4 @@ module Plumb
     # rebuilds by class), so an Or may still hold two preserving branches.
     def value_preserving? = children.all? { |c| Plumb::Subtyping.value_preserving?(c) }
   end
-
 end

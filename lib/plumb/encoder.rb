@@ -68,12 +68,6 @@ module Plumb
 
       alias output_type input_type
 
-      # @see Composable#source_type. Mirrored here because an Encoder class is
-      # not itself a Composable — it BUILDS the Function steps that are — yet it
-      # answers the same declared pair.
-      def source_type = input_type
-      def target_type = output_type
-
       # The input type to rewrite for a particular matched output type.
       # Fixed for a normal encoder — the declared input type, regardless of what
       # matched. A GENERIC encoder (one whose output_type is a container top like

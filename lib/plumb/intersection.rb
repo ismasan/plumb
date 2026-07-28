@@ -51,5 +51,4 @@ module Plumb
     # JSONSchemaVisitor's :intersection handler, which merges both sides' specs
     # unconditionally because both describe one value.
   end
-
 end

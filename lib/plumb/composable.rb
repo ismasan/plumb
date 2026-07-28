@@ -274,19 +274,6 @@ module Plumb
     def input_type = self
     def output_type = self
 
-    # The category-theoretic names for the same pair: a node is a morphism from
-    # its SOURCE type to its TARGET type. `#input_type`/`#output_type` remain the
-    # canonical names (they are the documented API, and what every node
-    # implements); these read better where a node is being discussed as a
-    # morphism rather than as a validator.
-    #
-    # Delegating methods, not `alias`: several types define
-    # `#input_type`/`#output_type` as their own methods (Or, Pipeline, Policy,
-    # HashMap, Encoder, Implementation), and an `alias` here would freeze
-    # Composable's definition rather than dispatch to theirs.
-    def source_type = input_type
-    def target_type = output_type
-
     # Composition-context resolution hook, consulted on the RIGHT operand of
     # #>>, #| and #& before wrapping/type-checking — via
     # Composable.resolve_operand, which any custom operator implementation

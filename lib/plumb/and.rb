@@ -63,5 +63,4 @@ module Plumb
     # upstream already produce what this chain's last step emits.) The refinement
     # behaviour now lives on Intersection, which is the node it was written for.
   end
-
 end

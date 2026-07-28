@@ -33,5 +33,4 @@ module Plumb
     # Schema visitor handles it separately from :or — a union is a plain anyOf,
     # with none of the default-value handling a choice needs.
   end
-
 end
