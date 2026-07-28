@@ -194,7 +194,10 @@ module Plumb
         end
         result.valid!(output)
       end
-      FilteredHash.new(self, relaxed_to_optional, op)
+      # `op` is built fresh per call, so name what the step IS as its identity —
+      # otherwise every `.filtered` node is unequal to every other, and so is any
+      # composite containing one. @see Function#==
+      FilteredHash.new(self, relaxed_to_optional, op, identity: [:filtered_hash, self])
     end
 
     # A version of this Hash that first symbolizes string keys (via

@@ -1190,6 +1190,16 @@ RSpec.describe Plumb::Types do
       )
     end
 
+    specify '#filtered is compared by the schema it filters, not by its fresh block' do
+      schema = Types::Hash[name: Types::String, age: Types::Integer]
+      expect(schema.filtered).to eq(schema.filtered)
+      expect(schema.filtered).not_to eq(Types::Hash[name: Types::String].filtered)
+      # ...so composites containing one stay comparable, and reduce.
+      expect(Types::Hash[a: schema.filtered]).to eq(Types::Hash[a: schema.filtered])
+      expect(Types::Array[schema.filtered]).to eq(Types::Array[schema.filtered])
+      expect(schema.filtered & schema.filtered).to eq(schema.filtered)
+    end
+
     specify '#defer' do
       linked_list = Types::Hash[
         value: Types::Any,
