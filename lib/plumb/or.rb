@@ -15,13 +15,6 @@ module Plumb
     include Composable
     include Disjunction
 
-    def initialize(left, right)
-      @left = Composable.wrap(left)
-      @right = Composable.wrap(right)
-      @children = [@left, @right].freeze
-      freeze
-    end
-
     # (A | B).output_type == A.output_type | B.output_type. A converting branch
     # produces something other than what it consumed, so this genuinely has to map
     # over the branches — which is exactly what Union does NOT have to do.
@@ -42,6 +35,4 @@ module Plumb
     def value_preserving? = children.all? { |c| Plumb::Subtyping.value_preserving?(c) }
   end
 
-  # The computation-AST name for the choice. @see Plumb::Compose
-  Choice = Or
 end

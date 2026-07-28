@@ -336,30 +336,23 @@ module Plumb
       a.with_children(merged)
     end
 
-    # The containers that are covariant in their children — and, equivalently,
-    # the ones that answer #with_children (see #map_children).
+    # The containers that are covariant in their children — the ones
+    # #intersect_containers may meet pairwise. NOT the same set as the nodes
+    # answering #with_children, which is much wider (see Plumb::NodeMapper).
     def container_covariant?(type)
       type.is_a?(ArrayClass) || type.is_a?(TupleClass) || type.is_a?(HashMap)
     end
 
-    # Map a container's children through `blk` and rebuild it around the
-    # results — the shared rule behind every covariant container's
-    # #accepted_type and #output_type. Each container contributes only its
-    # one-line #with_children rebuild; this owns the traversal AND the
-    # identity guard: when no child changed, the ORIGINAL node is returned,
-    # so `resolved_output`/`accepted_type` reach their fixpoint in one step
-    # and a non-converting container costs no allocation.
+    # Map a container's children through `blk` and rebuild it around the results —
+    # the shared rule behind every covariant container's #accepted_type and
+    # #output_type. Kept as an alias so those call sites read in terms of this
+    # module; the traversal and its identity guard live in ONE place, because every
+    # rewrite pass depends on an untouched subtree coming back `equal?`.
     #
     # @param type [Composable] a container responding to #with_children
     # @yieldparam child [Composable]
     # @return [Composable] `type` itself, or a rebuilt container
-    def map_children(type, &blk)
-      children = type.children
-      mapped = children.map(&blk)
-      return type if mapped.each_with_index.all? { |m, i| m.equal?(children[i]) }
-
-      type.with_children(mapped)
-    end
+    def map_children(type, &blk) = NodeMapper.map_children(type, &blk)
 
     # Are two leaf types provably disjoint? True when NO pair of their underlying
     # Ruby base types is subtype-related — so no value can be an instance of both

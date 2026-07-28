@@ -52,6 +52,4 @@ module Plumb
     # unconditionally because both describe one value.
   end
 
-  # The type-AST name for the meet, dual to {Plumb::Union}.
-  Meet = Intersection
 end

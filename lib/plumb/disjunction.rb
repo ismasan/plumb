@@ -38,6 +38,16 @@ module Plumb
 
     attr_reader :children
 
+    # Both nodes wrap and freeze identically — the mixin's thesis is that they differ
+    # only in how TYPES flow, so the construction belongs here rather than in two
+    # copies.
+    def initialize(left, right)
+      @left = Composable.wrap(left)
+      @right = Composable.wrap(right)
+      @children = [@left, @right].freeze
+      freeze
+    end
+
     # (A | B).input_type == A.input_type | B.input_type — shared by both nodes.
     #
     # A Union cannot shortcut this to `self` the way it can #output_type. A branch
@@ -63,9 +73,9 @@ module Plumb
       l.equal?(@left) && r.equal?(@right) ? self : Disjunction.build(l, r)
     end
 
-    # Rebuild around new branches. `self.class` keeps Or vs Union.
-    # @see Plumb::NodeMapper
-    def with_children(children) = self.class.new(children[0], children[1])
+    # Rebuild around new branches, RECLASSIFYING by what they are.
+    # @see Conjunction#with_children for why this must not preserve the class.
+    def with_children(children) = Disjunction.build(children[0], children[1])
 
     private def _inspect
       %((#{@left.inspect} | #{@right.inspect}))

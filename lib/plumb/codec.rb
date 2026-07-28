@@ -287,9 +287,10 @@ module Plumb
         # opposite treatment (a meet may be reordered, a pipeline may not).
         when Intersection then return visit_intersection(type, path)
         when Conjunction then return visit_composition(type, path)
-        when Metadata then return rebuild(type, type.type, path) { |t| Metadata.new(t, type.metadata) }
-        when Policy then return rebuild(type, type.children.first, path) { |t| Policy.new(type.policy_name, type.arg, t) }
-        when Composable::Node then return rebuild(type, type.type, path) { |t| t.as_node(type.node_name, type.args) }
+        # Transparent wrappers: NodeMapper owns how each is rebuilt, so there is no
+        # second table of recipes to keep in step with it.
+        when Metadata, Policy, Composable::Node
+          return NodeMapper.map(type) { |t| visit(t, path) }
         end
 
         enc = encoder_for(type, path)
@@ -373,7 +374,11 @@ module Plumb
 
           Function.new(schema, struct, Plumb::NOOP)
         else
-          Function.new(struct, schema, ->(result) { result.valid!(result.value.attributes) })
+          # The lambda is fresh per call, so name what the step IS as its identity —
+          # otherwise `(Person >> Codec) == (Person >> Codec)` is false while the
+          # decode direction (which passes NOOP) is true. @see Function#==
+          Function.new(struct, schema, ->(result) { result.valid!(result.value.attributes) },
+                       identity: [:struct_encode, struct])
         end
       end
 
@@ -470,22 +475,15 @@ module Plumb
       def visit_hash(type, path)
         return noop_or_fail(type, path) if type._schema.empty? # the bare "any Hash" — a leaf
 
-        changed = false
-        schema = type._schema.each_with_object({}) do |(key, field), h|
-          seg = key.literal? ? key.to_s : key.inspect
-          v = visit(field, path + [seg])
-          changed ||= !v.equal?(field)
-          h[key] = v
+        NodeMapper.map_record(type) do |field, key|
+          visit(field, path + [key.literal? ? key.to_s : key.inspect])
         end
-        changed ? type.class.new(schema:) : type
       end
 
       def visit_array(type, path)
-        element = type.children.first
-        return noop_or_fail(type, path) if element.is_a?(AnyClass) # untyped Array — a leaf
+        return noop_or_fail(type, path) if type.children.first.is_a?(AnyClass) # untyped — a leaf
 
-        v = visit(element, path + ['[]'])
-        v.equal?(element) ? type : type[v]
+        NodeMapper.map_children(type) { |element| visit(element, path + ['[]']) }
       end
 
       def visit_tuple(type, path)
@@ -506,10 +504,7 @@ module Plumb
       # variant schema (all HashClasses); the tag key's literal value is a
       # native pass-through, so the discriminator survives.
       def visit_tagged_hash(type, path)
-        variants = type.children.map { |c| visit(c, path) }
-        return type if variants.zip(type.children).all? { |v, c| v.equal?(c) }
-
-        TaggedHash.new(type.hash_type, type.key, variants)
+        NodeMapper.map_children(type) { |variant| visit(variant, path) }
       end
 
       def visit_or(type, path)
@@ -570,17 +565,14 @@ module Plumb
       # consumed the wire if its rewrite actually CHANGED it — an all-native head
       # leaves the wire for the next step.
       def visit_composition(type, path)
-        children = type.children
-        wire_consumed = false
-        rewritten = children.map do |child|
-          next child if pure_refinement?(child)
-          next child if wire_consumed
+        left, right = type.children
+        l = pure_refinement?(left) ? left : visit(left, path)
+        # `right` receives what `left` produced, so it faces the wire only when
+        # `left`'s rewrite left it unchanged.
+        wire_consumed = @direction == :decode && !l.equal?(left)
+        r = pure_refinement?(right) || wire_consumed ? right : visit(right, path)
 
-          visit(child, path).tap { |v| wire_consumed = @direction == :decode && !v.equal?(child) }
-        end
-        return type if rewritten.each_with_index.all? { |r, i| r.equal?(children[i]) }
-
-        rewritten.reduce { |l, r| Conjunction.build(l, r) }
+        l.equal?(left) && r.equal?(right) ? type : Conjunction.build(l, r)
       end
 
       # A pure refinement carries no encodable type — it filters the adjacent
@@ -619,12 +611,6 @@ module Plumb
         end
       end
 
-      # Visit a transparent wrapper's inner type; keep the wrapper when
-      # nothing changed, else re-wrap via the block.
-      def rebuild(original, inner, path)
-        v = visit(inner, path)
-        v.equal?(inner) ? original : yield(v)
-      end
     end
 
     # ------------------------------------------------------------------

@@ -15,13 +15,6 @@ module Plumb
     include Composable
     include Disjunction
 
-    def initialize(left, right)
-      @left = Composable.wrap(left)
-      @right = Composable.wrap(right)
-      @children = [@left, @right].freeze
-      freeze
-    end
-
     # No branch converts, so the join describes exactly the values that come out
     # of it: it IS its own output type. No lazy rebuild, no identity guard, no
     # allocation — the mapping Or needs exists only because a converting branch
@@ -41,6 +34,4 @@ module Plumb
     # with none of the default-value handling a choice needs.
   end
 
-  # The type-AST name for the join, dual to {Plumb::Meet}.
-  Join = Union
 end

@@ -70,7 +70,7 @@ module Plumb
 
       # @see Composable#source_type. Mirrored here because an Encoder class is
       # not itself a Composable — it BUILDS the Function steps that are — yet it
-      # answers the same declared pair, and Codec reads it through these names.
+      # answers the same declared pair.
       def source_type = input_type
       def target_type = output_type
 

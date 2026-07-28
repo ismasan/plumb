@@ -19,6 +19,14 @@ module Plumb
   # containers); the nodes whose sub-types live elsewhere — a Metadata's #type, a
   # record's keyed fields — are handled below.
   #
+  # NOT EXHAUSTIVE, and deliberately so for now: `map` dispatches on a closed list
+  # of node classes, so a composite it does not name — `Plumb::Implementation`, or a
+  # user-defined one — is returned untouched rather than traversed. Generalizing
+  # means moving the whole map-and-rebuild operation onto the node as a
+  # `#map_subtypes(&blk)` hook (the four branches below are exactly the cases a
+  # plain `#with_children(array)` cannot express: a wrapper's child is `#type`, a
+  # record's children are keyed). Worth doing when a third pass needs it.
+  #
   # DELIBERATELY NOT MAPPED, both matching what every existing pass already does:
   #
   #   - Constraint's #base. A Constraint carries an error message and a label that
@@ -37,20 +45,16 @@ module Plumb
     # @yieldparam child [Composable] a Composable sub-type of `type`
     # @return [Composable] `type` itself when nothing changed, else a rebuilt node
     def map(type, &blk)
-      case type
-      # Two-sided nodes whose #children are exactly their sub-types. `type.class`
-      # keeps And vs Intersection (and Or vs Union) across the rebuild.
-      when Conjunction, Disjunction, TupleClass, ArrayClass, HashMap, StreamClass, Not, Policy, TaggedHash
-        map_children(type, &blk)
-      # A Function's #children are [input_type, output_type], but rebuilding it also
-      # has to carry the callable, the inspect label and the #== identity.
-      when Function
-        in_t, out_t = type.children
-        l = blk.call(in_t)
-        r = blk.call(out_t)
-        return type if l.equal?(in_t) && r.equal?(out_t)
+      # Leaf fast path: a Constraint is the most numerous node in any real graph and
+      # is deliberately not mapped (see above), so answer it before the class tests.
+      return type if type.is_a?(Constraint) || !type.respond_to?(:children)
 
-        type.class.new(l, r, type.fn, inspect: type.inspect_label, identity: type.identity)
+      case type
+      # Nodes whose #children ARE their sub-types: each contributes its own
+      # #with_children rebuild and this owns the traversal + identity guard.
+      when Conjunction, Disjunction, Function, TupleClass, ArrayClass, HashMap, StreamClass,
+           Not, Policy, TaggedHash
+        map_children(type, &blk)
       # Transparent wrappers: the sub-type is #type, not a child.
       when Metadata
         rewrap(type, type.type, blk) { |t| Metadata.new(t, type.metadata) }
@@ -76,10 +80,12 @@ module Plumb
       type.with_children(mapped)
     end
 
+    # Yields (field, key) — the key so a caller can label the position (see
+    # Codec::Rewriter#visit_hash, which builds an error path from it).
     def map_record(type, &blk)
       changed = false
       schema = type._schema.each_with_object({}) do |(key, field), acc|
-        mapped = blk.call(field)
+        mapped = blk.call(field, key)
         changed ||= !mapped.equal?(field)
         acc[key] = mapped
       end

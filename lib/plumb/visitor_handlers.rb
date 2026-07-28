@@ -41,9 +41,8 @@ module Plumb
     def visit_name(method_name, node, props = BLANK_HASH)
       target = :"visit_#{method_name}"
 
-      unless respond_to?(target)
-        fallback = NODE_NAME_FALLBACKS[method_name]
-        target = :"visit_#{fallback}" if fallback && respond_to?(:"visit_#{fallback}")
+      if !respond_to?(target) && (fallback = NODE_NAME_FALLBACKS[method_name])
+        target = :"visit_#{fallback}"
       end
 
       if respond_to?(target)

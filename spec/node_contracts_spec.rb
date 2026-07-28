@@ -26,11 +26,63 @@ RSpec.describe 'two-sided node contracts' do
   let(:union) { NTypes::String | NTypes::Integer }             # Union
   let(:choice) { NTypes::Integer | NTypes::String.transform(::Integer, &:to_i) } # Or
 
-  it 'builds the node class the operands imply' do
-    expect(refinement).to be_a(Plumb::Intersection)
-    expect(composition).to be_a(Plumb::And)
-    expect(union).to be_a(Plumb::Union)
-    expect(choice).to be_a(Plumb::Or)
+  # A node that CLAIMS #value_preserving? must have children that are. It is the
+  # gate every reduction is guarded by (Optimizer.reduce_union, factor_union,
+  # redundant_refinement?, Subtyping.intersect's subsumption drops), and
+  # Optimizer.reduce_step's `right.is_a?(Intersection)` shortcut is only sound
+  # while it holds — so a lying node re-opens the silently-dropped-side bug class.
+  #
+  # Two paths used to produce one: And#output_type hand-picked `Intersection.new`
+  # after testing only its RIGHT operand, and #with_children preserved the node's
+  # class across a rewrite that had swapped a check for a conversion.
+  describe 'the value_preserving? invariant' do
+    def assert_honest(node)
+      return unless node.is_a?(Plumb::Conjunction) || node.is_a?(Plumb::Disjunction)
+      return unless Plumb::Subtyping.value_preserving?(node)
+
+      offenders = node.children.reject { |c| Plumb::Subtyping.value_preserving?(c) }
+      expect(offenders).to be_empty,
+                           "#{node.class} claims value_preserving? but has " \
+                           "non-preserving children: #{offenders.map(&:class).inspect}"
+    end
+
+    # `left.output_type` need not preserve values even when `right` does — a record
+    # drops undeclared keys, a filtered map drops entries, a Static replaces the
+    # value outright.
+    {
+      'a record chain' => -> { NTypes::Hash[a: NTypes::String] >> NTypes::Hash[a: NTypes::String].where(size: 1..3) },
+      'a filtered map chain' => lambda {
+        filtered = NTypes::Hash[NTypes::Symbol, NTypes::Integer].filtered
+        filtered >> filtered.where(size: 0..)
+      },
+      'a static chain' => -> { NTypes::Integer.static(10).where(to_s: /1/) }
+    }.each do |label, build|
+      it "holds for #{label} and its output type" do
+        node = build.call
+        assert_honest(node)
+        assert_honest(node.output_type)
+      end
+    end
+
+    # #with_children must RECLASSIFY: swapping a check for a conversion turns a
+    # meet into a composition.
+    it 'holds when a rewrite replaces a child with a conversion' do
+      meet = NTypes::String.where(size: 1..3)
+      rewritten = Plumb.decorate(meet) do |node|
+        node.equal?(meet.children.first) ? NTypes::String.transform(::Integer, &:to_i) : node
+      end
+      expect(rewritten).to be_a(Plumb::And) # reclassified, not still an Intersection
+      assert_honest(rewritten)
+    end
+
+    it 'holds when a rewrite replaces a union branch with a conversion' do
+      join = NTypes::String | NTypes::Integer
+      rewritten = Plumb.decorate(join) do |node|
+        node.equal?(NTypes::Integer) ? NTypes::String.transform(::Integer, &:to_i) : node
+      end
+      expect(rewritten).to be_a(Plumb::Or)
+      assert_honest(rewritten)
+    end
   end
 
   describe '#value_preserving?' do
@@ -78,11 +130,5 @@ RSpec.describe 'two-sided node contracts' do
         .to be_a(Plumb::And)
     end
 
-    it 'narrows a refinement through a meet but not through a composition' do
-      # reduce_step recurses into an Intersection's conjuncts (it is safe to
-      # reorder a meet) and treats a composition as a barrier.
-      expect(NTypes::Integer[0..100] >> NTypes::Integer[-10..110])
-        .to eq(NTypes::Integer[0..100][-10..110])
-    end
   end
 end

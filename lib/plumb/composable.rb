@@ -278,8 +278,7 @@ module Plumb
     # its SOURCE type to its TARGET type. `#input_type`/`#output_type` remain the
     # canonical names (they are the documented API, and what every node
     # implements); these read better where a node is being discussed as a
-    # morphism rather than as a validator — see Plumb::Subtyping and
-    # Plumb::Optimizer.
+    # morphism rather than as a validator.
     #
     # Delegating methods, not `alias`: several types define
     # `#input_type`/`#output_type` as their own methods (Or, Pipeline, Policy,

@@ -189,9 +189,7 @@ module Plumb
     # `#&` folds that to Never before a schema is ever asked for.
     on(:intersection) do |node, props|
       left, right = node.children.map { |c| visit(c) }
-      merged = props.merge(left).merge(right)
-      type = left[TYPE] || right[TYPE]
-      type ? merged.merge(TYPE => type) : merged
+      merge_same_type_specs(props, left, right)
     end
 
     # A COMPOSITION (`And`): the right side may convert, so the two sides can
@@ -203,12 +201,19 @@ module Plumb
     on(:and) do |node, props|
       left, right = node.children.map { |c| visit(c) }
       if !left.key?(TYPE) || left[TYPE] == right[TYPE]
-        type = left[TYPE] || right[TYPE]
-        merged = props.merge(left).merge(right)
-        type ? merged.merge(TYPE => type) : merged
+        merge_same_type_specs(props, left, right)
       else
         props.merge(left)
       end
+    end
+
+    # Combine two specs that describe the SAME value: merge both sets of keywords
+    # and keep whichever `type` is present. Shared by the two handlers above, which
+    # differ only in WHEN they are allowed to do this.
+    private def merge_same_type_specs(props, left, right)
+      merged = props.merge(left).merge(right)
+      type = left[TYPE] || right[TYPE]
+      type ? merged.merge(TYPE => type) : merged
     end
 
     # A conversion (`Function`) produces a genuinely different value. A JSON

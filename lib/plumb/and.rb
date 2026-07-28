@@ -32,8 +32,17 @@ module Plumb
       # building a second And to stand in for it.
       #
       # A converting right replaces the value outright, so its own output stands.
+      # Built through Conjunction.build, not Intersection.new: the meet's
+      # `value_preserving? == true` is an INVARIANT, and `left.output_type` need not
+      # be value-preserving (a record's output drops undeclared keys, a Static
+      # replaces the value). Hand-picking Intersection here produced a node that
+      # lied about the one flag every reduction gates on.
+      #
+      # The `lo.equal?(left)` guard is the fixpoint: a left that IS its own output
+      # type would otherwise have this recurse building output types forever.
       @output_type = if Plumb::Subtyping.value_preserving?(right)
-                       Intersection.new(left.output_type, right)
+                       lo = left.output_type
+                       lo.equal?(left) ? self : Conjunction.build(lo, right)
                      else
                        right.output_type
                      end
@@ -55,6 +64,4 @@ module Plumb
     # behaviour now lives on Intersection, which is the node it was written for.
   end
 
-  # The computation-AST name for this node. @see Plumb::Transform
-  Compose = And
 end

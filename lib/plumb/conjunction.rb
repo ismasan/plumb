@@ -52,10 +52,12 @@ module Plumb
       result.map(@left).map(@right)
     end
 
-    # Rebuild around new children. `self.class` keeps And vs Intersection — a
-    # rewrite maps the sides, it does not reclassify the node.
+    # Rebuild around new children, RECLASSIFYING by what they are — a rewrite that
+    # swaps a check for a conversion turns a meet into a composition, and keeping
+    # the old class would leave an Intersection that lies about #value_preserving?.
+    # Reclassifying is what makes the distinction structural rather than nominal.
     # @see Plumb::NodeMapper
-    def with_children(children) = self.class.new(children[0], children[1])
+    def with_children(children) = Conjunction.build(children[0], children[1])
 
     private def _inspect
       %((#{@left.inspect} >> #{@right.inspect}))

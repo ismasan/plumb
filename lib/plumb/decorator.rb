@@ -20,11 +20,11 @@ module Plumb
   # unchanged is a no-op, and a subtree in which nothing changed comes back as the
   # identical object.
   #
-  # Traversal is {Plumb::NodeMapper}'s, so it reaches every node shape that can be
-  # rebuilt — a record's fields, a container's element type, and the inside of a
-  # Metadata / Policy / #as_node wrapper. It previously carried its own `case` over
-  # five node types and recursed into NONE of those, so a block never saw a
-  # schema's fields at all.
+  # Traversal is {Plumb::NodeMapper}'s, so it reaches a record's fields, a
+  # container's element type, and the inside of a Metadata / Policy / #as_node
+  # wrapper. It previously carried its own `case` over five node types and recursed
+  # into NONE of those, so a block never saw a schema's fields at all. See
+  # NodeMapper for the shapes it still does not reach.
   #
   # It stops at a Constraint's base type (rebuilding one would drop a custom
   # `#check` message) and at a Deferred (forcing it would loop on a

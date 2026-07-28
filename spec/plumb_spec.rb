@@ -57,7 +57,6 @@ RSpec.describe Plumb do
 
     it 'aliases Function as Transform' do
       expect(Plumb::Transform).to be(Plumb::Function)
-      expect(Plumb::GuaranteedTransform).to be(Plumb::GuaranteedFunction)
     end
   end
 

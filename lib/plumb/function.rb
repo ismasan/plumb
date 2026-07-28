@@ -117,9 +117,7 @@ module Plumb
     # `fn` is the value-level callable — `#call(Result) => Result`. Exposed so
     # the Decorator can rebuild the node around it, and so an opaque function
     # can be resolved back to the object it wraps (see Plumb::Attributes.struct_class).
-    # `inspect_label` is the optional label an opaque function is built with;
-    # exposed only so the Decorator can carry it across a rebuild.
-    attr_reader :children, :input_type, :output_type, :fn, :inspect_label, :identity
+    attr_reader :children, :input_type, :output_type, :fn, :identity
 
     # @param inspect [String, nil] label to #inspect as, instead of the types
     # @param identity [Object, nil] what this function IS, for `#==` — see #==.
@@ -156,6 +154,13 @@ module Plumb
         other.input_type == input_type &&
         other.output_type == output_type &&
         other.identity == identity
+    end
+
+    # A Function's #children are [input_type, output_type], so rebuilding it around
+    # new ones also has to carry the callable, the inspect label and the #==
+    # identity — none of which a caller can see. @see Plumb::NodeMapper
+    def with_children(children)
+      self.class.new(children[0], children[1], @fn, inspect: @inspect_label, identity: @identity)
     end
 
     private def _inspect
@@ -250,9 +255,6 @@ module Plumb
   # The computation-AST name for the same node: a TRANSFORM is the value-changing
   # morphism, as opposed to a CHECK (a Constraint — a partial identity that
   # narrows the type but returns the value untouched). `Function` remains the
-  # canonical, documented constructor (`Plumb::Function[String => Integer]`);
-  # these aliases exist so code and comments can use the vocabulary of the type/
-  # computation split without a second implementation.
+  # canonical, documented constructor (`Plumb::Function[String => Integer]`).
   Transform = Function
-  GuaranteedTransform = GuaranteedFunction
 end
