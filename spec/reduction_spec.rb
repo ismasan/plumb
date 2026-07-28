@@ -195,8 +195,10 @@ RSpec.describe 'composition reduction (>>)' do
 
     specify 'right is rooted in a non-Module matcher (bare range)' do
       # Any[1..100]'s input_type is Any, so there is no duplicated type gate.
+      # Both sides preserve the value, so the un-reduced pair is the MEET —
+      # contrast the coercing case above, which is a pipeline (And).
       chain = RTypes::Integer[0..100] >> RTypes::Any[1..1000]
-      expect(chain).to be_a(Plumb::And)
+      expect(chain).to be_a(Plumb::Intersection)
     end
   end
 
@@ -221,8 +223,10 @@ RSpec.describe 'composition reduction (>>)' do
       expect(RTypes::Any / RTypes::String).to eq(RTypes::String)
     end
 
-    it 'leaves #value as an And (ValueClass is not a Constraint)' do
-      expect(RTypes::String.value('x')).to be_a(Plumb::And)
+    it 'leaves #value as a conjunction (ValueClass is not a Constraint)' do
+      # An Intersection, not an And: a ValueClass matches without changing the
+      # value, so both sides refine one value rather than forming a pipeline.
+      expect(RTypes::String.value('x')).to be_a(Plumb::Intersection)
     end
   end
 
@@ -277,11 +281,15 @@ RSpec.describe 'composition reduction (>>)' do
   end
 
   describe 'union factoring: shared base checked once (distributivity)' do
-    it 'factors a shared root type into a :refined_union of And(base, Or(suffixes))' do
+    it 'factors a shared root type into a :refined_union of Intersection(base, Or(suffixes))' do
       u = RTypes::String[/d/] | RTypes::String[/c/]
 
       expect(u.node_name).to eq(:refined_union)
-      expect(u.type).to be_a(Plumb::And)
+      # An Intersection: the base and the disjunction of suffixes both describe
+      # the same String, so the factored node is a refinement of the base — which
+      # is why its #output_type keeps the base rather than collapsing to the
+      # bare suffixes (asserted below).
+      expect(u.type).to be_a(Plumb::Intersection)
       base, suffixes = u.type.children
       expect(base).to eq(RTypes::String)               # base
       expect(suffixes).to be_a(Plumb::Or)              # disjunction of bare suffixes

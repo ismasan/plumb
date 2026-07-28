@@ -29,6 +29,7 @@ Integer:
 - Numeric
 - String|Integer
 - String->Integer
+- String >> String->Integer
 Numeric:
 - Any
 - Numeric
@@ -39,6 +40,7 @@ Integer[0..100]:
 - Integer[0..100]
 - String|Integer
 - String->Integer
+- String >> String->Integer
 Integer[10..]:
 - Any
 - Integer
@@ -46,6 +48,7 @@ Integer[10..]:
 - Integer[10..]
 - String|Integer
 - String->Integer
+- String >> String->Integer
 String[/a/]:
 - Any
 - String
@@ -65,9 +68,9 @@ String->Integer:
 - Numeric
 - String|Integer
 - String->Integer
+- String >> String->Integer
 String >> String->Integer:
 - Any
-- String
 - Integer
 - Numeric
 - String|Integer
@@ -81,6 +84,7 @@ Integer[0..100] & Integer[10..]:
 - Integer[10..]
 - String|Integer
 - String->Integer
+- String >> String->Integer
 - Integer[0..100] & Integer[10..]
 Array[Integer]:
 - Any

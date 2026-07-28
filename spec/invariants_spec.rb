@@ -190,6 +190,13 @@ RSpec.describe 'refactor invariants' do
               type: Types::String / Types::String[/a/], cases: [
                 ['a', true, 'a'], ['b', false, 'b', :any]
               ]),
+    # Converting LEFT, value-preserving RIGHT — the mixed case. The right side
+    # narrows what the left produces rather than replacing it, so the chain still
+    # produces a String. Base-type resolution and #output_type must both say so.
+    Entry.new(label: 'transform >> where (converting left, preserving right)',
+              type: Types::String.transform(::String, &:strip).where(size: 1..3), cases: [
+                ['  ab  ', true, 'ab'], ['  abcdef  ', false, 'abcdef', :any], [1, false, 1, :any]
+              ]),
 
     # --- unions / choice ----------------------------------------------------
     Entry.new(label: 'String | Integer (disjoint union)',
@@ -535,6 +542,10 @@ RSpec.describe 'refactor invariants' do
         'input_type' => capture { type.input_type.inspect },
         'output_type' => capture { type.output_type.inspect },
         'value_preserving' => capture { Plumb::Subtyping.value_preserving?(type) },
+        # The Ruby classes a node resolves to. Load-bearing for policy lookup and
+        # for #transform's build-time checks, and resolved by walking the node
+        # tree — so it is exactly what a node-class change can silently break.
+        'base_types' => capture { Plumb.resolve_base_types(type).inspect },
         'metadata' => capture { type.metadata.inspect },
         'json_schema' => capture { type.to_json_schema.inspect }
       }
@@ -651,17 +662,14 @@ RSpec.describe 'refactor invariants' do
 
     # A type may not be a subtype of two PROVABLY DISJOINT types.
     #
-    # This currently FAILS, and it is the reason for the refactor: `Subtyping`
-    # applies the intersection rule (`(a1 ∧ a2) <= b` if either conjunct is)
-    # to every `And`, but an `And` built by `#>>` around a transform is a
-    # COMPOSITION, not an intersection — so `String >> (String -> Integer)`
-    # reports as a subtype of both String and Integer.
-    #
-    # Marked pending rather than deleted so it flips to a failure ("expected
-    # pending to fail, but it passed") the moment Phase 2 fixes it — at which
-    # point remove this marker.
+    # This was the failing assertion that motivated the refactor: `Subtyping`
+    # applied the meet rule (`(a1 ∧ a2) <= b` if either conjunct is) to every
+    # `And`, but an `And` built by `#>>` around a transform is a COMPOSITION, so
+    # `String >> (String -> Integer)` reported as a subtype of both String and
+    # Integer. Fixed by splitting the node: a composition is now projected onto
+    # what it produces (And#subtype_identity) and only a genuine Intersection
+    # gets the meet rule.
     it 'never places a type under two disjoint types' do
-      pending 'fixed by the Compose/Intersection split (Phase 2)'
       disjoint = [%w[String Integer], %w[String Numeric]]
       GRID.each do |label, type|
         disjoint.each do |(x, y)|

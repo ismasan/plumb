@@ -283,7 +283,7 @@ module Plumb
         when Deferred then return visit_deferred(type, path)
         when StaticClass then return visit_static(type, path)
         when Or then return visit_or(type, path)
-        when And then return visit_and(type, path)
+        when Conjunction then return visit_and(type, path)
         when Metadata then return rebuild(type, type.type, path) { |t| Metadata.new(t, type.metadata) }
         when Policy then return rebuild(type, type.children.first, path) { |t| Policy.new(type.policy_name, type.arg, t) }
         when Composable::Node then return rebuild(type, type.type, path) { |t| t.as_node(type.node_name, type.args) }
@@ -398,7 +398,7 @@ module Plumb
         # BigDecimal under the Numeric noop) would emit raw instead of encoding.
         if (enc = encoder_for(type, path))
           encoded = replace(type, enc, path).parse(value)
-          And.new(ValueClass.new(value), StaticClass.new(encoded.freeze))
+          Conjunction.build(ValueClass.new(value), StaticClass.new(encoded.freeze))
         elsif @codec.noop_value?(value)
           ValueClass.new(value)
         else
@@ -530,11 +530,11 @@ module Plumb
         return type if rewritten.each_with_index.all? { |r, i| r.equal?(data[i]) }
 
         ordered = @direction == :decode ? rewritten + refinements : rewritten
-        ordered.reduce { |l, r| And.new(l, r) }
+        ordered.reduce { |l, r| Conjunction.build(l, r) }
       end
 
       def flatten_and(type)
-        type.children.flat_map { |c| c.is_a?(And) ? flatten_and(c) : [c] }
+        type.children.flat_map { |c| c.is_a?(Conjunction) ? flatten_and(c) : [c] }
       end
 
       # A pure refinement carries no encodable type — it filters the adjacent

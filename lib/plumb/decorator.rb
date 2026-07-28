@@ -25,9 +25,10 @@ module Plumb
     # @return [Composable]
     def visit(type)
       type = case type
-             when And
+             when Conjunction
                left, right = visit_children(type)
-               And.new(left, right)
+               # type.class keeps And vs Intersection across decoration.
+               type.class.new(left, right)
              when Function
                left, right = visit_children(type)
                # type.class preserves a GuaranteedFunction across decoration.

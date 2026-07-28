@@ -16,11 +16,17 @@ module Plumb
     # (raw Ruby classes/values become a Constraint), so `Types::String` and
     # `String` compare the same way.
     #
-    # This engine knows ONLY the composition algebra — refinement (And), union
-    # (Or), conversion (Function) and the top type (AnyClass). Everything else
-    # (atomic matchers, covariant containers, Hash width/depth, custom types) is
-    # decided by the type's own #subtype_of? leaf hook (see Composable). It never
-    # calls #<= (which would recurse back here).
+    # This engine knows ONLY the TYPE algebra — meet (Intersection), union (Or),
+    # and the top type (AnyClass) — plus one projection: a node that CONVERTS is
+    # replaced by what it produces (#subtype_identity, which Function,
+    # Implementation and the And composition all implement). So an execution node
+    # is never reasoned about structurally; it is reduced to a type first. That
+    # separation is what keeps the relation sound: applying the meet rule to a
+    # composition would put a converting chain under its own input type.
+    #
+    # Everything else (atomic matchers, covariant containers, Hash width/depth,
+    # custom types) is decided by the type's own #subtype_of? leaf hook (see
+    # Composable). It never calls #<= (which would recurse back here).
     #
     # @param a [Composable, Class, Object] subtype candidate
     # @param b [Composable, Class, Object] supertype candidate
@@ -90,9 +96,14 @@ module Plumb
       return a.children.all? { |m| subtype?(m, b) } if a.is_a?(Or) # (A|B) <= C
       return b.children.any? { |m| subtype?(a, m) } if b.is_a?(Or) # A <= (B|C)
 
-      # Refinements are intersections: the longer the And chain, the narrower.
-      return b.children.all? { |bb| subtype?(a, bb) } if b.is_a?(And) # a <= (b1 ∧ b2)
-      return a.children.any? { |aa| subtype?(aa, b) } if a.is_a?(And) # (a1 ∧ a2) <= b
+      # Meets: the longer the Intersection chain, the narrower. This rule applies
+      # ONLY to a genuine intersection, where both sides describe the same value.
+      # A sequential composition (And) is a morphism and was already projected onto
+      # what it produces by the #subtype_identity reduction above — applying the
+      # meet rule to it would make a converting chain a subtype of its own INPUT
+      # type, and so a subtype of two disjoint types at once.
+      return b.children.all? { |bb| subtype?(a, bb) } if b.is_a?(Intersection) # a <= (b1 ∧ b2)
+      return a.children.any? { |aa| subtype?(aa, b) } if a.is_a?(Intersection) # (a1 ∧ a2) <= b
 
       # `a` decides via its #subtype_of? leaf; if it can't (it doesn't know about
       # `b`), `b` may claim `a` via #supertype_of? — the mirror hook for
@@ -212,7 +223,7 @@ module Plumb
     # (a `Constraint` chain) whose ROOT is a base-type (Module) gate that `left`'s
     # output already guarantees, that gate is a duplicated runtime check: re-parent
     # `right`'s refinement matchers onto `left` and drop it. Returns the reduced
-    # type, or `nil` to fall back to `And.new`.
+    # type, or `nil` to fall back to `Conjunction.build`.
     #
     # Keyed on the root TYPE only (`subtype?(left_output, root)`), NOT on matcher
     # values — so `Integer[0..100] >> Integer[-10..110]` becomes
@@ -225,14 +236,14 @@ module Plumb
     # Degenerate `left >> Integer` (`matchers == []`) returns `left` — a pure
     # redundant type gate removed.
     def reduce_step(left, right)
-      # A refinement `And` (a `where`-clause chain, or any value-preserving
-      # intersection) narrows by each conjunct in turn: `left / (b ∧ c)` is
-      # `(left / b) / c`. An `And` carrying a transform changes the value and is
-      # a barrier, so it is left intact (falls through to the Constraint check
-      # below, which bails).
-      if right.is_a?(And) && value_preserving?(right)
-        l = reduce_step(left, right.children[0]) || And.new(left, right.children[0])
-        return reduce_step(l, right.children[1]) || And.new(l, right.children[1])
+      # A refinement narrows by each conjunct in turn: `left / (b ∧ c)` is
+      # `(left / b) / c`. Being an Intersection IS the condition — it is only
+      # built when both sides preserve the value — so this no longer needs a
+      # runtime #value_preserving? test. A composition (And) carries a transform,
+      # is a barrier, and falls through to the Constraint check below, which bails.
+      if right.is_a?(Intersection)
+        l = reduce_step(left, right.children[0]) || Conjunction.build(left, right.children[0])
+        return reduce_step(l, right.children[1]) || Conjunction.build(l, right.children[1])
       end
 
       # An attribute constraint intersects into `left`'s clause on the same
@@ -272,7 +283,7 @@ module Plumb
     # no such clause. Always reduces (never bails) — an AVM is a value-narrowing
     # refinement, so there is no duplicated type gate to keep it apart.
     def narrow_attribute(left, avm)
-      merge_attribute_into(left, avm) || And.new(left, avm)
+      merge_attribute_into(left, avm) || Conjunction.build(left, avm)
     end
 
     # `left` rebuilt with `avm` merged into its matching same-attribute clause,
@@ -288,12 +299,12 @@ module Plumb
         return Types::Never if merged.equal?(Constraint::EMPTY) # unsatisfiable clause ⇒ bottom
 
         AttributeValueMatch.new(left.type, left.attr_name, merged)
-      when And
-        # A conjunct that folds to Never makes the whole And uninhabitable ⇒ Never.
+      when Conjunction
+        # A conjunct that folds to Never makes the whole node uninhabitable ⇒ Never.
         if (right = merge_attribute_into(left.children[1], avm))
-          right.is_a?(NeverClass) ? right : And.new(left.children[0], right)
+          right.is_a?(NeverClass) ? right : Conjunction.build(left.children[0], right)
         elsif (leftc = merge_attribute_into(left.children[0], avm))
-          leftc.is_a?(NeverClass) ? leftc : And.new(leftc, left.children[1])
+          leftc.is_a?(NeverClass) ? leftc : Conjunction.build(leftc, left.children[1])
         end
       end
     end
@@ -441,7 +452,7 @@ module Plumb
 
     # The meet (greatest lower bound) of two types — the dual of reduce_union's
     # join. `intersect(a, b)` returns the narrowed type, or nil to fall back to
-    # `And.new(a, b)` (a sound runtime intersection: both sides must pass). It
+    # `Conjunction.build(a, b)` (a sound runtime intersection: both sides must pass). It
     # only produces `Types::Never` when the intersection is PROVABLY empty
     # (disjoint ranges/sets/classes); when it can't prove emptiness or a subtype
     # relation, it declines (nil) so the caller keeps a runtime And.
@@ -480,7 +491,7 @@ module Plumb
     # Never. A branch the reducer can't fold becomes a runtime And.
     def intersect_union(union, other)
       parts = union.children.filter_map do |branch|
-        m = intersect(branch, other) || And.new(branch, other)
+        m = intersect(branch, other) || Conjunction.build(branch, other)
         m unless m.is_a?(NeverClass)
       end
       return Types::Never if parts.empty?
@@ -519,7 +530,7 @@ module Plumb
       return nil unless container_covariant?(a) && a.instance_of?(b.class)
       return nil if a.children.empty? || a.children.size != b.children.size
 
-      merged = a.children.zip(b.children).map { |x, y| intersect(x, y) || And.new(x, y) }
+      merged = a.children.zip(b.children).map { |x, y| intersect(x, y) || Conjunction.build(x, y) }
       return Types::Never if a.is_a?(TupleClass) && merged.any? { |m| m.is_a?(NeverClass) }
 
       a.with_children(merged)
@@ -590,7 +601,7 @@ module Plumb
       return nil if k == sa.size || k == sb.size # one is a prefix of the other (absorption's job)
 
       inner = Or.new(rebuild(sa.drop(k)), rebuild(sb.drop(k)))
-      And.new(rebuild(sa.take(k)), inner).as_node(:refined_union)
+      Conjunction.build(rebuild(sa.take(k)), inner).as_node(:refined_union)
     end
 
     # Flatten a type into its `>>` execution steps. A fused Constraint chain
@@ -602,7 +613,7 @@ module Plumb
     def steps(type)
       type = type.type if type.is_a?(Composable::Node) && type.node_name == :refined_union
       case type
-      when And then type.children.flat_map { |c| steps(c) }
+      when Conjunction then type.children.flat_map { |c| steps(c) }
       when Constraint then type.base ? steps(type.base) + [Constraint.new(type.matcher)] : [type]
       else [type]
       end
@@ -628,7 +639,7 @@ module Plumb
       if left.is_a?(Constraint) && right.is_a?(Constraint) && right.base.nil?
         Constraint.narrow(left, right.matcher)
       else
-        And.new(left, right)
+        Conjunction.build(left, right)
       end
     end
 

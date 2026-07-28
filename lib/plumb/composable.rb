@@ -145,9 +145,11 @@ module Plumb
     def <(other) = (self <= other) && !(self >= other)
     def >(other) = (self >= other) && !(self <= other)
 
-    # Leaf hook for Plumb::Subtyping.subtype?, called once the algebra (And/Or/
-    # Function/top) has been peeled away. It must NOT delegate back to #<= (that
-    # would recurse); it recurses only through Plumb::Subtyping.subtype?.
+    # Leaf hook for Plumb::Subtyping.subtype?, called once the algebra
+    # (Intersection/Or/top, and the #subtype_identity projection that replaces a
+    # converting node with what it produces) has been peeled away. It must NOT
+    # delegate back to #<= (that would recurse); it recurses only through
+    # Plumb::Subtyping.subtype?.
     #
     # Default behaviour:
     #   1. reflexive structural equality;
@@ -385,7 +387,7 @@ module Plumb
       # -> the former). A non-redundant `other` (a transform, or a narrowing
       # refinement) stays an And.
       Plumb::Subtyping.reduce_step(self, other) ||
-        (Plumb::Subtyping.redundant_refinement?(self, other) ? self : And.new(self, other))
+        (Plumb::Subtyping.redundant_refinement?(self, other) ? self : Conjunction.build(self, other))
     end
 
     # Compose like #>> but WITHOUT the strict subtype check — the escape hatch
@@ -429,13 +431,14 @@ module Plumb
     # containers, and distributing over unions — and collapses a PROVABLY-empty
     # intersection to `Types::Never` (`Integer[2..10] & Integer[11..100]`,
     # `String & Integer`). When it can prove neither a narrowing nor emptiness it
-    # falls back to `And.new` — a runtime intersection where both sides must pass.
+    # falls back to `Conjunction.build` — a runtime intersection where both sides
+    # must pass.
     #
     # @param other [Composable]
     # @return [Composable]
     def &(other)
       other = Composable.resolve_operand(other, op: :&, left: self)
-      Plumb::Subtyping.intersect(self, other) || And.new(self, other)
+      Plumb::Subtyping.intersect(self, other) || Conjunction.build(self, other)
     end
 
     # Transform value. Requires specifying the resulting type of the value after transformation.
@@ -587,7 +590,7 @@ module Plumb
     private def constrain(constraint)
       return constraint if is_a?(AnyClass)
 
-      Plumb::Subtyping.reduce_step(self, constraint) || And.new(self, constraint)
+      Plumb::Subtyping.reduce_step(self, constraint) || Conjunction.build(self, constraint)
     end
 
     #  Support #as_node.

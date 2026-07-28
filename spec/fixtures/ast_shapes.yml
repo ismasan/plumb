@@ -6,6 +6,7 @@ Any:
   input_type: Types::Any
   output_type: Types::Any
   value_preserving: 'true'
+  base_types: "[]"
   metadata: "{}"
   json_schema: "{}"
 Never:
@@ -15,6 +16,7 @@ Never:
   input_type: Types::Never
   output_type: Types::Never
   value_preserving: 'true'
+  base_types: "[]"
   metadata: "{}"
   json_schema: '{"not" => {}}'
 Undefined:
@@ -24,6 +26,7 @@ Undefined:
   input_type: Plumb::Types::Any
   output_type: Types::Undefined
   value_preserving: 'true'
+  base_types: "[]"
   metadata: "{}"
   json_schema: "{}"
 String:
@@ -33,6 +36,7 @@ String:
   input_type: Types::String
   output_type: Types::String
   value_preserving: 'true'
+  base_types: "[String]"
   metadata: "{}"
   json_schema: '{"type" => "string"}'
 Integer:
@@ -42,6 +46,7 @@ Integer:
   input_type: Types::Integer
   output_type: Types::Integer
   value_preserving: 'true'
+  base_types: "[Integer]"
   metadata: "{}"
   json_schema: '{"type" => "integer"}'
 Boolean:
@@ -51,6 +56,7 @@ Boolean:
   input_type: "(Plumb::Types::True | Plumb::Types::False)"
   output_type: "(Plumb::Types::True | Plumb::Types::False)"
   value_preserving: 'true'
+  base_types: "[]"
   metadata: "{}"
   json_schema: '{"type" => "boolean"}'
 Email:
@@ -60,6 +66,7 @@ Email:
   input_type: Plumb::Types::String[/\A[a-zA-Z0-9.!\#$%&'*+\/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*\z/]
   output_type: Plumb::Types::String[/\A[a-zA-Z0-9.!\#$%&'*+\/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*\z/]
   value_preserving: 'true'
+  base_types: "[]"
   metadata: "{}"
   json_schema: '{"type" => "string", "format" => "email"}'
 UUID::V4:
@@ -69,6 +76,7 @@ UUID::V4:
   input_type: Plumb::Types::String[/\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/i]
   output_type: Plumb::Types::String[/\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/i]
   value_preserving: 'true'
+  base_types: "[]"
   metadata: "{}"
   json_schema: '{"type" => "string", "format" => "uuid"}'
 Integer[18..]:
@@ -78,6 +86,7 @@ Integer[18..]:
   input_type: Types::Integer[18..]
   output_type: Types::Integer[18..]
   value_preserving: 'true'
+  base_types: "[Integer]"
   metadata: "{}"
   json_schema: '{"type" => "integer", "minimum" => 18}'
 Integer[0..100][10..] (stacked, intersects):
@@ -87,6 +96,7 @@ Integer[0..100][10..] (stacked, intersects):
   input_type: Types::Integer[10..100]
   output_type: Types::Integer[10..100]
   value_preserving: 'true'
+  base_types: "[Integer]"
   metadata: "{}"
   json_schema: '{"type" => "integer", "minimum" => 10, "maximum" => 100}'
 Integer[1,2,3] (Set):
@@ -96,6 +106,7 @@ Integer[1,2,3] (Set):
   input_type: Types::Integer[Set[1, 2, 3]]
   output_type: Types::Integer[Set[1, 2, 3]]
   value_preserving: 'true'
+  base_types: "[Integer]"
   metadata: "{}"
   json_schema: '{"type" => "integer", "enum" => [1, 2, 3]}'
 String[/^a/]:
@@ -105,24 +116,27 @@ String[/^a/]:
   input_type: Types::String[/^a/]
   output_type: Types::String[/^a/]
   value_preserving: 'true'
+  base_types: "[String]"
   metadata: "{}"
   json_schema: '{"type" => "string", "pattern" => "^a"}'
 'String.where(size: 1..3)':
-  class: Plumb::And
+  class: Plumb::Intersection
   node_name: and
   inspect: "(Types::String >> (size === 1..3))"
   input_type: Types::String
   output_type: "(Types::String >> (size === 1..3))"
   value_preserving: 'true'
+  base_types: "[String]"
   metadata: "{}"
   json_schema: '{"type" => "string", "minLength" => 1, "maxLength" => 3}'
 String.where(size:) chained (merges):
-  class: Plumb::And
+  class: Plumb::Intersection
   node_name: and
   inspect: "(Types::String >> (size === 10..40))"
   input_type: Types::String
   output_type: "(Types::String >> (size === 10..40))"
   value_preserving: 'true'
+  base_types: "[String]"
   metadata: "{}"
   json_schema: '{"type" => "string", "minLength" => 10, "maxLength" => 40}'
 String.check:
@@ -132,6 +146,7 @@ String.check:
   input_type: Types::String[#<Proc:0xADDR ./spec/invariants_spec.rb:141>]
   output_type: Types::String[#<Proc:0xADDR ./spec/invariants_spec.rb:141>]
   value_preserving: 'true'
+  base_types: "[String]"
   metadata: "{}"
   json_schema: '{"type" => "string"}'
 Any.value(:sym):
@@ -141,6 +156,7 @@ Any.value(:sym):
   input_type: Plumb::Types::Any
   output_type: ":sym"
   value_preserving: 'true'
+  base_types: "[]"
   metadata: "{}"
   json_schema: "!raises RuntimeError"
 String.transform(Integer, :to_i):
@@ -150,6 +166,7 @@ String.transform(Integer, :to_i):
   input_type: Types::String
   output_type: Integer
   value_preserving: 'false'
+  base_types: "[Integer]"
   metadata: "{}"
   json_schema: '{"type" => "string"}'
 String.transform(:to_sym) (coercion shorthand):
@@ -159,6 +176,7 @@ String.transform(:to_sym) (coercion shorthand):
   input_type: Types::String
   output_type: Symbol
   value_preserving: 'false'
+  base_types: "[Symbol]"
   metadata: "{}"
   json_schema: '{"type" => "string"}'
 Integer.build(Money):
@@ -168,6 +186,7 @@ Integer.build(Money):
   input_type: Types::Integer
   output_type: Money
   value_preserving: 'false'
+  base_types: "[Money]"
   metadata: "{}"
   json_schema: '{"type" => "integer"}'
 String.build(Date, :parse) rescued:
@@ -177,6 +196,7 @@ String.build(Date, :parse) rescued:
   input_type: Plumb::Types::Any
   output_type: Plumb::Types::Any
   value_preserving: 'false'
+  base_types: "[]"
   metadata: "{rescue: Date::Error}"
   json_schema: "{}"
 String.invoke(:downcase):
@@ -186,6 +206,7 @@ String.invoke(:downcase):
   input_type: Types::String
   output_type: Plumb::Types::Any
   value_preserving: 'false'
+  base_types: "[]"
   metadata: "{}"
   json_schema: '{"type" => "string"}'
 String.invoke([:strip, :upcase]) (chain):
@@ -195,6 +216,7 @@ String.invoke([:strip, :upcase]) (chain):
   input_type: Types::String
   output_type: Plumb::Types::Any
   value_preserving: 'false'
+  base_types: "[]"
   metadata: "{}"
   json_schema: '{"type" => "string"}'
 String.policy(:split):
@@ -204,6 +226,7 @@ String.policy(:split):
   input_type: Types::String
   output_type: "(Plumb::Types::Any >> Array[String])"
   value_preserving: 'false'
+  base_types: "[]"
   metadata: "{}"
   json_schema: '{"type" => "string"}'
 String >> transform (compose, converting):
@@ -213,6 +236,7 @@ String >> transform (compose, converting):
   input_type: Types::String
   output_type: Integer
   value_preserving: 'false'
+  base_types: "[Integer]"
   metadata: "{}"
   json_schema: '{"type" => "string"}'
 transform >> transform (fuses):
@@ -222,6 +246,7 @@ transform >> transform (fuses):
   input_type: Types::String
   output_type: Money
   value_preserving: 'false'
+  base_types: "[Money]"
   metadata: "{}"
   json_schema: '{"type" => "string"}'
 Integer[0..100] >> Integer[-10..110] (reduces):
@@ -231,6 +256,7 @@ Integer[0..100] >> Integer[-10..110] (reduces):
   input_type: Types::Integer[0..100]
   output_type: Types::Integer[0..100]
   value_preserving: 'true'
+  base_types: "[Integer]"
   metadata: "{}"
   json_schema: '{"type" => "integer", "minimum" => 0, "maximum" => 100}'
 String / String[/a/] (unchecked compose):
@@ -240,8 +266,19 @@ String / String[/a/] (unchecked compose):
   input_type: Types::String[/a/]
   output_type: Types::String[/a/]
   value_preserving: 'true'
+  base_types: "[String]"
   metadata: "{}"
   json_schema: '{"type" => "string", "pattern" => "a"}'
+transform >> where (converting left, preserving right):
+  class: Plumb::And
+  node_name: and
+  inspect: "((Types::String -> String) >> (size === 1..3))"
+  input_type: Types::String
+  output_type: "(String >> (size === 1..3))"
+  value_preserving: 'false'
+  base_types: "[String]"
+  metadata: "{}"
+  json_schema: '{"type" => "string", "minLength" => 1, "maxLength" => 3}'
 String | Integer (disjoint union):
   class: Plumb::Or
   node_name: or
@@ -249,6 +286,7 @@ String | Integer (disjoint union):
   input_type: "(Types::String | Types::Integer)"
   output_type: "(Types::String | Types::Integer)"
   value_preserving: 'true'
+  base_types: "[String, Integer]"
   metadata: "{}"
   json_schema: '{"anyOf" => [{"type" => "string"}, {"type" => "integer"}]}'
 Integer | Numeric (absorbs to Numeric):
@@ -258,6 +296,7 @@ Integer | Numeric (absorbs to Numeric):
   input_type: Types::Numeric
   output_type: Types::Numeric
   value_preserving: 'true'
+  base_types: "[Numeric]"
   metadata: "{}"
   json_schema: '{"type" => "number"}'
 Integer | String.transform (coercion choice):
@@ -267,6 +306,7 @@ Integer | String.transform (coercion choice):
   input_type: "(Types::Integer | Types::String)"
   output_type: "(Types::Integer | Integer)"
   value_preserving: 'false'
+  base_types: "[Integer, Integer]"
   metadata: "{}"
   json_schema: '{"anyOf" => [{"type" => "integer"}, {"type" => "string"}]}'
 String[/a/] | String[/b/] (factored union):
@@ -276,6 +316,7 @@ String[/a/] | String[/b/] (factored union):
   input_type: Types::String
   output_type: "(Types::String >> (Constraint(/a/) | Constraint(/b/)))"
   value_preserving: 'true'
+  base_types: "[]"
   metadata: "{}"
   json_schema: '{"type" => "string", "anyOf" => [{"pattern" => "a", "type" => "string"},
     {"pattern" => "b", "type" => "string"}]}'
@@ -286,6 +327,7 @@ Lax::Integer:
   input_type: Plumb::Types::Lax::Numeric
   output_type: Integer
   value_preserving: 'false'
+  base_types: "[Integer]"
   metadata: "{}"
   json_schema: '{"anyOf" => [{"type" => "number"}, {"type" => "string", "pattern"
     => "^\\d{1,3}(?:,?\\d{3})*(?:\\.\\d+)?$"}], "type" => "integer"}'
@@ -296,6 +338,7 @@ Lax::String:
   input_type: "((Plumb::Types::String | Plumb::Types::Decimal) | Plumb::Types::Numeric)"
   output_type: "((Plumb::Types::String | String) | String)"
   value_preserving: 'false'
+  base_types: "[String, String, String]"
   metadata: "{}"
   json_schema: '{"anyOf" => [{"type" => "string"}, {"type" => "number"}]}'
 Lax::Decimal:
@@ -305,6 +348,7 @@ Lax::Decimal:
   input_type: "(Plumb::Types::Decimal | ((Plumb::Types::Numeric -> String) | Plumb::Types::Lax::CoercibleNumberString))"
   output_type: "(Plumb::Types::Decimal | BigDecimal)"
   value_preserving: 'false'
+  base_types: "[BigDecimal, BigDecimal]"
   metadata: "{}"
   json_schema: '{"anyOf" => [{"type" => "number"}, {"anyOf" => [{"type" => "number"},
     {"type" => "string", "pattern" => "^\\d{1,3}(?:,?\\d{3})*(?:\\.\\d+)?$"}], "type"
@@ -316,6 +360,7 @@ Integer[2..] & Integer[0..100] (narrows):
   input_type: Types::Integer[2..100]
   output_type: Types::Integer[2..100]
   value_preserving: 'true'
+  base_types: "[Integer]"
   metadata: "{}"
   json_schema: '{"type" => "integer", "minimum" => 2, "maximum" => 100}'
 Integer[2..10] & Integer[11..100] (empty -> Never):
@@ -325,6 +370,7 @@ Integer[2..10] & Integer[11..100] (empty -> Never):
   input_type: Plumb::Types::Never
   output_type: Plumb::Types::Never
   value_preserving: 'true'
+  base_types: "[]"
   metadata: "{}"
   json_schema: '{"not" => {}}'
 String & Integer (disjoint -> Never):
@@ -334,15 +380,17 @@ String & Integer (disjoint -> Never):
   input_type: Plumb::Types::Never
   output_type: Plumb::Types::Never
   value_preserving: 'true'
+  base_types: "[]"
   metadata: "{}"
   json_schema: '{"not" => {}}'
 'String.where(size: 1..3) & String[/a/] (runtime And)':
-  class: Plumb::And
+  class: Plumb::Intersection
   node_name: and
   inspect: "((Types::String >> (size === 1..3)) >> Types::String[/a/])"
   input_type: Types::String
   output_type: "((Types::String >> (size === 1..3)) >> Types::String[/a/])"
   value_preserving: 'true'
+  base_types: "[String]"
   metadata: "{}"
   json_schema: '{"type" => "string", "minLength" => 1, "maxLength" => 3, "pattern"
     => "a"}'
@@ -353,6 +401,7 @@ Array[Integer] & Array[Integer[0..10]] (covariant meet):
   input_type: Array[Types::Integer[0..10]]
   output_type: Array[Types::Integer[0..10]]
   value_preserving: 'true'
+  base_types: "[Array]"
   metadata: "{}"
   json_schema: '{"type" => "array", "items" => {"type" => "integer", "minimum" =>
     0, "maximum" => 10}}'
@@ -363,6 +412,7 @@ Array[Integer]:
   input_type: Array[Types::Integer]
   output_type: Array[Types::Integer]
   value_preserving: 'true'
+  base_types: "[Array]"
   metadata: "{}"
   json_schema: '{"type" => "array", "items" => {"type" => "integer"}}'
 Array[Lax::Integer] (coercing elements):
@@ -372,17 +422,19 @@ Array[Lax::Integer] (coercing elements):
   input_type: Array[Types::Lax::Integer]
   output_type: Array[Integer]
   value_preserving: 'false'
+  base_types: "[Array]"
   metadata: "{}"
   json_schema: '{"type" => "array", "items" => {"anyOf" => [{"type" => "number"},
     {"type" => "string", "pattern" => "^\\d{1,3}(?:,?\\d{3})*(?:\\.\\d+)?$"}], "type"
     => "integer"}}'
 'Array.where(size: 1..2)':
-  class: Plumb::And
+  class: Plumb::Intersection
   node_name: and
   inspect: "(Types::Array >> (size === 1..2))"
   input_type: Types::Array
   output_type: "(Types::Array >> (size === 1..2))"
   value_preserving: 'true'
+  base_types: "[Array]"
   metadata: "{}"
   json_schema: '{"type" => "array", "items" => {}, "minItems" => 1, "maxItems" =>
     2}'
@@ -393,6 +445,7 @@ Tuple[String, Integer]:
   input_type: Tuple[Types::String, Types::Integer]
   output_type: Tuple[Types::String, Types::Integer]
   value_preserving: 'true'
+  base_types: "[Array]"
   metadata: "{}"
   json_schema: '{"type" => "array", "prefixItems" => [{"type" => "string"}, {"type"
     => "integer"}]}'
@@ -403,6 +456,7 @@ Hash[Symbol, Integer] (hash map):
   input_type: HashMap[Types::Symbol, Types::Integer]
   output_type: HashMap[Types::Symbol, Types::Integer]
   value_preserving: 'true'
+  base_types: "[Hash]"
   metadata: "{}"
   json_schema: '{"type" => "object", "patternProperties" => {".*" => {"type" => "integer"}}}'
 Hash record:
@@ -412,6 +466,7 @@ Hash record:
   input_type: 'Hash[name: Types::String, age: Types::Integer]'
   output_type: 'Hash[name: Types::String, age: Types::Integer]'
   value_preserving: 'false'
+  base_types: "[Hash]"
   metadata: "{}"
   json_schema: '{"type" => "object", "properties" => {"name" => {"type" => "string"},
     "age" => {"type" => "integer"}}, "required" => ["name", "age"]}'
@@ -424,6 +479,7 @@ Hash record with optional + default:
     >> "user") | Types::String)]'
   output_type: 'Hash[name: Types::String, age?: Types::Integer, role: ("user" | Types::String)]'
   value_preserving: 'false'
+  base_types: "[Hash]"
   metadata: "{}"
   json_schema: '{"type" => "object", "properties" => {"name" => {"type" => "string"},
     "age" => {"type" => "integer"}, "role" => {"type" => "string", "default" => "user"}},
@@ -435,6 +491,7 @@ Hash record with catch-all:
   input_type: 'Hash[name: Types::String, _: Types::Integer]'
   output_type: 'Hash[name: Types::String, _: Types::Integer]'
   value_preserving: 'false'
+  base_types: "[Hash]"
   metadata: "{}"
   json_schema: '{"type" => "object", "properties" => {"name" => {"type" => "string"}},
     "required" => ["name"], "additionalProperties" => {"type" => "integer"}}'
@@ -445,6 +502,7 @@ Hash record coercing field:
   input_type: 'Hash[age: Types::Lax::Integer]'
   output_type: 'Hash[age: Integer]'
   value_preserving: 'false'
+  base_types: "[Hash]"
   metadata: "{}"
   json_schema: '{"type" => "object", "properties" => {"age" => {"anyOf" => [{"type"
     => "number"}, {"type" => "string", "pattern" => "^\\d{1,3}(?:,?\\d{3})*(?:\\.\\d+)?$"}],
@@ -456,6 +514,7 @@ SymbolizedHash:
   input_type: Types::SymbolizedHash
   output_type: HashMap[(Plumb::Types::Symbol | Symbol), ( | Plumb::Types::Any)]
   value_preserving: 'false'
+  base_types: "[Hash]"
   metadata: "{}"
   json_schema: '{"type" => "object", "patternProperties" => {".*" => {"$ref" => "#/$defs/Deferred1"}},
     "$defs" => {"Deferred1" => {"type" => "object", "patternProperties" => {".*" =>
@@ -467,6 +526,7 @@ LinkedList (recursive):
   input_type: 'Hash[value: Types::Integer, next: ( | Types::Nil)]'
   output_type: 'Hash[value: Types::Integer, next: ( | Types::Nil)]'
   value_preserving: 'false'
+  base_types: "[Hash]"
   metadata: "{}"
   json_schema: '{"type" => "object", "properties" => {"value" => {"type" => "integer"},
     "next" => {"anyOf" => [{"$ref" => "#/$defs/Deferred1"}, {"type" => "null"}]}},
@@ -480,6 +540,7 @@ String.not:
   input_type: Not(Types::String)
   output_type: Not(Types::String)
   value_preserving: 'false'
+  base_types: "[String]"
   metadata: "{}"
   json_schema: '{"not" => {"type" => "string"}}'
 Integer.static(10):
@@ -489,6 +550,7 @@ Integer.static(10):
   input_type: Plumb::Types::Any
   output_type: '10'
   value_preserving: 'false'
+  base_types: "[Integer]"
   metadata: "{}"
   json_schema: '{"const" => 10, "default" => 10, "type" => "integer"}'
 Interface[:upcase]:
@@ -498,6 +560,7 @@ Interface[:upcase]:
   input_type: Interface[upcase]
   output_type: Interface[upcase]
   value_preserving: 'false'
+  base_types: "[]"
   metadata: "{}"
   json_schema: "{}"
 Range[Integer]:
@@ -507,6 +570,7 @@ Range[Integer]:
   input_type: Range[Types::Integer]
   output_type: Range[Types::Integer]
   value_preserving: 'true'
+  base_types: "[Integer]"
   metadata: "{}"
   json_schema: '{"type" => "integer"}'
 String.present:
@@ -516,6 +580,7 @@ String.present:
   input_type: Types::String[#<Proc:0xADDR ./lib/plumb/types.rb:61>]
   output_type: Types::String[#<Proc:0xADDR ./lib/plumb/types.rb:61>]
   value_preserving: 'false'
+  base_types: "[String]"
   metadata: "{}"
   json_schema: '{"type" => "string"}'
 Integer.nullable:
@@ -525,6 +590,7 @@ Integer.nullable:
   input_type: "(Plumb::Types::Nil | Types::Integer)"
   output_type: "(Plumb::Types::Nil | Types::Integer)"
   value_preserving: 'false'
+  base_types: "[NilClass, Integer]"
   metadata: "{}"
   json_schema: '{"anyOf" => [{"type" => "null"}, {"type" => "integer"}]}'
 String.default("x"):
@@ -534,6 +600,7 @@ String.default("x"):
   input_type: "(Plumb::Types::Any | Types::String)"
   output_type: ("x" | Types::String)
   value_preserving: 'false'
+  base_types: "[String, String]"
   metadata: '{default: "x"}'
   json_schema: '{"type" => "string", "default" => "x"}'
 Integer.options([1, 2]):
@@ -543,6 +610,7 @@ Integer.options([1, 2]):
   input_type: Types::Integer[#<Proc:0xADDR ./lib/plumb/types.rb:31>]
   output_type: Types::Integer[#<Proc:0xADDR ./lib/plumb/types.rb:31>]
   value_preserving: 'false'
+  base_types: "[Integer]"
   metadata: "{options: [1, 2]}"
   json_schema: '{"type" => "integer", "enum" => [1, 2]}'
 String.metadata(label:):
@@ -552,6 +620,7 @@ String.metadata(label:):
   input_type: Types::String
   output_type: Types::String
   value_preserving: 'false'
+  base_types: "[String]"
   metadata: '{label: "Name"}'
   json_schema: '{"label" => "Name", "type" => "string"}'
 'Any.policy(respond_to: :upcase)':
@@ -561,6 +630,7 @@ String.metadata(label:):
   input_type: Types::Any[#<Proc:0xADDR ./lib/plumb/types.rb:85>]
   output_type: Types::Any[#<Proc:0xADDR ./lib/plumb/types.rb:85>]
   value_preserving: 'false'
+  base_types: "[]"
   metadata: "{respond_to: :upcase}"
   json_schema: "{}"
 Data[name:, age:]:
@@ -570,6 +640,7 @@ Data[name:, age:]:
   input_type: Person
   output_type: Person
   value_preserving: 'false'
+  base_types: "[Person]"
   metadata: "{}"
   json_schema: '{"type" => "object", "properties" => {"name" => {"type" => "string"},
     "age" => {"type" => "integer"}}, "required" => ["name", "age"]}'
@@ -580,6 +651,7 @@ Implementation instance (Multiplier):
   input_type: Types::Integer
   output_type: Types::Integer
   value_preserving: 'false'
+  base_types: "[Integer]"
   metadata: "{}"
   json_schema: '{"type" => "integer"}'
 Implementation class (Downcaser):
@@ -589,6 +661,7 @@ Implementation class (Downcaser):
   input_type: Types::String
   output_type: Types::String
   value_preserving: 'false'
+  base_types: "[Downcaser]"
   metadata: "{}"
   json_schema: '{"type" => "string"}'
 Codec::Forms >> Person (decode):
@@ -600,6 +673,7 @@ Codec::Forms >> Person (decode):
     Integer)]'
   output_type: Person
   value_preserving: 'false'
+  base_types: "[Person]"
   metadata: "{}"
   json_schema: '{"type" => "object", "properties" => {"name" => {"type" => "string"},
     "age" => {"type" => "string", "pattern" => "\\A-?\\d+\\z"}}, "required" => ["name",
@@ -611,6 +685,7 @@ Person -> form (encode):
   input_type: Person
   output_type: 'Hash[name: Types::String, age: (Integer -> Plumb::Types::String[/\A-?\d+\z/])]'
   value_preserving: 'false'
+  base_types: "[Hash]"
   metadata: "{}"
   json_schema: '{"type" => "object", "properties" => {"name" => {"type" => "string"},
     "age" => {"type" => "integer"}}, "required" => ["name", "age"]}'
@@ -621,6 +696,7 @@ Pipeline:
   input_type: Types::Integer[0..10]
   output_type: Types::Integer[0..10]
   value_preserving: 'false'
+  base_types: "[Integer]"
   metadata: "{}"
   json_schema: '{"type" => "integer"}'
 Function[String => Integer]:
@@ -630,6 +706,7 @@ Function[String => Integer]:
   input_type: String
   output_type: Integer
   value_preserving: 'false'
+  base_types: "[Integer]"
   metadata: "{}"
   json_schema: '{"type" => "string"}'
 Stream[Integer]:
@@ -639,6 +716,7 @@ Stream[Integer]:
   input_type: Interface[each]
   output_type: Stream[Types::Integer]
   value_preserving: 'false'
+  base_types: "[Enumerator]"
   metadata: "{}"
   json_schema: '{"type" => "array", "items" => {"type" => "integer"}}'
 Integer.generate:
@@ -648,5 +726,6 @@ Integer.generate:
   input_type: Plumb::Types::Any
   output_type: "(Plumb::Types::Any >> Types::Integer)"
   value_preserving: 'false'
+  base_types: "[]"
   metadata: "{}"
   json_schema: '{"type" => "integer"}'

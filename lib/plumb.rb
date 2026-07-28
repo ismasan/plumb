@@ -74,13 +74,16 @@ module Plumb
     when :function
       resolve_base_types(node.output_type)
     when :and
-      # Mirrors And#output_type: a value-preserving right narrows what the left
-      # produces (so the base types are the LEFT's — `String.where(size: 1..3)`
-      # is still a String), a converting right replaces it. Resolving
-      # `#output_type` directly would recurse forever: for a refinement And that
-      # IS the And.
-      left, right = node.children
-      resolve_base_types(Plumb::Subtyping.value_preserving?(right) ? left : right)
+      # Both Conjunction nodes report :and in this phase, and they bottom out
+      # differently:
+      #   - an Intersection IS its own #output_type, so following that would
+      #     recurse forever. It narrows a single value, so its base types are its
+      #     LEFT's (`String.where(size: 1..3)` is still a String).
+      #   - a composition resolves through what it PRODUCES. And#output_type
+      #     already encodes whether the right side narrowed the left's output or
+      #     replaced it, so deferring to it keeps that rule in one place — no
+      #     second #value_preserving? test here.
+      node.is_a?(Intersection) ? resolve_base_types(node.children[0]) : resolve_base_types(node.output_type)
     when :constraint
       # A refinement matcher carries its base type — resolve that (eg.
       # `Integer[1..10]` => [Integer], `User.check {}` => the User's base types).
@@ -114,7 +117,9 @@ require 'plumb/type_registry'
 require 'plumb/composable'
 require 'plumb/any_class'
 require 'plumb/never_class'
+require 'plumb/conjunction'
 require 'plumb/and'
+require 'plumb/intersection'
 require 'plumb/function'
 require 'plumb/encoder'
 require 'plumb/implementation'
