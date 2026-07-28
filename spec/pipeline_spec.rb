@@ -238,6 +238,28 @@ RSpec.describe Plumb::Pipeline do
       end
     end
 
+    # A step's input type is what the pipeline currently produces: the previous step's
+    # output, or the pipeline's initial type when it is the first step.
+    it 'derives each block step\'s input type from the step before it' do
+      pipeline = Plumb::Pipeline.new(type: Types::String) do |pl|
+        pl.step(::Integer) { |r| r.valid(r.value.length) }
+        pl.step(::Date) { |r| r.valid(::Date.new(2024, 1, r.value)) }
+      end
+
+      steps = []
+      collect = ->(t) { t.is_a?(Plumb::Conjunction) ? t.children.each { |c| collect.call(c) } : steps << t }
+      collect.call(pipeline.children.first)
+      functions = steps.grep(Plumb::Function)
+
+      expect(functions.map { |f| [f.input_type, f.output_type] }).to eq(
+        [
+          [Types::String, Plumb::Composable.wrap(::Integer)],  # initial type -> Integer
+          [Plumb::Composable.wrap(::Integer), Plumb::Composable.wrap(::Date)] # previous output -> Date
+        ]
+      )
+      expect(pipeline.parse('abcd')).to eq(::Date.new(2024, 1, 4))
+    end
+
     it 'fuses consecutive block steps into a single Function' do
       inner = build(3).children.first
 

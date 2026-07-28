@@ -82,11 +82,12 @@ module Plumb
     # `Plumb::TypeError` at build time if the step can't accept what the pipeline
     # currently produces. See #step.
     #
-    # NOTE the `output_type` + block form declares only what it PRODUCES — the block
-    # takes a Result and accepts anything — so there is no declared input for the
-    # strict check to compare against, and `#step!` behaves as `#step` there.
-    # `pl.step!(::Integer) { … }` after a String pipeline is legitimate: the block is
-    # what does the converting.
+    # NOTE the `output_type` + block form cannot fail this check: the step's input type
+    # is DERIVED from what the pipeline already produces (see #add_step), so the two
+    # match by construction and `#step!` behaves as `#step` there. That is not a gap —
+    # `pl.step!(::Integer) { … }` after a String pipeline is legitimate, because the
+    # block is what does the converting; only the value it RETURNS is checked, against
+    # the declared output type.
     def step!(callable = nil, &block)
       add_step(callable, strict: true, &block)
     end
@@ -119,16 +120,20 @@ module Plumb
     # link, so the accumulated pipeline became the new step's input check. That runs
     # correctly, but it never reaches #>> / #/ and therefore never reaches the
     # optimiser: each block step nested inside the last, and consecutive ones could not
-    # reduce. Chaining a step whose input is unconstrained is equivalent (same
-    # validity, value, errors and io types) and does reach it — from the default
-    # `Types::Any` start, consecutive block steps now fuse into ONE Function via
-    # Function#fuse_with instead of nesting.
+    # reduce.
+    #
+    # It is built as an ordinary step and chained like every other one instead. Its
+    # declared input is what the pipeline currently PRODUCES — the previous step's
+    # output type, or the pipeline's initial type when it is the first step — so the
+    # step reports honestly what it accepts, and the boundary between two of them is
+    # provable by construction, which is what lets Function#fuse_with collapse
+    # consecutive block steps into a single Function rather than nesting them.
     #
     # The block form is deliberately not passed through #prepare_step or the `around`
     # wrappers, which is how it has always behaved.
     def add_step(callable, strict:, &block)
       if !callable.nil? && block
-        callable = Function.new(Types::Any, Composable.wrap(callable), block)
+        callable = Function.new(Plumb::Subtyping.resolved_output(@type), Composable.wrap(callable), block)
       else
         callable ||= block
         unless is_a_step?(callable)
