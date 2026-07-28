@@ -23,23 +23,23 @@ require 'yaml'
 #     execution-order probes are the oracle. A failure in them is a regression,
 #     not a spec that needs updating.
 #
-#   - The AST SHAPE snapshot (spec/fixtures/ast_shapes.yml) is different: node
-#     classes are expected to change. When a shape changes, review the diff and
-#     regenerate the fixture on purpose:
+#   - The SUBTYPE RELATION snapshot (spec/fixtures/subtype_relation.yml) is
+#     different: it records what `<=` currently answers over a small grid, so a
+#     change to the relation shows up as one reviewable diff rather than as a
+#     scattering of individual failures. When it moves, read the diff and confirm
+#     every line is intended, then regenerate:
 #
-#         REGENERATE_AST_SHAPES=1 bundle exec rspec spec/invariants_spec.rb
+#         REGENERATE_SNAPSHOTS=1 bundle exec rspec spec/invariants_spec.rb
 #
-#     then read `git diff spec/fixtures/ast_shapes.yml` and confirm every line is
-#     an intended change. Regenerating to make a red build green is how a silent
-#     behaviour change gets through.
+#     Regenerating to make a red build green is how a silent behaviour change gets
+#     through. The LAWS in that section (reflexivity, transitivity, top, bottom, and
+#     that no type sits under two disjoint types) are not snapshots and must never be
+#     regenerated away.
 #
-#     That regenerability also makes it a WEAK ORACLE — it records what the code
-#     does, not what it should do — so it is scaffolding, not a permanent asset. A
-#     mutation sweep found it catches nothing that named specs elsewhere do not
-#     (the last gap, Intersection#value_preserving?, is pinned by
-#     spec/node_contracts_spec.rb). Keep it while the internals are churning,
-#     because forcing a look at the AST diff is useful then; delete it — fixture
-#     included — once they settle. Re-run the sweep before doing so.
+#     A companion AST-shape snapshot lived here while the node classes were being
+#     split. It was scaffolding, and a mutation sweep over 13 mutations found it
+#     caught nothing the named specs and the sections above do not — so it is gone,
+#     fixture included.
 RSpec.describe 'internal representation invariants' do
   # A single corpus entry: a built type plus the inputs it is exercised with.
   #
@@ -514,86 +514,7 @@ RSpec.describe 'internal representation invariants' do
   end
 
   # ---------------------------------------------------------------------------
-  # 3. AST shape snapshot.  Regenerate DELIBERATELY (see the header).
-  # ---------------------------------------------------------------------------
-  describe 'AST shape' do
-    FIXTURE = ::File.expand_path('fixtures/ast_shapes.yml', __dir__)
-
-    # Anything that may legitimately raise is captured as a string rather than
-    # blowing up the snapshot — a change from a value to a raise (or back) is
-    # itself a shape change worth seeing in the diff.
-    #
-    # Normalized before storing: a type built around a block (`#check`, a policy)
-    # inspects its Proc, and a struct instance inspects its object_id — both embed
-    # a per-process address that would make the snapshot differ on every run.
-    #
-    # The LINE NUMBER in `#<Proc:0x… ./spec/invariants_spec.rb:141>` goes too. It
-    # looks like useful "which block" information, but it is the line number of a
-    # block in THIS file — so adding a comment above the corpus rewrote the
-    # fixture. The corpus label already identifies the entry; the source file is
-    # kept, the line is not.
-    def self.capture(&block)
-      normalize(block.call.to_s)
-    rescue ::StandardError, ::NotImplementedError => e
-      "!raises #{e.class}"
-    end
-
-    def self.normalize(str)
-      str
-        .gsub(/0x[0-9a-f]+/, '0xADDR')
-        .gsub(/#<([A-Za-z0-9_:]+):\d+ /, '#<\1:ID ')
-        .gsub(::File.expand_path('..', __dir__), '.')
-        .gsub(%r{(\./[\w/.]+\.rb):\d+}, '\1')
-    end
-
-    def self.shape_for(type)
-      {
-        'class' => type.class.name,
-        'node_name' => capture { type.node_name },
-        'inspect' => capture { type.inspect },
-        'input_type' => capture { type.input_type.inspect },
-        'output_type' => capture { type.output_type.inspect },
-        'value_preserving' => capture { Plumb::Subtyping.value_preserving?(type) },
-        # The Ruby classes a node resolves to. Load-bearing for policy lookup and
-        # for #transform's build-time checks, and resolved by walking the node
-        # tree — so it is exactly what a node-class change can silently break.
-        'base_types' => capture { Plumb.resolve_base_types(type).inspect },
-        'metadata' => capture { type.metadata.inspect },
-        'json_schema' => capture { type.to_json_schema.inspect }
-      }
-    end
-
-    ACTUAL = CORPUS.to_h { |entry| [entry.label, shape_for(entry.type)] }.freeze
-
-    if ENV['REGENERATE_AST_SHAPES']
-      it 'regenerates the fixture' do
-        ::File.write(FIXTURE, ACTUAL.to_yaml)
-        warn "\nREGENERATED #{FIXTURE} — review `git diff` before committing.\n"
-      end
-    else
-      expected = ::File.exist?(FIXTURE) ? ::YAML.unsafe_load_file(FIXTURE) : {}
-
-      it 'has a fixture to compare against' do
-        expect(expected).not_to be_empty,
-                                'run REGENERATE_AST_SHAPES=1 bundle exec rspec spec/invariants_spec.rb'
-      end
-
-      it 'covers exactly the corpus' do
-        expect(expected.keys.sort).to eq(ACTUAL.keys.sort)
-      end
-
-      ACTUAL.each do |label, shape|
-        it label do
-          skip 'not in fixture — regenerate' unless expected.key?(label)
-
-          expect(shape).to eq(expected[label])
-        end
-      end
-    end
-  end
-
-  # ---------------------------------------------------------------------------
-  # 4. Subtyping relation snapshot.
+  # 3. Subtyping relation snapshot.
   #
   # Pin the whole relation over a small grid, so a change to it is enumerable in
   # one diff rather than discovered one spec at a time.
@@ -625,7 +546,7 @@ RSpec.describe 'internal representation invariants' do
       acc[a] = GRID.keys.select { |b| Plumb::Subtyping.subtype?(GRID[a], GRID[b]) }
     end.freeze
 
-    if ENV['REGENERATE_AST_SHAPES']
+    if ENV['REGENERATE_SNAPSHOTS']
       it 'regenerates the fixture' do
         ::File.write(RELATION_FIXTURE, ACTUAL_RELATION.to_yaml)
       end
