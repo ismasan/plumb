@@ -93,8 +93,11 @@ module Plumb
       return subtype?(a, bi) unless bi.equal?(b)
 
       # Unions
-      return a.children.all? { |m| subtype?(m, b) } if a.is_a?(Or) # (A|B) <= C
-      return b.children.any? { |m| subtype?(a, m) } if b.is_a?(Or) # A <= (B|C)
+      # Joins. The rule is the same for a choice and a union: a branch that
+      # converts was already projected onto its output by #subtype_identity, so
+      # by here every branch is a type either way.
+      return a.children.all? { |m| subtype?(m, b) } if a.is_a?(Disjunction) # (A|B) <= C
+      return b.children.any? { |m| subtype?(a, m) } if b.is_a?(Disjunction) # A <= (B|C)
 
       # Meets: the longer the Intersection chain, the narrower. This rule applies
       # ONLY to a genuine intersection, where both sides describe the same value.
@@ -429,7 +432,7 @@ module Plumb
     # Join-dual of `reduce_step`: absorption for `a | b`. If one branch's value
     # set is contained in the other's (`a <= b`), the union equals the wider
     # branch (`a ∪ b == b`), so drop the narrower — and `a | a` dedupes. Returns
-    # the surviving type, or nil to fall back to `Or.new`.
+    # the surviving type, or nil to fall back to `Disjunction.build`.
     #
     # Guarded to VALUE-PRESERVING refinements only. `subtype?` identifies a
     # Function by its OUTPUT type, so `subtype?(String->Integer, Numeric)` is
@@ -478,8 +481,8 @@ module Plumb
       end
 
       # Distribute over unions: (a1 | a2) & b == (a1 & b) | (a2 & b).
-      return intersect_union(a, b) if a.is_a?(Or)
-      return intersect_union(b, a) if b.is_a?(Or)
+      return intersect_union(a, b) if a.is_a?(Disjunction)
+      return intersect_union(b, a) if b.is_a?(Disjunction)
 
       intersect_constraints(a, b) ||
         intersect_containers(a, b) ||
@@ -600,7 +603,7 @@ module Plumb
       return nil if k.zero? # disjoint prefixes — nothing shared
       return nil if k == sa.size || k == sb.size # one is a prefix of the other (absorption's job)
 
-      inner = Or.new(rebuild(sa.drop(k)), rebuild(sb.drop(k)))
+      inner = Disjunction.build(rebuild(sa.drop(k)), rebuild(sb.drop(k)))
       Conjunction.build(rebuild(sa.take(k)), inner).as_node(:refined_union)
     end
 

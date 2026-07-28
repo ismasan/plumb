@@ -950,7 +950,7 @@ RSpec.describe Plumb::Types do
 
     specify 'a union of disjoint members is preserved' do
       type = Types::Range[Integer] | Types::Range[String]
-      expect(type).to be_a(Plumb::Or)
+      expect(type).to be_a(Plumb::Union)
     end
   end
 

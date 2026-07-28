@@ -420,7 +420,7 @@ module Plumb
 
       Plumb::Subtyping.reduce_union(self, other) ||
         Plumb::Subtyping.factor_union(self, other) ||
-        Or.new(self, other)
+        Disjunction.build(self, other)
     end
 
     # Intersection ("and"/meet) — the symmetric dual of #|. Builds the greatest

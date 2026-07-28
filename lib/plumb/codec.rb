@@ -282,7 +282,7 @@ module Plumb
         case type
         when Deferred then return visit_deferred(type, path)
         when StaticClass then return visit_static(type, path)
-        when Or then return visit_or(type, path)
+        when Disjunction then return visit_or(type, path)
         when Conjunction then return visit_and(type, path)
         when Metadata then return rebuild(type, type.type, path) { |t| Metadata.new(t, type.metadata) }
         when Policy then return rebuild(type, type.children.first, path) { |t| Policy.new(type.policy_name, type.arg, t) }
@@ -513,7 +513,7 @@ module Plumb
         left, right = type.children
         l = visit(left, path)
         r = visit(right, path)
-        l.equal?(left) && r.equal?(right) ? type : Or.new(l, r)
+        l.equal?(left) && r.equal?(right) ? type : Disjunction.build(l, r)
       end
 
       # An And chain is a data-bearing type refined by pure filters (a #where's

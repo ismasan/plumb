@@ -33,9 +33,10 @@ module Plumb
                left, right = visit_children(type)
                # type.class preserves a GuaranteedFunction across decoration.
                type.class.new(left, right, type.fn, inspect: type.inspect_label)
-             when Or
+             when Disjunction
                left, right = visit_children(type)
-               Or.new(left, right)
+               # type.class keeps Or vs Union across decoration.
+               type.class.new(left, right)
              when Not
                child = visit_children(type).first
                Not.new(child, errors: type.errors)

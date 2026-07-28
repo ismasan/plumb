@@ -244,8 +244,10 @@ RSpec.describe 'composition reduction (>>)' do
       expect(RTypes::Integer[0..10] | RTypes::Integer).to eq(RTypes::Integer)
     end
 
-    it 'keeps disjoint branches as an Or' do
-      expect(RTypes::String | RTypes::Integer).to be_a(Plumb::Or)
+    it 'keeps disjoint branches as a Union' do
+      # Not absorbed (still two branches), and a Union rather than an Or: both
+      # branches pass the value through, so the node is a plain type join.
+      expect(RTypes::String | RTypes::Integer).to be_a(Plumb::Union)
     end
 
     it 'does NOT reduce a coercion (transform) branch — the union is preserved' do
@@ -260,7 +262,7 @@ RSpec.describe 'composition reduction (>>)' do
       # A named node (Email) is subtype-equal to String, but absorbing it would
       # drop its :email identity — and its JSON-schema `format`.
       u = RTypes::Email | RTypes::String
-      expect(u).to be_a(Plumb::Or)
+      expect(u).to be_a(Plumb::Union)
       expect(u.to_json_schema(root: false)['anyOf'])
         .to include('type' => 'string', 'format' => 'email')
 
@@ -292,7 +294,7 @@ RSpec.describe 'composition reduction (>>)' do
       expect(u.type).to be_a(Plumb::Intersection)
       base, suffixes = u.type.children
       expect(base).to eq(RTypes::String)               # base
-      expect(suffixes).to be_a(Plumb::Or)              # disjunction of bare suffixes
+      expect(suffixes).to be_a(Plumb::Union)           # join of bare (preserving) suffixes
       # the io types report what the factored union consumes and produces — a
       # String in, a String narrowed by the disjunction out — not its two sides.
       expect(u.type.input_type).to eq(RTypes::String)
@@ -322,8 +324,8 @@ RSpec.describe 'composition reduction (>>)' do
       expect(u.type.input_type).to eq(RTypes::String[/a/])
     end
 
-    it 'keeps disjoint roots as a plain Or' do
-      expect(RTypes::String[/d/] | RTypes::Integer[1..3]).to be_a(Plumb::Or)
+    it 'keeps disjoint roots as a plain Union' do
+      expect(RTypes::String[/d/] | RTypes::Integer[1..3]).to be_a(Plumb::Union)
     end
 
     it 'lets absorption win when one branch subsumes the other' do
@@ -349,7 +351,11 @@ RSpec.describe 'composition reduction (>>)' do
 
         expect(u.node_name).to eq(:refined_union)
         expect(u.type.input_type).to eq(RTypes::String)  # A pulled out (checked once)
-        expect(u.type.output_type).to be_a(Plumb::Or)    # (B | C)
+        # The node holding the suffixes is an Or — they transform. Its OUTPUT
+        # projection is the join of what they produce, which converts nothing,
+        # so that is a Union.
+        expect(u.type.children[1]).to be_a(Plumb::Or)
+        expect(u.type.output_type).to be_a(Plumb::Union) # (B | C)
       end
 
       it 'is runtime-equivalent to the un-factored union (suffixes still run)' do
