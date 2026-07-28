@@ -1,0 +1,652 @@
+---
+Any:
+  class: Plumb::AnyClass
+  node_name: any
+  inspect: Types::Any
+  input_type: Types::Any
+  output_type: Types::Any
+  value_preserving: 'true'
+  metadata: "{}"
+  json_schema: "{}"
+Never:
+  class: Plumb::NeverClass
+  node_name: never
+  inspect: Types::Never
+  input_type: Types::Never
+  output_type: Types::Never
+  value_preserving: 'true'
+  metadata: "{}"
+  json_schema: '{"not" => {}}'
+Undefined:
+  class: Plumb::ValueClass
+  node_name: value
+  inspect: Types::Undefined
+  input_type: Plumb::Types::Any
+  output_type: Types::Undefined
+  value_preserving: 'true'
+  metadata: "{}"
+  json_schema: "{}"
+String:
+  class: Plumb::Constraint
+  node_name: constraint
+  inspect: Types::String
+  input_type: Types::String
+  output_type: Types::String
+  value_preserving: 'true'
+  metadata: "{}"
+  json_schema: '{"type" => "string"}'
+Integer:
+  class: Plumb::Constraint
+  node_name: constraint
+  inspect: Types::Integer
+  input_type: Types::Integer
+  output_type: Types::Integer
+  value_preserving: 'true'
+  metadata: "{}"
+  json_schema: '{"type" => "integer"}'
+Boolean:
+  class: Plumb::Composable::Node
+  node_name: boolean
+  inspect: Types::Boolean
+  input_type: "(Plumb::Types::True | Plumb::Types::False)"
+  output_type: "(Plumb::Types::True | Plumb::Types::False)"
+  value_preserving: 'true'
+  metadata: "{}"
+  json_schema: '{"type" => "boolean"}'
+Email:
+  class: Plumb::Composable::Node
+  node_name: email
+  inspect: Types::Email
+  input_type: Plumb::Types::String[/\A[a-zA-Z0-9.!\#$%&'*+\/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*\z/]
+  output_type: Plumb::Types::String[/\A[a-zA-Z0-9.!\#$%&'*+\/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*\z/]
+  value_preserving: 'true'
+  metadata: "{}"
+  json_schema: '{"type" => "string", "format" => "email"}'
+UUID::V4:
+  class: Plumb::Composable::Node
+  node_name: uuid
+  inspect: Types::UUID::V4
+  input_type: Plumb::Types::String[/\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/i]
+  output_type: Plumb::Types::String[/\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/i]
+  value_preserving: 'true'
+  metadata: "{}"
+  json_schema: '{"type" => "string", "format" => "uuid"}'
+Integer[18..]:
+  class: Plumb::Constraint
+  node_name: constraint
+  inspect: Types::Integer[18..]
+  input_type: Types::Integer[18..]
+  output_type: Types::Integer[18..]
+  value_preserving: 'true'
+  metadata: "{}"
+  json_schema: '{"type" => "integer", "minimum" => 18}'
+Integer[0..100][10..] (stacked, intersects):
+  class: Plumb::Constraint
+  node_name: constraint
+  inspect: Types::Integer[10..100]
+  input_type: Types::Integer[10..100]
+  output_type: Types::Integer[10..100]
+  value_preserving: 'true'
+  metadata: "{}"
+  json_schema: '{"type" => "integer", "minimum" => 10, "maximum" => 100}'
+Integer[1,2,3] (Set):
+  class: Plumb::Constraint
+  node_name: constraint
+  inspect: Types::Integer[Set[1, 2, 3]]
+  input_type: Types::Integer[Set[1, 2, 3]]
+  output_type: Types::Integer[Set[1, 2, 3]]
+  value_preserving: 'true'
+  metadata: "{}"
+  json_schema: '{"type" => "integer", "enum" => [1, 2, 3]}'
+String[/^a/]:
+  class: Plumb::Constraint
+  node_name: constraint
+  inspect: Types::String[/^a/]
+  input_type: Types::String[/^a/]
+  output_type: Types::String[/^a/]
+  value_preserving: 'true'
+  metadata: "{}"
+  json_schema: '{"type" => "string", "pattern" => "^a"}'
+'String.where(size: 1..3)':
+  class: Plumb::And
+  node_name: and
+  inspect: "(Types::String >> (size === 1..3))"
+  input_type: Types::String
+  output_type: "(Types::String >> (size === 1..3))"
+  value_preserving: 'true'
+  metadata: "{}"
+  json_schema: '{"type" => "string", "minLength" => 1, "maxLength" => 3}'
+String.where(size:) chained (merges):
+  class: Plumb::And
+  node_name: and
+  inspect: "(Types::String >> (size === 10..40))"
+  input_type: Types::String
+  output_type: "(Types::String >> (size === 10..40))"
+  value_preserving: 'true'
+  metadata: "{}"
+  json_schema: '{"type" => "string", "minLength" => 10, "maxLength" => 40}'
+String.check:
+  class: Plumb::Constraint
+  node_name: constraint
+  inspect: Types::String[#<Proc:0xADDR ./spec/invariants_spec.rb:141>]
+  input_type: Types::String[#<Proc:0xADDR ./spec/invariants_spec.rb:141>]
+  output_type: Types::String[#<Proc:0xADDR ./spec/invariants_spec.rb:141>]
+  value_preserving: 'true'
+  metadata: "{}"
+  json_schema: '{"type" => "string"}'
+Any.value(:sym):
+  class: Plumb::ValueClass
+  node_name: value
+  inspect: ":sym"
+  input_type: Plumb::Types::Any
+  output_type: ":sym"
+  value_preserving: 'true'
+  metadata: "{}"
+  json_schema: "!raises RuntimeError"
+String.transform(Integer, :to_i):
+  class: Plumb::Function
+  node_name: function
+  inspect: "(Types::String -> Integer)"
+  input_type: Types::String
+  output_type: Integer
+  value_preserving: 'false'
+  metadata: "{}"
+  json_schema: '{"type" => "string"}'
+String.transform(:to_sym) (coercion shorthand):
+  class: Plumb::GuaranteedFunction
+  node_name: function
+  inspect: "(Types::String -> Symbol)"
+  input_type: Types::String
+  output_type: Symbol
+  value_preserving: 'false'
+  metadata: "{}"
+  json_schema: '{"type" => "string"}'
+Integer.build(Money):
+  class: Plumb::Function
+  node_name: function
+  inspect: "(Types::Integer -> Money)"
+  input_type: Types::Integer
+  output_type: Money
+  value_preserving: 'false'
+  metadata: "{}"
+  json_schema: '{"type" => "integer"}'
+String.build(Date, :parse) rescued:
+  class: Plumb::Policy
+  node_name: policy
+  inspect: Rescue
+  input_type: Plumb::Types::Any
+  output_type: Plumb::Types::Any
+  value_preserving: 'false'
+  metadata: "{rescue: Date::Error}"
+  json_schema: "{}"
+String.invoke(:downcase):
+  class: Plumb::And
+  node_name: and
+  inspect: "(Types::String >> :downcase [])"
+  input_type: Types::String
+  output_type: Plumb::Types::Any
+  value_preserving: 'false'
+  metadata: "{}"
+  json_schema: '{"type" => "string"}'
+String.invoke([:strip, :upcase]) (chain):
+  class: Plumb::And
+  node_name: and
+  inspect: "((Types::String >> :strip []) >> :upcase [])"
+  input_type: Types::String
+  output_type: Plumb::Types::Any
+  value_preserving: 'false'
+  metadata: "{}"
+  json_schema: '{"type" => "string"}'
+String.policy(:split):
+  class: Plumb::Policy
+  node_name: policy
+  inspect: "((Types::String >> :split [/\\s*,\\s*/]) >> Array[String])"
+  input_type: Types::String
+  output_type: "(Plumb::Types::Any >> Array[String])"
+  value_preserving: 'false'
+  metadata: "{}"
+  json_schema: '{"type" => "string"}'
+String >> transform (compose, converting):
+  class: Plumb::And
+  node_name: and
+  inspect: "(Types::String >> (Types::String -> Integer))"
+  input_type: Types::String
+  output_type: Integer
+  value_preserving: 'false'
+  metadata: "{}"
+  json_schema: '{"type" => "string"}'
+transform >> transform (fuses):
+  class: Plumb::Function
+  node_name: function
+  inspect: "(Types::String -> Money)"
+  input_type: Types::String
+  output_type: Money
+  value_preserving: 'false'
+  metadata: "{}"
+  json_schema: '{"type" => "string"}'
+Integer[0..100] >> Integer[-10..110] (reduces):
+  class: Plumb::Constraint
+  node_name: constraint
+  inspect: Types::Integer[0..100]
+  input_type: Types::Integer[0..100]
+  output_type: Types::Integer[0..100]
+  value_preserving: 'true'
+  metadata: "{}"
+  json_schema: '{"type" => "integer", "minimum" => 0, "maximum" => 100}'
+String / String[/a/] (unchecked compose):
+  class: Plumb::Constraint
+  node_name: constraint
+  inspect: Types::String[/a/]
+  input_type: Types::String[/a/]
+  output_type: Types::String[/a/]
+  value_preserving: 'true'
+  metadata: "{}"
+  json_schema: '{"type" => "string", "pattern" => "a"}'
+String | Integer (disjoint union):
+  class: Plumb::Or
+  node_name: or
+  inspect: "(Types::String | Types::Integer)"
+  input_type: "(Types::String | Types::Integer)"
+  output_type: "(Types::String | Types::Integer)"
+  value_preserving: 'true'
+  metadata: "{}"
+  json_schema: '{"anyOf" => [{"type" => "string"}, {"type" => "integer"}]}'
+Integer | Numeric (absorbs to Numeric):
+  class: Plumb::Constraint
+  node_name: constraint
+  inspect: Types::Numeric
+  input_type: Types::Numeric
+  output_type: Types::Numeric
+  value_preserving: 'true'
+  metadata: "{}"
+  json_schema: '{"type" => "number"}'
+Integer | String.transform (coercion choice):
+  class: Plumb::Or
+  node_name: or
+  inspect: "(Types::Integer | (Types::String -> Integer))"
+  input_type: "(Types::Integer | Types::String)"
+  output_type: "(Types::Integer | Integer)"
+  value_preserving: 'false'
+  metadata: "{}"
+  json_schema: '{"anyOf" => [{"type" => "integer"}, {"type" => "string"}]}'
+String[/a/] | String[/b/] (factored union):
+  class: Plumb::Composable::Node
+  node_name: refined_union
+  inspect: "(Types::String >> (Constraint(/a/) | Constraint(/b/)))"
+  input_type: Types::String
+  output_type: "(Types::String >> (Constraint(/a/) | Constraint(/b/)))"
+  value_preserving: 'true'
+  metadata: "{}"
+  json_schema: '{"type" => "string", "anyOf" => [{"pattern" => "a", "type" => "string"},
+    {"pattern" => "b", "type" => "string"}]}'
+Lax::Integer:
+  class: Plumb::GuaranteedFunction
+  node_name: function
+  inspect: Types::Lax::Integer
+  input_type: Plumb::Types::Lax::Numeric
+  output_type: Integer
+  value_preserving: 'false'
+  metadata: "{}"
+  json_schema: '{"anyOf" => [{"type" => "number"}, {"type" => "string", "pattern"
+    => "^\\d{1,3}(?:,?\\d{3})*(?:\\.\\d+)?$"}], "type" => "integer"}'
+Lax::String:
+  class: Plumb::Or
+  node_name: or
+  inspect: Types::Lax::String
+  input_type: "((Plumb::Types::String | Plumb::Types::Decimal) | Plumb::Types::Numeric)"
+  output_type: "((Plumb::Types::String | String) | String)"
+  value_preserving: 'false'
+  metadata: "{}"
+  json_schema: '{"anyOf" => [{"type" => "string"}, {"type" => "number"}]}'
+Lax::Decimal:
+  class: Plumb::Or
+  node_name: or
+  inspect: Types::Lax::Decimal
+  input_type: "(Plumb::Types::Decimal | ((Plumb::Types::Numeric -> String) | Plumb::Types::Lax::CoercibleNumberString))"
+  output_type: "(Plumb::Types::Decimal | BigDecimal)"
+  value_preserving: 'false'
+  metadata: "{}"
+  json_schema: '{"anyOf" => [{"type" => "number"}, {"anyOf" => [{"type" => "number"},
+    {"type" => "string", "pattern" => "^\\d{1,3}(?:,?\\d{3})*(?:\\.\\d+)?$"}], "type"
+    => "number"}]}'
+Integer[2..] & Integer[0..100] (narrows):
+  class: Plumb::Constraint
+  node_name: constraint
+  inspect: Types::Integer[2..100]
+  input_type: Types::Integer[2..100]
+  output_type: Types::Integer[2..100]
+  value_preserving: 'true'
+  metadata: "{}"
+  json_schema: '{"type" => "integer", "minimum" => 2, "maximum" => 100}'
+Integer[2..10] & Integer[11..100] (empty -> Never):
+  class: Plumb::NeverClass
+  node_name: never
+  inspect: Plumb::Types::Never
+  input_type: Plumb::Types::Never
+  output_type: Plumb::Types::Never
+  value_preserving: 'true'
+  metadata: "{}"
+  json_schema: '{"not" => {}}'
+String & Integer (disjoint -> Never):
+  class: Plumb::NeverClass
+  node_name: never
+  inspect: Plumb::Types::Never
+  input_type: Plumb::Types::Never
+  output_type: Plumb::Types::Never
+  value_preserving: 'true'
+  metadata: "{}"
+  json_schema: '{"not" => {}}'
+'String.where(size: 1..3) & String[/a/] (runtime And)':
+  class: Plumb::And
+  node_name: and
+  inspect: "((Types::String >> (size === 1..3)) >> Types::String[/a/])"
+  input_type: Types::String
+  output_type: "((Types::String >> (size === 1..3)) >> Types::String[/a/])"
+  value_preserving: 'true'
+  metadata: "{}"
+  json_schema: '{"type" => "string", "minLength" => 1, "maxLength" => 3, "pattern"
+    => "a"}'
+Array[Integer] & Array[Integer[0..10]] (covariant meet):
+  class: Plumb::ArrayClass
+  node_name: array
+  inspect: Array[Types::Integer[0..10]]
+  input_type: Array[Types::Integer[0..10]]
+  output_type: Array[Types::Integer[0..10]]
+  value_preserving: 'true'
+  metadata: "{}"
+  json_schema: '{"type" => "array", "items" => {"type" => "integer", "minimum" =>
+    0, "maximum" => 10}}'
+Array[Integer]:
+  class: Plumb::ArrayClass
+  node_name: array
+  inspect: Array[Types::Integer]
+  input_type: Array[Types::Integer]
+  output_type: Array[Types::Integer]
+  value_preserving: 'true'
+  metadata: "{}"
+  json_schema: '{"type" => "array", "items" => {"type" => "integer"}}'
+Array[Lax::Integer] (coercing elements):
+  class: Plumb::ArrayClass
+  node_name: array
+  inspect: Array[Types::Lax::Integer]
+  input_type: Array[Types::Lax::Integer]
+  output_type: Array[Integer]
+  value_preserving: 'false'
+  metadata: "{}"
+  json_schema: '{"type" => "array", "items" => {"anyOf" => [{"type" => "number"},
+    {"type" => "string", "pattern" => "^\\d{1,3}(?:,?\\d{3})*(?:\\.\\d+)?$"}], "type"
+    => "integer"}}'
+'Array.where(size: 1..2)':
+  class: Plumb::And
+  node_name: and
+  inspect: "(Types::Array >> (size === 1..2))"
+  input_type: Types::Array
+  output_type: "(Types::Array >> (size === 1..2))"
+  value_preserving: 'true'
+  metadata: "{}"
+  json_schema: '{"type" => "array", "items" => {}, "minItems" => 1, "maxItems" =>
+    2}'
+Tuple[String, Integer]:
+  class: Plumb::TupleClass
+  node_name: tuple
+  inspect: Tuple[Types::String, Types::Integer]
+  input_type: Tuple[Types::String, Types::Integer]
+  output_type: Tuple[Types::String, Types::Integer]
+  value_preserving: 'true'
+  metadata: "{}"
+  json_schema: '{"type" => "array", "prefixItems" => [{"type" => "string"}, {"type"
+    => "integer"}]}'
+Hash[Symbol, Integer] (hash map):
+  class: Plumb::HashMap
+  node_name: hash_map
+  inspect: HashMap[Types::Symbol, Types::Integer]
+  input_type: HashMap[Types::Symbol, Types::Integer]
+  output_type: HashMap[Types::Symbol, Types::Integer]
+  value_preserving: 'true'
+  metadata: "{}"
+  json_schema: '{"type" => "object", "patternProperties" => {".*" => {"type" => "integer"}}}'
+Hash record:
+  class: Plumb::HashClass
+  node_name: hash
+  inspect: 'Hash[name: Types::String, age: Types::Integer]'
+  input_type: 'Hash[name: Types::String, age: Types::Integer]'
+  output_type: 'Hash[name: Types::String, age: Types::Integer]'
+  value_preserving: 'false'
+  metadata: "{}"
+  json_schema: '{"type" => "object", "properties" => {"name" => {"type" => "string"},
+    "age" => {"type" => "integer"}}, "required" => ["name", "age"]}'
+Hash record with optional + default:
+  class: Plumb::HashClass
+  node_name: hash
+  inspect: 'Hash[name: Types::String, age?: Types::Integer, role: ((Plumb::Types::Undefined
+    >> "user") | Types::String)]'
+  input_type: 'Hash[name: Types::String, age?: Types::Integer, role: ((Plumb::Types::Undefined
+    >> "user") | Types::String)]'
+  output_type: 'Hash[name: Types::String, age?: Types::Integer, role: ("user" | Types::String)]'
+  value_preserving: 'false'
+  metadata: "{}"
+  json_schema: '{"type" => "object", "properties" => {"name" => {"type" => "string"},
+    "age" => {"type" => "integer"}, "role" => {"type" => "string", "default" => "user"}},
+    "required" => ["name", "role"]}'
+Hash record with catch-all:
+  class: Plumb::HashClass
+  node_name: hash
+  inspect: 'Hash[name: Types::String, _: Types::Integer]'
+  input_type: 'Hash[name: Types::String, _: Types::Integer]'
+  output_type: 'Hash[name: Types::String, _: Types::Integer]'
+  value_preserving: 'false'
+  metadata: "{}"
+  json_schema: '{"type" => "object", "properties" => {"name" => {"type" => "string"}},
+    "required" => ["name"], "additionalProperties" => {"type" => "integer"}}'
+Hash record coercing field:
+  class: Plumb::HashClass
+  node_name: hash
+  inspect: 'Hash[age: Types::Lax::Integer]'
+  input_type: 'Hash[age: Types::Lax::Integer]'
+  output_type: 'Hash[age: Integer]'
+  value_preserving: 'false'
+  metadata: "{}"
+  json_schema: '{"type" => "object", "properties" => {"age" => {"anyOf" => [{"type"
+    => "number"}, {"type" => "string", "pattern" => "^\\d{1,3}(?:,?\\d{3})*(?:\\.\\d+)?$"}],
+    "type" => "integer"}}, "required" => ["age"]}'
+SymbolizedHash:
+  class: Plumb::HashMap
+  node_name: hash_map
+  inspect: Types::SymbolizedHash
+  input_type: Types::SymbolizedHash
+  output_type: HashMap[(Plumb::Types::Symbol | Symbol), ( | Plumb::Types::Any)]
+  value_preserving: 'false'
+  metadata: "{}"
+  json_schema: '{"type" => "object", "patternProperties" => {".*" => {"$ref" => "#/$defs/Deferred1"}},
+    "$defs" => {"Deferred1" => {"type" => "object", "patternProperties" => {".*" =>
+    {"$ref" => "#/$defs/Deferred1"}}}}}'
+LinkedList (recursive):
+  class: Plumb::HashClass
+  node_name: hash
+  inspect: 'Hash[value: Types::Integer, next: ( | Types::Nil)]'
+  input_type: 'Hash[value: Types::Integer, next: ( | Types::Nil)]'
+  output_type: 'Hash[value: Types::Integer, next: ( | Types::Nil)]'
+  value_preserving: 'false'
+  metadata: "{}"
+  json_schema: '{"type" => "object", "properties" => {"value" => {"type" => "integer"},
+    "next" => {"anyOf" => [{"$ref" => "#/$defs/Deferred1"}, {"type" => "null"}]}},
+    "required" => ["value", "next"], "$defs" => {"Deferred1" => {"type" => "object",
+    "properties" => {"value" => {"type" => "integer"}, "next" => {"anyOf" => [{"$ref"
+    => "#/$defs/Deferred1"}, {"type" => "null"}]}}, "required" => ["value", "next"]}}}'
+String.not:
+  class: Plumb::Not
+  node_name: not
+  inspect: Not(Types::String)
+  input_type: Not(Types::String)
+  output_type: Not(Types::String)
+  value_preserving: 'false'
+  metadata: "{}"
+  json_schema: '{"not" => {"type" => "string"}}'
+Integer.static(10):
+  class: Plumb::StaticClass
+  node_name: static
+  inspect: '10'
+  input_type: Plumb::Types::Any
+  output_type: '10'
+  value_preserving: 'false'
+  metadata: "{}"
+  json_schema: '{"const" => 10, "default" => 10, "type" => "integer"}'
+Interface[:upcase]:
+  class: Plumb::InterfaceClass
+  node_name: interface
+  inspect: Interface[upcase]
+  input_type: Interface[upcase]
+  output_type: Interface[upcase]
+  value_preserving: 'false'
+  metadata: "{}"
+  json_schema: "{}"
+Range[Integer]:
+  class: Plumb::RangeClass
+  node_name: range
+  inspect: Range[Types::Integer]
+  input_type: Range[Types::Integer]
+  output_type: Range[Types::Integer]
+  value_preserving: 'true'
+  metadata: "{}"
+  json_schema: '{"type" => "integer"}'
+String.present:
+  class: Plumb::Policy
+  node_name: policy
+  inspect: Types::String[#<Proc:0xADDR ./lib/plumb/types.rb:61>]
+  input_type: Types::String[#<Proc:0xADDR ./lib/plumb/types.rb:61>]
+  output_type: Types::String[#<Proc:0xADDR ./lib/plumb/types.rb:61>]
+  value_preserving: 'false'
+  metadata: "{}"
+  json_schema: '{"type" => "string"}'
+Integer.nullable:
+  class: Plumb::Policy
+  node_name: policy
+  inspect: "(Plumb::Types::Nil | Types::Integer)"
+  input_type: "(Plumb::Types::Nil | Types::Integer)"
+  output_type: "(Plumb::Types::Nil | Types::Integer)"
+  value_preserving: 'false'
+  metadata: "{}"
+  json_schema: '{"anyOf" => [{"type" => "null"}, {"type" => "integer"}]}'
+String.default("x"):
+  class: Plumb::Policy
+  node_name: policy
+  inspect: ((Plumb::Types::Undefined >> "x") | Types::String)
+  input_type: "(Plumb::Types::Any | Types::String)"
+  output_type: ("x" | Types::String)
+  value_preserving: 'false'
+  metadata: '{default: "x"}'
+  json_schema: '{"type" => "string", "default" => "x"}'
+Integer.options([1, 2]):
+  class: Plumb::Policy
+  node_name: policy
+  inspect: Types::Integer[#<Proc:0xADDR ./lib/plumb/types.rb:31>]
+  input_type: Types::Integer[#<Proc:0xADDR ./lib/plumb/types.rb:31>]
+  output_type: Types::Integer[#<Proc:0xADDR ./lib/plumb/types.rb:31>]
+  value_preserving: 'false'
+  metadata: "{options: [1, 2]}"
+  json_schema: '{"type" => "integer", "enum" => [1, 2]}'
+String.metadata(label:):
+  class: Plumb::Metadata
+  node_name: metadata
+  inspect: 'Metadata[Types::String, {label: "Name"}]'
+  input_type: Types::String
+  output_type: Types::String
+  value_preserving: 'false'
+  metadata: '{label: "Name"}'
+  json_schema: '{"label" => "Name", "type" => "string"}'
+'Any.policy(respond_to: :upcase)':
+  class: Plumb::Policy
+  node_name: policy
+  inspect: Types::Any[#<Proc:0xADDR ./lib/plumb/types.rb:85>]
+  input_type: Types::Any[#<Proc:0xADDR ./lib/plumb/types.rb:85>]
+  output_type: Types::Any[#<Proc:0xADDR ./lib/plumb/types.rb:85>]
+  value_preserving: 'false'
+  metadata: "{respond_to: :upcase}"
+  json_schema: "{}"
+Data[name:, age:]:
+  class: Class
+  node_name: data
+  inspect: Person
+  input_type: Person
+  output_type: Person
+  value_preserving: 'false'
+  metadata: "{}"
+  json_schema: '{"type" => "object", "properties" => {"name" => {"type" => "string"},
+    "age" => {"type" => "integer"}}, "required" => ["name", "age"]}'
+Implementation instance (Multiplier):
+  class: Multiplier
+  node_name: function
+  inspect: Multiplier(Types::Integer -> Types::Integer)
+  input_type: Types::Integer
+  output_type: Types::Integer
+  value_preserving: 'false'
+  metadata: "{}"
+  json_schema: '{"type" => "integer"}'
+Implementation class (Downcaser):
+  class: Class
+  node_name: function
+  inspect: Downcaser
+  input_type: Types::String
+  output_type: Types::String
+  value_preserving: 'false'
+  metadata: "{}"
+  json_schema: '{"type" => "string"}'
+Codec::Forms >> Person (decode):
+  class: Plumb::Function
+  node_name: function
+  inspect: "(Hash[name: Types::String, age: (Plumb::Types::String[/\\A-?\\d+\\z/]
+    -> Integer)] -> Person)"
+  input_type: 'Hash[name: Types::String, age: (Plumb::Types::String[/\A-?\d+\z/] ->
+    Integer)]'
+  output_type: Person
+  value_preserving: 'false'
+  metadata: "{}"
+  json_schema: '{"type" => "object", "properties" => {"name" => {"type" => "string"},
+    "age" => {"type" => "string", "pattern" => "\\A-?\\d+\\z"}}, "required" => ["name",
+    "age"]}'
+Person -> form (encode):
+  class: Plumb::And
+  node_name: and
+  inspect: "(Person >> (Person -> Hash[name: Types::String, age: (Integer -> Plumb::Types::String[/\\A-?\\d+\\z/])]))"
+  input_type: Person
+  output_type: 'Hash[name: Types::String, age: (Integer -> Plumb::Types::String[/\A-?\d+\z/])]'
+  value_preserving: 'false'
+  metadata: "{}"
+  json_schema: '{"type" => "object", "properties" => {"name" => {"type" => "string"},
+    "age" => {"type" => "integer"}}, "required" => ["name", "age"]}'
+Pipeline:
+  class: Plumb::Pipeline
+  node_name: pipeline
+  inspect: Plumb::Pipeline
+  input_type: Types::Integer[0..10]
+  output_type: Types::Integer[0..10]
+  value_preserving: 'false'
+  metadata: "{}"
+  json_schema: '{"type" => "integer"}'
+Function[String => Integer]:
+  class: Plumb::Function
+  node_name: function
+  inspect: "(String -> Integer)"
+  input_type: String
+  output_type: Integer
+  value_preserving: 'false'
+  metadata: "{}"
+  json_schema: '{"type" => "string"}'
+Stream[Integer]:
+  class: Plumb::StreamClass
+  node_name: stream
+  inspect: Stream[Types::Integer]
+  input_type: Interface[each]
+  output_type: Stream[Types::Integer]
+  value_preserving: 'false'
+  metadata: "{}"
+  json_schema: '{"type" => "array", "items" => {"type" => "integer"}}'
+Integer.generate:
+  class: Plumb::And
+  node_name: and
+  inspect: "(generator >> Types::Integer)"
+  input_type: Plumb::Types::Any
+  output_type: "(Plumb::Types::Any >> Types::Integer)"
+  value_preserving: 'false'
+  metadata: "{}"
+  json_schema: '{"type" => "integer"}'
