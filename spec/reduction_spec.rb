@@ -250,6 +250,72 @@ RSpec.describe 'composition reduction (>>)' do
       expect(RTypes::String | RTypes::Integer).to be_a(Plumb::Union)
     end
 
+    # A join is n-ary: `A | B | C` is stored as a nested pair but means one flat
+    # branch set, so absorption has to see all of it. Comparing only the two
+    # operands made the result depend on the order the branches were written,
+    # because `subtype?(Union(A, B), C)` needs EVERY branch to be within C.
+    describe 'absorbs across the whole branch set, not just adjacent pairs' do
+      # Counts branches through both node kinds: absorption produces a Union, but a
+      # set containing a coercion stays an Or, and both are branch sets here.
+      def branch_count(type)
+        type.is_a?(Plumb::Disjunction) ? type.children.sum { |c| branch_count(c) } : 1
+      end
+
+      it 'drops a branch subsumed by a LATER one' do
+        u = RTypes::Integer | RTypes::String | RTypes::Numeric
+        expect(branch_count(u)).to eq(2) # Integer absorbed into Numeric
+        expect(u).to eq(RTypes::String | RTypes::Numeric)
+      end
+
+      it 'still drops a branch subsumed by an EARLIER one' do
+        expect(RTypes::Numeric | RTypes::String | RTypes::Integer)
+          .to eq(RTypes::Numeric | RTypes::String)
+      end
+
+      it 'collapses a four-branch union to its two widest' do
+        u = RTypes::Integer[1..5] | RTypes::String | RTypes::Integer | RTypes::Numeric
+        expect(branch_count(u)).to eq(2)
+      end
+
+      it 'dedupes repeated branches' do
+        expect(RTypes::String | RTypes::String | RTypes::String).to eq(RTypes::String)
+      end
+
+      it 'absorbs covariant containers across the set' do
+        u = RTypes::Array[RTypes::Integer] | RTypes::String | RTypes::Array[RTypes::Numeric]
+        expect(branch_count(u)).to eq(2)
+        expect(u).to eq(RTypes::String | RTypes::Array[RTypes::Numeric])
+      end
+
+      it 'leaves unrelated branches alone' do
+        u = RTypes::String | RTypes::Integer | RTypes::Symbol | RTypes::Nil
+        expect(branch_count(u)).to eq(4)
+      end
+
+      # The soundness guards still hold across the whole set, not just pairwise.
+      it 'never absorbs a coercion branch' do
+        coerce = RTypes::String.transform(::Integer, :to_i)
+        u = coerce | RTypes::Numeric | RTypes::Integer
+        expect(branch_count(u)).to eq(3)
+        assert_result(u.resolve('5'), 5, true) # the coercion still runs
+      end
+
+      it 'never absorbs an identity-carrying wrapper' do
+        u = RTypes::Email | RTypes::String | RTypes::Integer
+        expect(branch_count(u)).to eq(3)
+        expect(u.to_json_schema.to_s).to include('email')
+      end
+
+      it 'preserves the accepted value set exactly' do
+        unreduced = [RTypes::Integer, RTypes::String, RTypes::Numeric]
+        reduced = RTypes::Integer | RTypes::String | RTypes::Numeric
+        [1, 1.5, 'x', :sym, nil, BigDecimal('2')].each do |v|
+          expected = unreduced.any? { |t| t.resolve(v).valid? }
+          expect(reduced.resolve(v).valid?).to be(expected), "for #{v.inspect}"
+        end
+      end
+    end
+
     it 'does NOT reduce a coercion (transform) branch — the union is preserved' do
       coerce = RTypes::String.transform(::Integer, :to_i) # accepts Strings, outputs Integer
       u = coerce | RTypes::Numeric

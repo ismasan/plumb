@@ -283,28 +283,76 @@ module Plumb
       !rc.nil? && Subtyping.value_preserving?(rc) && Subtyping.subtype?(lc, rc)
     end
 
-    # Join-dual of `reduce_step`: absorption for `a | b`. If one branch's value
-    # set is contained in the other's (`a <= b`), the union equals the wider
-    # branch (`a ∪ b == b`), so drop the narrower — and `a | a` dedupes. Returns
-    # the surviving type, or nil to fall back to `Disjunction.build`.
+    # Join-dual of `reduce_step`: absorption for `a | b`. If one branch's value set
+    # is contained in another's, the union equals the wider branch
+    # (`a ∪ b == b` when `a <= b`), so the narrower is dropped — and duplicate
+    # branches dedupe. Returns the surviving type, or nil when nothing can go.
     #
-    # Guarded to VALUE-PRESERVING refinements only. `Subtyping.subtype?` identifies a
-    # Function by its OUTPUT type, so `Subtyping.subtype?(String->Integer, Numeric)` is
-    # true even though that branch accepts Strings a bare Numeric rejects —
-    # reducing there would silently drop a coercion branch. Only when both
-    # branches pass values through unchanged does `Subtyping.subtype?` reflect the accepted
-    # input domain, making the drop behaviour-preserving.
+    # A JOIN IS N-ARY. `A | B | C` is stored as a nested pair
+    # (`Union(Union(A, B), C)`) but means one flat set of branches, so absorption
+    # has to see the whole set. Comparing only the two operands makes the result
+    # depend on the order they were written:
+    #
+    #   Numeric | String | Integer   =>  Numeric | String        (Integer absorbed)
+    #   Integer | String | Numeric   =>  (Integer | String) | Numeric
+    #
+    # Both accept the same values, but the second keeps `Integer` even though
+    # `Integer <= Numeric`, because `subtype?(Union(Integer, String), Numeric)`
+    # requires EVERY branch to be within Numeric and `String` is not. The redundant
+    # branch then costs a failed match on every value that falls through to it.
+    #
+    # So: flatten both operands into the branch set, absorb across all of it, and
+    # re-fold. Order among survivors is preserved (a join is commutative, so this is
+    # free to do, and keeping it stable avoids churning `#inspect` and the order of
+    # a JSON Schema's `anyOf`).
     def reduce_union(a, b)
-      return nil unless Subtyping.value_preserving?(a) && Subtyping.value_preserving?(b)
-      return b if a == b # dedupe — the survivor is the dropped node's identity
-      # Don't absorb across a wrapper: Subtyping.subtype? now sees through Policy/Metadata/
-      # Node, so an absorption would drop the identity one carries (see
-      # Subtyping.identity_wrapper?). eg. `Types::Email | Types::String` keeps the Or.
-      return nil if Subtyping.identity_wrapper?(a) || Subtyping.identity_wrapper?(b)
-      return b if Subtyping.subtype?(a, b) # a ⊆ b — keep the wider b
-      return a if Subtyping.subtype?(b, a) # b ⊆ a — keep the wider a
+      branches = union_branches(a) + union_branches(b)
+      survivors = absorb_branches(branches)
+      return nil if survivors.size == branches.size # nothing to drop — leave the pair alone
+      return survivors.first if survivors.size == 1
 
-      nil
+      survivors.drop(1).reduce(survivors.first) do |acc, branch|
+        factor_union(acc, branch) || Disjunction.build(acc, branch)
+      end
+    end
+
+    # The branch set of a join, flattening nested Unions.
+    #
+    # ONLY Union, never Or: a choice is left-biased and its branches may convert, so
+    # its order is semantic and dropping one is not a type-level decision.
+    def union_branches(type)
+      type.is_a?(Union) ? type.children.flat_map { |c| union_branches(c) } : [type]
+    end
+
+    # Drop every branch another one already covers, keeping first-seen order.
+    def absorb_branches(branches)
+      branches.each_with_object([]) do |candidate, survivors|
+        next if survivors.any? { |s| absorbs?(s, candidate) }
+
+        survivors.reject! { |s| absorbs?(candidate, s) }
+        survivors << candidate
+      end
+    end
+
+    # Does `wider`'s value set cover `narrower`'s, such that dropping `narrower`
+    # from a join changes nothing?
+    #
+    # Guarded to VALUE-PRESERVING branches. `Subtyping.subtype?` identifies a
+    # Function by its OUTPUT type, so `subtype?(String->Integer, Numeric)` holds even
+    # though that branch accepts Strings a bare Numeric rejects — absorbing there
+    # would silently drop a coercion. Only when both branches pass values through
+    # unchanged does the relation reflect the accepted input domain.
+    #
+    # Identical branches dedupe regardless: the survivor IS the dropped node.
+    def absorbs?(wider, narrower)
+      return true if wider == narrower
+      return false unless Subtyping.value_preserving?(wider) && Subtyping.value_preserving?(narrower)
+      # Never absorb across a wrapper: subtype? sees through Policy/Metadata/Node, so
+      # the drop would lose the identity one carries (eg. `Types::Email |
+      # Types::String` must keep both). @see Subtyping.identity_wrapper?
+      return false if Subtyping.identity_wrapper?(wider) || Subtyping.identity_wrapper?(narrower)
+
+      Subtyping.subtype?(narrower, wider)
     end
 
     # Distributive factoring — the join-dual of reduce_union's absorption:
