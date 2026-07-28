@@ -956,9 +956,13 @@ RSpec.describe Plumb::Types do
     end
 
     specify '#concurrent' do
-      slow_type = Types::Any.transform(NilClass) do |r|
+      # Declares the output type it actually produces. It used to declare NilClass
+      # while returning the String unchanged, so every element failed its own output
+      # check — and the assertion below only passed because the concurrent path was
+      # discarding element errors.
+      slow_type = Types::Any.transform(::String) do |value|
         sleep(0.02)
-        r
+        value
       end
       array = Types::Array.of(slow_type).concurrent
       assert_result(array.resolve(1), 1, false)
@@ -969,6 +973,40 @@ RSpec.describe Plumb::Types do
       expect(elapsed).to be < 30
 
       assert_result(array.nullable.resolve(nil), nil, true)
+    end
+
+    # A concurrent Array must be indistinguishable from a sequential one except for
+    # scheduling. It was not: element errors were dropped, so an invalid element made
+    # the whole array report VALID, and an element step that RAISED produced a
+    # NoMethodError about nil instead of the cause.
+    describe '#concurrent matches the sequential path' do
+      it 'collects an invalid element\'s errors' do
+        seq = Types::Array[Types::Integer]
+        con = Types::Array[Types::Integer].concurrent
+        input = ['x', 2]
+
+        expect(con.resolve(input).valid?).to be(false)
+        expect(con.resolve(input).errors).to eq(seq.resolve(input).errors)
+        expect(con.resolve(input).value).to eq(seq.resolve(input).value)
+      end
+
+      it 'agrees with the sequential path across a range of inputs' do
+        seq = Types::Array[Types::Integer]
+        con = Types::Array[Types::Integer].concurrent
+
+        [[], [1, 2], ['x'], [1, 'x', 3], [nil], %w[a b]].each do |input|
+          a = seq.resolve(input)
+          b = con.resolve(input)
+          expect([b.valid?, b.value, b.errors]).to eq([a.valid?, a.value, a.errors]), "for #{input.inspect}"
+        end
+      end
+
+      it 'propagates an exception from an element step, as the sequential path does' do
+        boom = Plumb::Composable.wrap(->(_r) { raise 'kaboom' })
+
+        expect { Types::Array[boom].resolve([1]) }.to raise_error(RuntimeError, 'kaboom')
+        expect { Types::Array[boom].concurrent.resolve([1]) }.to raise_error(RuntimeError, 'kaboom')
+      end
     end
 
     specify '#stream' do
