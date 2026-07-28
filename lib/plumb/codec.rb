@@ -283,7 +283,10 @@ module Plumb
         when Deferred then return visit_deferred(type, path)
         when StaticClass then return visit_static(type, path)
         when Disjunction then return visit_or(type, path)
-        when Conjunction then return visit_and(type, path)
+        # Intersection BEFORE Conjunction — it is one too, and the two need
+        # opposite treatment (a meet may be reordered, a pipeline may not).
+        when Intersection then return visit_intersection(type, path)
+        when Conjunction then return visit_composition(type, path)
         when Metadata then return rebuild(type, type.type, path) { |t| Metadata.new(t, type.metadata) }
         when Policy then return rebuild(type, type.children.first, path) { |t| Policy.new(type.policy_name, type.arg, t) }
         when Composable::Node then return rebuild(type, type.type, path) { |t| t.as_node(type.node_name, type.args) }
@@ -516,15 +519,18 @@ module Plumb
         l.equal?(left) && r.equal?(right) ? type : Disjunction.build(l, r)
       end
 
-      # An And chain is a data-bearing type refined by pure filters (a #where's
-      # AttributeValueMatch, a #check Constraint, ...). Rewrite the data type(s).
-      # On DECODE the codec replaces the schema, so the refinements are the only
-      # validation of the decoded value — keep them AFTER the input ->
-      # output conversion. On ENCODE the schema has already validated the
-      # value (the suffix runs inside `And(schema, suffix)`), so the refinements
-      # are redundant and would run on the produced input value — drop them.
-      def visit_and(type, path)
-        steps = flatten_and(type)
+      # A MEET: a data-bearing type refined by pure filters (a #where's
+      # AttributeValueMatch, a #check Constraint, ...). Every side constrains the
+      # SAME value and nothing in it converts, so the sides may be flattened and
+      # reordered freely — which is what makes the partition below sound.
+      #
+      # Rewrite the data type(s). On DECODE the codec replaces the schema, so the
+      # refinements are the only validation of the decoded value — keep them AFTER
+      # the input -> output conversion. On ENCODE the value was already validated
+      # upstream (this runs on what the schema produced), so the refinements are
+      # redundant and would run on the encoded form — drop them.
+      def visit_intersection(type, path)
+        steps = flatten_intersection(type)
         refinements, data = steps.partition { |s| pure_refinement?(s) }
         rewritten = data.map { |d| visit(d, path) }
         return type if rewritten.each_with_index.all? { |r, i| r.equal?(data[i]) }
@@ -533,8 +539,48 @@ module Plumb
         ordered.reduce { |l, r| Conjunction.build(l, r) }
       end
 
-      def flatten_and(type)
-        type.children.flat_map { |c| c.is_a?(Conjunction) ? flatten_and(c) : [c] }
+      # Flattens MEETS ONLY. Descending through a composition here is what caused
+      # a refinement to be lifted past a conversion — see #visit_composition.
+      def flatten_intersection(type)
+        type.children.flat_map { |c| c.is_a?(Intersection) ? flatten_intersection(c) : [c] }
+      end
+
+      # A PIPELINE (`And`): each step consumes what the previous one produced, so
+      # position is meaning. Nothing may be flattened out of it, reordered, or
+      # lifted — visit both sides IN PLACE.
+      #
+      # The meet treatment above must not be applied here. It used to be (both
+      # arrived as `Conjunction`), and it silently broke any refinement sitting
+      # BEFORE a conversion: `Date.where(year: 2024) >> Date.transform(::String)`
+      # is `And(Intersection(Date, AVM), Function)`, and flattening across the And
+      # put the `year` check last — after the Date became a String, where it could
+      # never pass. The rewritten decoder rejected every input.
+      #
+      # A refinement child is left exactly where it is rather than visited: it
+      # carries no encodable type (see #pure_refinement?), so the codec has nothing
+      # to rewrite in it, and it validates whatever the step before it produced.
+      #
+      # DECODE also rewrites AT MOST ONE data step — the first that faces the wire.
+      # `And(a, b)` feeds the input to `a`; `b` receives what `a` produced. Once `a`
+      # is rewritten to accept the encoded form while still producing what it
+      # produced, `b`'s input is unchanged and `b` needs nothing. Rewriting it too
+      # decodes twice: #bridge_input splices `b`'s own decode step in front of it,
+      # so the already-decoded value from `a` is fed to a step expecting the encoded
+      # form, and the pipeline rejects everything. A step is only treated as having
+      # consumed the wire if its rewrite actually CHANGED it — an all-native head
+      # leaves the wire for the next step.
+      def visit_composition(type, path)
+        children = type.children
+        wire_consumed = false
+        rewritten = children.map do |child|
+          next child if pure_refinement?(child)
+          next child if wire_consumed
+
+          visit(child, path).tap { |v| wire_consumed = @direction == :decode && !v.equal?(child) }
+        end
+        return type if rewritten.each_with_index.all? { |r, i| r.equal?(children[i]) }
+
+        rewritten.reduce { |l, r| Conjunction.build(l, r) }
       end
 
       # A pure refinement carries no encodable type — it filters the adjacent
