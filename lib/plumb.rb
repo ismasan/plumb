@@ -129,6 +129,7 @@ end
 require 'plumb/result'
 require 'plumb/type_registry'
 require 'plumb/composable'
+require 'plumb/node_mapper'
 require 'plumb/any_class'
 require 'plumb/never_class'
 require 'plumb/conjunction'

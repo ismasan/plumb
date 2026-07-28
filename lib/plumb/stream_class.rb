@@ -28,6 +28,9 @@ module Plumb
 
     # return a new Stream definition.
     # @param element_type [Composable] the type of the elements in the stream
+    # @see Plumb::NodeMapper
+    def with_children(children) = self[children.first]
+
     def [](element_type)
       self.class.new(element_type:)
     end

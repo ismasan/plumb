@@ -63,6 +63,10 @@ module Plumb
       l.equal?(@left) && r.equal?(@right) ? self : Disjunction.build(l, r)
     end
 
+    # Rebuild around new branches. `self.class` keeps Or vs Union.
+    # @see Plumb::NodeMapper
+    def with_children(children) = self.class.new(children[0], children[1])
+
     private def _inspect
       %((#{@left.inspect} | #{@right.inspect}))
     end

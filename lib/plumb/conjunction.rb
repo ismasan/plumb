@@ -52,6 +52,11 @@ module Plumb
       result.map(@left).map(@right)
     end
 
+    # Rebuild around new children. `self.class` keeps And vs Intersection — a
+    # rewrite maps the sides, it does not reclassify the node.
+    # @see Plumb::NodeMapper
+    def with_children(children) = self.class.new(children[0], children[1])
+
     private def _inspect
       %((#{@left.inspect} >> #{@right.inspect}))
     end

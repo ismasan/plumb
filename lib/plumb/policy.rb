@@ -14,6 +14,9 @@ module Plumb
     # @param policy_name [Symbol]
     # @param arg [Object, nil] the argument to the policy, if any.
     # @param step [Step] the step composition wrapped by this policy.
+    # @see Plumb::NodeMapper
+    def with_children(children) = self.class.new(policy_name, arg, children.first)
+
     def initialize(policy_name, arg, step)
       @policy_name = policy_name
       @arg = arg

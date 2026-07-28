@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require 'plumb/node_mapper'
+
 module Plumb
   # A class to help decorate all or some types in a
   # type composition.
@@ -12,6 +14,21 @@ module Plumb
   #       type
   #     end
   #   end
+  #
+  # The block is called on EVERY node, bottom-up: a node's sub-types are visited
+  # (and possibly replaced) before the block sees the node itself. Returning a node
+  # unchanged is a no-op, and a subtree in which nothing changed comes back as the
+  # identical object.
+  #
+  # Traversal is {Plumb::NodeMapper}'s, so it reaches every node shape that can be
+  # rebuilt — a record's fields, a container's element type, and the inside of a
+  # Metadata / Policy / #as_node wrapper. It previously carried its own `case` over
+  # five node types and recursed into NONE of those, so a block never saw a
+  # schema's fields at all.
+  #
+  # It stops at a Constraint's base type (rebuilding one would drop a custom
+  # `#check` message) and at a Deferred (forcing it would loop on a
+  # self-referential type).
   class Decorator
     def self.call(type, &block)
       new(block).visit(type)
@@ -24,40 +41,10 @@ module Plumb
     # @param type [Composable]
     # @return [Composable]
     def visit(type)
-      type = case type
-             when Conjunction
-               left, right = visit_children(type)
-               # type.class keeps And vs Intersection across decoration.
-               type.class.new(left, right)
-             when Function
-               left, right = visit_children(type)
-               # type.class preserves a GuaranteedFunction across decoration;
-               # carrying #identity keeps a rebuilt-but-unchanged node #== to the
-               # original (see Function#==).
-               type.class.new(left, right, type.fn, inspect: type.inspect_label,
-                                                    identity: type.identity)
-             when Disjunction
-               left, right = visit_children(type)
-               # type.class keeps Or vs Union across decoration.
-               type.class.new(left, right)
-             when Not
-               child = visit_children(type).first
-               Not.new(child, errors: type.errors)
-             when Policy
-               child = visit_children(type).first
-               Policy.new(type.policy_name, type.arg, child)
-             else
-               type
-             end
-
-      decorate(type)
+      decorate(NodeMapper.map(type) { |child| visit(child) })
     end
 
     private
-
-    def visit_children(type)
-      type.children.map { |child| visit(child) }
-    end
 
     def decorate(type)
       @block.call(type)
