@@ -43,8 +43,7 @@ module Plumb
     attr_reader :children
 
     def initialize(type: Types::Any, freeze_after: true, &setup)
-      @type = type
-      @children = [type].freeze
+      self.type = type
       @around_blocks = self.class.around_blocks.dup
 
       configure(&setup) if block_given?
@@ -93,12 +92,25 @@ module Plumb
 
     private
 
+    # #children has to track @type. Composable#== compares children and every visitor
+    # walks them, so capturing them once in #initialize — before `configure` had added
+    # any steps — meant a Pipeline reported no steps at all: `pl.children` was
+    # `[Types::Any]` however many steps it had, any two pipelines with the same
+    # starting type compared `==`, and visitors saw an empty composition.
+    #
+    # Assigned together through here so the two cannot drift, and eagerly rather than
+    # lazily because #initialize freezes the Pipeline afterwards.
+    private def type=(new_type)
+      @type = new_type
+      @children = [new_type].freeze
+    end
+
     # Shared body for #step / #step!. The `output_type` + block form always
     # builds a Function (a declared conversion) regardless of `strict`; the
     # plain form chains with `#>>` when strict, `#/` otherwise.
     def add_step(callable, strict:, &block)
       if !callable.nil? && block
-        @type = Function.new(@type, Composable.wrap(callable), block)
+        self.type = Function.new(@type, Composable.wrap(callable), block)
         return self
       end
 
@@ -110,7 +122,7 @@ module Plumb
 
       callable = prepare_step(callable)
       callable = @around_blocks.reverse.reduce(callable) { |cl, bl| AroundStep.new(cl, bl) } if @around_blocks.any?
-      @type = strict ? (@type >> callable) : (@type / callable)
+      self.type = strict ? (@type >> callable) : (@type / callable)
       self
     end
 

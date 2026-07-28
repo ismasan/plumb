@@ -188,4 +188,43 @@ RSpec.describe Plumb::Pipeline do
       expect(pipeline.resolve(2).value).to eq(5)
     end
   end
+
+  # A Pipeline is a transparent wrapper around its accumulated composition, so its
+  # #children must be that composition. They used to be captured in #initialize
+  # before any step had been added, so a Pipeline reported no steps at all.
+  describe '#children' do
+    let(:pipeline) do
+      Plumb::Pipeline.new(type: Types::Integer) { |pl| pl.step(Types::Integer[0..10]) }
+    end
+
+    it 'is the accumulated composition, not the starting type' do
+      expect(pipeline.children.size).to eq(1)
+      expect(pipeline.children.first).not_to eq(Types::Integer)
+      expect(pipeline.children.first).to eq(Types::Integer[0..10])
+    end
+
+    # Composable#== compares #children, so a stale snapshot made every Pipeline with
+    # the same starting type equal regardless of its steps.
+    it 'distinguishes pipelines with different steps' do
+      other = Plumb::Pipeline.new(type: Types::Integer) { |pl| pl.step(Types::Integer[20..30]) }
+
+      expect(pipeline).not_to eq(other)
+      expect(pipeline).to eq(Plumb::Pipeline.new(type: Types::Integer) { |pl| pl.step(Types::Integer[0..10]) })
+    end
+
+    # Every visitor walks #children, so the steps were invisible to all of them.
+    it 'lets a visitor see the steps' do
+      expect(pipeline.to_json_schema).to eq(
+        'type' => 'integer', 'minimum' => 0, 'maximum' => 10
+      )
+    end
+
+    it 'keeps tracking the type when the pipeline is left unfrozen' do
+      pl = Plumb::Pipeline.new(type: Types::Integer, freeze_after: false)
+      expect(pl.children.first).to eq(Types::Integer)
+
+      pl.step(Types::Integer[0..10])
+      expect(pl.children.first).to eq(Types::Integer[0..10])
+    end
+  end
 end

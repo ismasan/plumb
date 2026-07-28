@@ -698,7 +698,7 @@ Pipeline:
   value_preserving: 'false'
   base_types: "[Integer]"
   metadata: "{}"
-  json_schema: '{"type" => "integer"}'
+  json_schema: '{"type" => "integer", "minimum" => 0, "maximum" => 10}'
 Function[String => Integer]:
   class: Plumb::Function
   node_name: function
