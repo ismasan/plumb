@@ -34,6 +34,17 @@ module Plumb
   #
   # The meet (`#&`) is NOT here — a greatest lower bound is lattice algebra, not a
   # rewrite, so it stays in Subtyping.intersect.
+  #
+  # DECLINED, not missing: dropping a redundant gate on the LEFT. reduce_step drops one
+  # on the right (`f >> Types::String` returns `f`), and the mirror looks equally free —
+  # `Types::String >> f` runs the String check twice when `f` declares String as its
+  # input, worth 21% of a resolve, or 64% for `Types::UUID::V4 >> a_finder` where a
+  # regex ran twice. It was implemented and measured, then backed out: it destroys the
+  # shared prefix factor_union hoists, so `(String >> b) | (String >> c) | (String >> d)`
+  # goes from one String check to three — 3.7x worse on the rejection path, which is
+  # where an enum-like union spends its time. The two rules want opposite things about
+  # the same node (absorb the gate vs extract it), and at `>>` time there is no way to
+  # know a `|` is coming. Factoring wins the bigger case.
   module Optimizer
     module_function
 
