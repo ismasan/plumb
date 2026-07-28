@@ -227,4 +227,56 @@ RSpec.describe Plumb::Pipeline do
       expect(pl.children.first).to eq(Types::Integer[0..10])
     end
   end
+
+  # The `output_type` + block form used to build its Function directly, using the
+  # Function's input slot as the chain link. That never reached #>> / #/, so it never
+  # reached the optimiser: each block step nested inside the last.
+  describe 'block steps go through the optimiser' do
+    def build(n, type: Types::Any)
+      Plumb::Pipeline.new(type:) do |pl|
+        n.times { |i| pl.step(::String) { |r| r.valid("#{r.value}#{i}") } }
+      end
+    end
+
+    it 'fuses consecutive block steps into a single Function' do
+      inner = build(3).children.first
+
+      expect(inner).to be_instance_of(Plumb::Function)
+      expect(inner.input_type).to eq(Types::Any)
+      expect(inner.output_type).to eq(Plumb::Composable.wrap(::String))
+    end
+
+    it 'runs every step, in order' do
+      expect(build(3).parse('a')).to eq('a012')
+    end
+
+    it 'still chains correctly from a typed start' do
+      pl = build(2, type: Types::String)
+
+      expect(pl.parse('a')).to eq('a01')
+      expect(pl.resolve(42).valid?).to be(false) # the starting type still gates
+    end
+
+    it 'interleaves with plain type steps' do
+      pl = Plumb::Pipeline.new(type: Types::String) do |p|
+        p.step(Types::String.present)
+        p.step(::String) { |r| r.valid(r.value.upcase) }
+        p.step(::Symbol) { |r| r.valid(r.value.to_sym) }
+      end
+
+      expect(pl.parse('abc')).to eq(:ABC)
+      expect(pl.resolve('').valid?).to be(false)
+    end
+
+    # The block form declares only what it PRODUCES, so there is no declared input for
+    # the strict check to compare against and #step! behaves as #step. Converting the
+    # value is exactly what the block is for.
+    it 'accepts a block step declaring a different output type under step!' do
+      pl = Plumb::Pipeline.new(type: Types::String) do |p|
+        p.step!(::Integer) { |r| r.valid(r.value.length) }
+      end
+
+      expect(pl.parse('abcd')).to eq(4)
+    end
+  end
 end

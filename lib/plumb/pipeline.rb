@@ -81,6 +81,12 @@ module Plumb
     # Strict counterpart of `#step`: chains with `#>>`, so it raises
     # `Plumb::TypeError` at build time if the step can't accept what the pipeline
     # currently produces. See #step.
+    #
+    # NOTE the `output_type` + block form declares only what it PRODUCES — the block
+    # takes a Result and accepts anything — so there is no declared input for the
+    # strict check to compare against, and `#step!` behaves as `#step` there.
+    # `pl.step!(::Integer) { … }` after a String pipeline is legitimate: the block is
+    # what does the converting.
     def step!(callable = nil, &block)
       add_step(callable, strict: true, &block)
     end
@@ -105,23 +111,35 @@ module Plumb
       @children = [new_type].freeze
     end
 
-    # Shared body for #step / #step!. The `output_type` + block form always
-    # builds a Function (a declared conversion) regardless of `strict`; the
-    # plain form chains with `#>>` when strict, `#/` otherwise.
+    # Shared body for #step / #step!. Both forms chain with `#>>` when strict and `#/`
+    # otherwise; only what gets chained differs.
+    #
+    # The `output_type` + block form used to bypass the operators entirely, building
+    # `Function.new(@type, out, block)` — using the Function's INPUT slot as the chain
+    # link, so the accumulated pipeline became the new step's input check. That runs
+    # correctly, but it never reaches #>> / #/ and therefore never reaches the
+    # optimiser: each block step nested inside the last, and consecutive ones could not
+    # reduce. Chaining a step whose input is unconstrained is equivalent (same
+    # validity, value, errors and io types) and does reach it — from the default
+    # `Types::Any` start, consecutive block steps now fuse into ONE Function via
+    # Function#fuse_with instead of nesting.
+    #
+    # The block form is deliberately not passed through #prepare_step or the `around`
+    # wrappers, which is how it has always behaved.
     def add_step(callable, strict:, &block)
       if !callable.nil? && block
-        self.type = Function.new(@type, Composable.wrap(callable), block)
-        return self
+        callable = Function.new(Types::Any, Composable.wrap(callable), block)
+      else
+        callable ||= block
+        unless is_a_step?(callable)
+          raise ArgumentError,
+                "#step expects an interface #call(Result) Result, but got #{callable.inspect}"
+        end
+
+        callable = prepare_step(callable)
+        callable = @around_blocks.reverse.reduce(callable) { |cl, bl| AroundStep.new(cl, bl) } if @around_blocks.any?
       end
 
-      callable ||= block
-      unless is_a_step?(callable)
-        raise ArgumentError,
-              "#step expects an interface #call(Result) Result, but got #{callable.inspect}"
-      end
-
-      callable = prepare_step(callable)
-      callable = @around_blocks.reverse.reduce(callable) { |cl, bl| AroundStep.new(cl, bl) } if @around_blocks.any?
       self.type = strict ? (@type >> callable) : (@type / callable)
       self
     end
