@@ -33,6 +33,14 @@ require 'yaml'
 #     then read `git diff spec/fixtures/ast_shapes.yml` and confirm every line
 #     is an intended change. Regenerating to make a red build green is how a
 #     silent behaviour change gets through.
+#
+#     That regenerability also makes it a WEAK ORACLE — it records what the code
+#     does, not what it should do — so it is scaffolding, not a permanent asset.
+#     A mutation sweep confirmed it currently catches nothing that named specs
+#     elsewhere do not (the last gap, Intersection#value_preserving?, is now
+#     pinned by spec/node_contracts_spec.rb). Keep it while the internals are
+#     churning, because forcing a look at the AST diff is useful then; delete it
+#     — fixture included — once they settle. Re-run the sweep before doing so.
 RSpec.describe 'refactor invariants' do
   # A single corpus entry: a built type plus the inputs it is exercised with.
   #
@@ -517,10 +525,14 @@ RSpec.describe 'refactor invariants' do
     # itself a shape change worth seeing in the diff.
     #
     # Normalized before storing: a type built around a block (`#check`, a policy)
-    # inspects its Proc, and a struct instance inspects its object_id — both
-    # embed a per-process address that would make the snapshot differ on every
-    # run. Line numbers inside `#<Proc:0x… spec/…:12>` are kept: they identify
-    # WHICH block, which is real shape information.
+    # inspects its Proc, and a struct instance inspects its object_id — both embed
+    # a per-process address that would make the snapshot differ on every run.
+    #
+    # The LINE NUMBER in `#<Proc:0x… ./spec/invariants_spec.rb:141>` goes too. It
+    # looks like useful "which block" information, but it is the line number of a
+    # block in THIS file — so adding a comment above the corpus rewrote the
+    # fixture. The corpus label already identifies the entry; the source file is
+    # kept, the line is not.
     def self.capture(&block)
       normalize(block.call.to_s)
     rescue ::StandardError, ::NotImplementedError => e
@@ -532,6 +544,7 @@ RSpec.describe 'refactor invariants' do
         .gsub(/0x[0-9a-f]+/, '0xADDR')
         .gsub(/#<([A-Za-z0-9_:]+):\d+ /, '#<\1:ID ')
         .gsub(::File.expand_path('..', __dir__), '.')
+        .gsub(%r{(\./[\w/.]+\.rb):\d+}, '\1')
     end
 
     def self.shape_for(type)

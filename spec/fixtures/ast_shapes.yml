@@ -142,9 +142,9 @@ String.where(size:) chained (merges):
 String.check:
   class: Plumb::Constraint
   node_name: constraint
-  inspect: Types::String[#<Proc:0xADDR ./spec/invariants_spec.rb:141>]
-  input_type: Types::String[#<Proc:0xADDR ./spec/invariants_spec.rb:141>]
-  output_type: Types::String[#<Proc:0xADDR ./spec/invariants_spec.rb:141>]
+  inspect: Types::String[#<Proc:0xADDR ./spec/invariants_spec.rb>]
+  input_type: Types::String[#<Proc:0xADDR ./spec/invariants_spec.rb>]
+  output_type: Types::String[#<Proc:0xADDR ./spec/invariants_spec.rb>]
   value_preserving: 'true'
   base_types: "[String]"
   metadata: "{}"
@@ -576,9 +576,9 @@ Range[Integer]:
 String.present:
   class: Plumb::Policy
   node_name: policy
-  inspect: Types::String[#<Proc:0xADDR ./lib/plumb/types.rb:61>]
-  input_type: Types::String[#<Proc:0xADDR ./lib/plumb/types.rb:61>]
-  output_type: Types::String[#<Proc:0xADDR ./lib/plumb/types.rb:61>]
+  inspect: Types::String[#<Proc:0xADDR ./lib/plumb/types.rb>]
+  input_type: Types::String[#<Proc:0xADDR ./lib/plumb/types.rb>]
+  output_type: Types::String[#<Proc:0xADDR ./lib/plumb/types.rb>]
   value_preserving: 'false'
   base_types: "[String]"
   metadata: "{}"
@@ -606,9 +606,9 @@ String.default("x"):
 Integer.options([1, 2]):
   class: Plumb::Policy
   node_name: policy
-  inspect: Types::Integer[#<Proc:0xADDR ./lib/plumb/types.rb:31>]
-  input_type: Types::Integer[#<Proc:0xADDR ./lib/plumb/types.rb:31>]
-  output_type: Types::Integer[#<Proc:0xADDR ./lib/plumb/types.rb:31>]
+  inspect: Types::Integer[#<Proc:0xADDR ./lib/plumb/types.rb>]
+  input_type: Types::Integer[#<Proc:0xADDR ./lib/plumb/types.rb>]
+  output_type: Types::Integer[#<Proc:0xADDR ./lib/plumb/types.rb>]
   value_preserving: 'false'
   base_types: "[Integer]"
   metadata: "{options: [1, 2]}"
@@ -626,9 +626,9 @@ String.metadata(label:):
 'Any.policy(respond_to: :upcase)':
   class: Plumb::Policy
   node_name: policy
-  inspect: Types::Any[#<Proc:0xADDR ./lib/plumb/types.rb:85>]
-  input_type: Types::Any[#<Proc:0xADDR ./lib/plumb/types.rb:85>]
-  output_type: Types::Any[#<Proc:0xADDR ./lib/plumb/types.rb:85>]
+  inspect: Types::Any[#<Proc:0xADDR ./lib/plumb/types.rb>]
+  input_type: Types::Any[#<Proc:0xADDR ./lib/plumb/types.rb>]
+  output_type: Types::Any[#<Proc:0xADDR ./lib/plumb/types.rb>]
   value_preserving: 'false'
   base_types: "[]"
   metadata: "{respond_to: :upcase}"
