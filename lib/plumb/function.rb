@@ -214,4 +214,13 @@ module Plumb
       result.map(@input_type).map(@fn)
     end
   end
+
+  # The computation-AST name for the same node: a TRANSFORM is the value-changing
+  # morphism, as opposed to a CHECK (a Constraint — a partial identity that
+  # narrows the type but returns the value untouched). `Function` remains the
+  # canonical, documented constructor (`Plumb::Function[String => Integer]`);
+  # these aliases exist so code and comments can use the vocabulary of the type/
+  # computation split without a second implementation.
+  Transform = Function
+  GuaranteedTransform = GuaranteedFunction
 end
