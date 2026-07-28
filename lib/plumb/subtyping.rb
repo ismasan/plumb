@@ -258,11 +258,21 @@ module Plumb
       return a if b.is_a?(AnyClass)
 
       return a if a == b
-      # Skip the subtype-drop when either side is a transparent wrapper —
-      # subtype? sees through it, but dropping it loses the identity it carries
-      # (see #identity_wrapper?); fall through to the runtime And instead. eg.
-      # `Types::Integer & doubler.metadata(...)` keeps both.
-      unless identity_wrapper?(a) || identity_wrapper?(b)
+
+      # The subsumption drops below are sound only when BOTH sides preserve the
+      # value — the same guard, for the same reason, as Optimizer.reduce_union.
+      # `subtype?` identifies a converting node by its OUTPUT type, so any two
+      # `String -> Integer` transforms are mutual subtypes no matter what they
+      # compute; dropping one would silently discard a conversion the caller asked
+      # for (`to_i & size` returned just `to_i`). Only when neither side alters the
+      # value does `subtype?` describe the accepted input domain, which is what
+      # makes keeping the narrower side behaviour-preserving.
+      #
+      # Also skipped when either side is a transparent wrapper: subtype? sees
+      # through it, but dropping it loses the identity it carries (see
+      # #identity_wrapper?). eg. `Types::Integer & doubler.metadata(...)` keeps both.
+      if value_preserving?(a) && value_preserving?(b) &&
+         !identity_wrapper?(a) && !identity_wrapper?(b)
         return a if subtype?(a, b) # a ⊆ b — meet keeps the narrower a
         return b if subtype?(b, a) # b ⊆ a — keep the narrower b
       end

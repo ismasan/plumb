@@ -206,6 +206,41 @@ RSpec.describe 'intersection (#&) and Never' do
     end
   end
 
+  # A meet may narrow or collapse, but it must never DISCARD a side. Both ways it
+  # used to: two opaque callables compared #== (their children are both Any), and
+  # two same-typed conversions are mutual subtypes because subtype? identifies a
+  # conversion by its output. Either path returned just the left operand.
+  describe 'never silently drops a side' do
+    it 'keeps both opaque callables' do
+      log = []
+      a = Plumb::Composable.wrap(->(result) { log << :a; result })
+      b = Plumb::Composable.wrap(->(result) { log << :b; result })
+
+      (a & b).resolve(1)
+      expect(log).to eq(%i[a b])
+    end
+
+    it 'keeps both conversions when they declare the same types' do
+      to_i = ITypes::String.transform(::Integer, &:to_i)
+      size = ITypes::String.transform(::Integer) { |v| v.size }
+
+      meet = to_i & size
+      expect(meet).to be_a(Plumb::And)
+      expect(meet.children).to eq([to_i, size])
+      # Unsatisfiable — no value is both — so it rejects rather than quietly
+      # returning whatever the surviving side produced.
+      expect(meet.resolve('12').valid?).to be(false)
+    end
+
+    it 'still narrows two value-preserving refinements' do
+      expect(ITypes::Integer[2..] & ITypes::Integer[0..100]).to eq(ITypes::Integer[2..100])
+    end
+
+    it 'still collapses a provably-empty meet to Never' do
+      expect(ITypes::String & ITypes::Integer).to be_a(Plumb::NeverClass)
+    end
+  end
+
   describe 'visitors' do
     it 'renders JSON Schema as a never-matching schema' do
       expect(ITypes::Never.to_json_schema).to eq({ 'not' => {} })

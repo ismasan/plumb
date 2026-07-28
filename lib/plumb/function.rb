@@ -89,15 +89,19 @@ module Plumb
     #
     # @param callable [#call, nil] Result => Result
     # @param inspect [String, nil] label to #inspect as, instead of the types
+    # @param identity [Object, nil] what the step IS, for #==. An opaque function
+    #   declares no types at all, so its callable is ALL that distinguishes it —
+    #   pass a deterministic token when the block is built fresh on each call but
+    #   the step it implements is always the same (see Composable#invoke).
     # @yield [Result] Result => Result
     # @return [GuaranteedFunction]
-    def self.opaque(callable = nil, inspect: nil, &block)
+    def self.opaque(callable = nil, inspect: nil, identity: nil, &block)
       raise ArgumentError, 'expected a callable or a block, not both' if callable && block
 
       fn = callable || block
       raise ArgumentError, 'expected a callable or a block' unless fn.respond_to?(:call)
 
-      GuaranteedFunction.new(Types::Any, Types::Any, fn, inspect:)
+      GuaranteedFunction.new(Types::Any, Types::Any, fn, inspect:, identity:)
     end
 
     def self.__set_types(inout)
@@ -115,16 +119,43 @@ module Plumb
     # can be resolved back to the object it wraps (see Plumb::Attributes.struct_class).
     # `inspect_label` is the optional label an opaque function is built with;
     # exposed only so the Decorator can carry it across a rebuild.
-    attr_reader :children, :input_type, :output_type, :fn, :inspect_label
+    attr_reader :children, :input_type, :output_type, :fn, :inspect_label, :identity
 
     # @param inspect [String, nil] label to #inspect as, instead of the types
-    def initialize(input_type, output_type, fn = Plumb::NOOP, inspect: nil)
+    # @param identity [Object, nil] what this function IS, for `#==` — see #==.
+    #   Defaults to `fn`, which is correct whenever `fn` is the caller's own
+    #   callable rather than a wrapper built around it.
+    def initialize(input_type, output_type, fn = Plumb::NOOP, inspect: nil, identity: nil)
       @input_type = input_type
       @output_type = output_type
       @fn = fn
       @inspect_label = inspect
+      @identity = identity || fn
       @children = [input_type, output_type].freeze
       freeze
+    end
+
+    # Two functions are equal when they declare the same types AND apply the same
+    # transformation.
+    #
+    # The default Composable#== compares #children, which for a Function is only
+    # `[input_type, output_type]` — so it called ANY two `String -> Integer` steps
+    # equal regardless of what they do, and any two OPAQUE functions equal
+    # regardless of their callable (both ends being Any). A reducer that reads #==
+    # as node identity then silently dropped one of them: `wrap(proc_a) &
+    # wrap(proc_b)` returned just `proc_a`, and one of the two checks vanished.
+    #
+    # Compared on #identity, not #fn: #transform wraps the caller's callable in a
+    # FRESH lambda per call, so comparing #fn would make two identically-built
+    # transforms unequal — and with them every schema containing one. #identity is
+    # the caller's own callable, or whatever deterministic token the builder chose
+    # (see Composable#build). So a transform built the same way twice stays equal,
+    # while two anonymous blocks — which cannot be proven equivalent — do not.
+    def ==(other)
+      other.is_a?(self.class) &&
+        other.input_type == input_type &&
+        other.output_type == output_type &&
+        other.identity == identity
     end
 
     private def _inspect
@@ -166,7 +197,8 @@ module Plumb
       fn2 = other.fn
       # other.class keeps Guaranteed-ness: the final output check survives iff
       # `other` carried one.
-      other.class.new(@input_type, other.output_type, ->(result) { result.map(fn1).map(fn2) })
+      other.class.new(@input_type, other.output_type, ->(result) { result.map(fn1).map(fn2) },
+                      identity: [identity, other.identity])
     end
 
     # Is `node` eligible to fuse at all? Two requirements.

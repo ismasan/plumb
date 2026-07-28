@@ -52,7 +52,8 @@ module Plumb
     end
 
     def filtered
-      Constraint.new(::Array) >> Function.opaque(inspect: "Array[#{element_type}].filtered") do |result|
+      Constraint.new(::Array) >> Function.opaque(inspect: "Array[#{element_type}].filtered",
+                                                identity: [:filtered_array, element_type]) do |result|
         arr = result.value.each.with_object([]) do |e, memo|
           r = element_type.resolve(e)
           memo << r.value if r.valid?

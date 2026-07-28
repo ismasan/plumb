@@ -723,18 +723,28 @@ module Plumb
     # @param factory_method [Symbol] method to call on the class to instantiate it.
     # @return [And]
     def build(cns, factory_method = :new, &block)
-      transform_step(cns, block || ->(value) { cns.send(factory_method, value) })
+      # Without a block the callable is a fresh lambda per call, so name what the
+      # step actually IS — the (class, factory method) pair — as its identity.
+      transform_step(cns, block || ->(value) { cns.send(factory_method, value) },
+                     identity: block || [cns, factory_method])
     end
 
     # Build a Function that validates the input (self), applies a value-level
     # callable, and declares `target_type` as the (validated) output type.
-    private def transform_step(target_type, callable, guaranteed: false)
+    # @param identity [Object, nil] what the step IS, for Function#==. Defaults to
+    #   `callable`; pass it explicitly when `callable` is itself built fresh here
+    #   and so would differ between two identical constructions (see #build).
+    private def transform_step(target_type, callable, guaranteed: false, identity: nil)
       klass = guaranteed ? GuaranteedFunction : Function
       # Flip the cursor in place with the transformed value — the transform owns
       # the result it is handed (the argument is evaluated first, reading the
       # pre-transform value), so no fresh Result is needed.
+      #
+      # The wrapper lambda is new on every call, so it cannot serve as the node's
+      # identity — `callable` (the caller's own) does.
       klass.new(self, Composable.wrap(target_type),
-                ->(result) { result.valid!(callable.call(result.value)) })
+                ->(result) { result.valid!(callable.call(result.value)) },
+                identity: identity || callable)
     end
 
     # Expand `#transform(:to_i)` into a typed transform to `output_type`, using
@@ -779,7 +789,9 @@ module Plumb
       generator ||= block
       raise ArgumentError, 'expected a generator' unless generator.respond_to?(:call)
 
-      Function.opaque(inspect: 'generator') { |r| r.valid(generator.call) } >> self
+      Function.opaque(inspect: 'generator', identity: [:generate, generator]) do |r|
+        r.valid(generator.call)
+      end >> self
     end
 
     # Build a Plumb::Pipeline with this object as the starting step.
@@ -814,7 +826,10 @@ module Plumb
       case args
       in [::Symbol => method_name, *rest]
         label = [method_name.inspect, rest.inspect].join(' ')
-        self >> Function.opaque(inspect: label) do |result|
+        # The block is new on each call, but the step it implements is determined
+        # by the method and its arguments — so name that as the identity, and two
+        # `invoke(:downcase)` steps stay #== (see Function#==).
+        self >> Function.opaque(inspect: label, identity: [:invoke, method_name, rest, block]) do |result|
           result.valid(result.value.public_send(method_name, *rest, &block))
         end
       in [Array => methods] if methods.all? { |m| m.is_a?(Symbol) }

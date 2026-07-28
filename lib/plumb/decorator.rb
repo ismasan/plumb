@@ -31,8 +31,11 @@ module Plumb
                type.class.new(left, right)
              when Function
                left, right = visit_children(type)
-               # type.class preserves a GuaranteedFunction across decoration.
-               type.class.new(left, right, type.fn, inspect: type.inspect_label)
+               # type.class preserves a GuaranteedFunction across decoration;
+               # carrying #identity keeps a rebuilt-but-unchanged node #== to the
+               # original (see Function#==).
+               type.class.new(left, right, type.fn, inspect: type.inspect_label,
+                                                    identity: type.identity)
              when Disjunction
                left, right = visit_children(type)
                # type.class keeps Or vs Union across decoration.

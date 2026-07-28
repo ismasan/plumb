@@ -71,7 +71,7 @@ module Plumb
 
     # @return [Composable] a step that resolves to an Enumerator that filters out invalid elements
     def filtered
-      self >> Function.opaque(inspect: 'filtered') do |result|
+      self >> Function.opaque(inspect: 'filtered', identity: [:filtered_stream, self]) do |result|
         set = result.value.lazy.filter_map { |e| e.value if e.valid? }
         result.valid(set)
       end

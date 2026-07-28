@@ -98,7 +98,9 @@ module Plumb
   #
   policy :default, helper: true do |type, value = Undefined, &block|
     val_type = if value == Undefined
-                 Function.opaque(inspect: 'default proc') { |result| result.valid(block.call) }
+                 Function.opaque(inspect: 'default proc', identity: [:default, block]) do |result|
+                   result.valid(block.call)
+                 end
                else
                  Types::Static[value]
                end
@@ -111,7 +113,7 @@ module Plumb
   # Usage:
   #   type = Types::String.build(Date, :parse).policy(:rescue, Date::Error)
   policy :rescue do |type, exception_class|
-    Function.opaque(inspect: 'Rescue') do |result|
+    Function.opaque(inspect: 'Rescue', identity: [:rescue, type, exception_class]) do |result|
       type.call(result)
     rescue exception_class => e
       result.invalid(errors: e.message)
