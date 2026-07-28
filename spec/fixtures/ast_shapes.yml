@@ -121,7 +121,7 @@ String[/^a/]:
   json_schema: '{"type" => "string", "pattern" => "^a"}'
 'String.where(size: 1..3)':
   class: Plumb::Intersection
-  node_name: and
+  node_name: intersection
   inspect: "(Types::String >> (size === 1..3))"
   input_type: Types::String
   output_type: "(Types::String >> (size === 1..3))"
@@ -131,7 +131,7 @@ String[/^a/]:
   json_schema: '{"type" => "string", "minLength" => 1, "maxLength" => 3}'
 String.where(size:) chained (merges):
   class: Plumb::Intersection
-  node_name: and
+  node_name: intersection
   inspect: "(Types::String >> (size === 10..40))"
   input_type: Types::String
   output_type: "(Types::String >> (size === 10..40))"
@@ -281,7 +281,7 @@ transform >> where (converting left, preserving right):
   json_schema: '{"type" => "string", "minLength" => 1, "maxLength" => 3}'
 String | Integer (disjoint union):
   class: Plumb::Union
-  node_name: or
+  node_name: union
   inspect: "(Types::String | Types::Integer)"
   input_type: "(Types::String | Types::Integer)"
   output_type: "(Types::String | Types::Integer)"
@@ -385,7 +385,7 @@ String & Integer (disjoint -> Never):
   json_schema: '{"not" => {}}'
 'String.where(size: 1..3) & String[/a/] (runtime And)':
   class: Plumb::Intersection
-  node_name: and
+  node_name: intersection
   inspect: "((Types::String >> (size === 1..3)) >> Types::String[/a/])"
   input_type: Types::String
   output_type: "((Types::String >> (size === 1..3)) >> Types::String[/a/])"
@@ -429,7 +429,7 @@ Array[Lax::Integer] (coercing elements):
     => "integer"}}'
 'Array.where(size: 1..2)':
   class: Plumb::Intersection
-  node_name: and
+  node_name: intersection
   inspect: "(Types::Array >> (size === 1..2))"
   input_type: Types::Array
   output_type: "(Types::Array >> (size === 1..2))"

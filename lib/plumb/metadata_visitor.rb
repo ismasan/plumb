@@ -36,7 +36,17 @@ module Plumb
       node.base ? visit(node.base, props) : props
     end
 
+    # User metadata is collected from both sides regardless of whether the node is
+    # a composition or a meet — this visitor doesn't reason about types, so the
+    # Conjunction split makes no difference to it. Both node names are registered
+    # rather than one delegating to the other, so a subclass can override either
+    # independently.
     on(:and) do |node, props|
+      left, right = node.children.map { |child| visit(child) }
+      props.merge(left).merge(right)
+    end
+
+    on(:intersection) do |node, props|
       left, right = node.children.map { |child| visit(child) }
       props.merge(left).merge(right)
     end
@@ -53,6 +63,12 @@ module Plumb
     end
 
     on(:or) do |node, props|
+      node.children
+          .map { |child| visit(child) }
+          .reduce(props) { |acc, child| acc.merge(child) }
+    end
+
+    on(:union) do |node, props|
       node.children
           .map { |child| visit(child) }
           .reduce(props) { |acc, child| acc.merge(child) }

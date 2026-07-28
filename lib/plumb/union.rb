@@ -36,10 +36,9 @@ module Plumb
     # branch preserves the value. @see Intersection#value_preserving?
     def value_preserving? = true
 
-    # Visitors still dispatch on :or in this phase, so the JSON Schema and
-    # metadata handlers (and Plumb.resolve_base_types) keep working untouched
-    # while the node split lands. Phase 7 gives it its own node_name.
-    def node_name = :or
+    # node_name comes from Naming (:union, derived from the class). The JSON
+    # Schema visitor handles it separately from :or — a union is a plain anyOf,
+    # with none of the default-value handling a choice needs.
   end
 
   # The type-AST name for the join, dual to {Plumb::Meet}.

@@ -181,6 +181,25 @@ module Plumb
       visit(disjunction, props)              # Or(suffixes) -> merge anyOf into it
     end
 
+    # A MEET (`Intersection`): both sides constrain the SAME value, so both specs
+    # describe it and both are merged — the left contributes the type, the right
+    # the narrowing keywords (`pattern`, `minimum`, `format`, …). No shape test is
+    # needed, which is the whole difference from the `:and` handler below: two
+    # sides that disagreed on `type` would describe an uninhabitable value, and
+    # `#&` folds that to Never before a schema is ever asked for.
+    on(:intersection) do |node, props|
+      left, right = node.children.map { |c| visit(c) }
+      merged = props.merge(left).merge(right)
+      type = left[TYPE] || right[TYPE]
+      type ? merged.merge(TYPE => type) : merged
+    end
+
+    # A COMPOSITION (`And`): the right side may convert, so the two sides can
+    # describe genuinely different types. A JSON Schema describes accepted INPUTS,
+    # so build from the left and fold the right in only when it cannot contradict
+    # it — when the left is untyped (all we know comes from the right), or when
+    # both agree on `type` (the right is then narrowing the same type). When they
+    # disagree, the right is a conversion target and is dropped.
     on(:and) do |node, props|
       left, right = node.children.map { |c| visit(c) }
       if !left.key?(TYPE) || left[TYPE] == right[TYPE]
@@ -214,7 +233,23 @@ module Plumb
       props.merge(visit(node.output_type))
     end
 
-    # A "default" value is usually an "or" of expected_value | (undefined >> static_value)
+    # A JOIN (`Union`): every branch passes its value through, so this is a plain
+    # `anyOf` over the branch schemas. Nothing here has to look for a default: a
+    # `#default` is `(Undefined >> Static) | type`, whose first branch converts, so
+    # it is always a `:or` and never reaches this handler.
+    on(:union) do |node, props|
+      any_of = node.children.map { |c| visit(c) }.uniq.filter(&:any?)
+      return props.merge(any_of.first) if any_of.size == 1
+
+      props.merge(ANY_OF => splice_any_of(any_of))
+    end
+
+    # A CHOICE (`Or`): a branch may convert, which is what makes the two special
+    # shapes below possible.
+    #
+    # A "default" value is `expected_value | (undefined >> static_value)`: the
+    # static branch's spec is a DEFAULT rather than an alternative, so it is folded
+    # into the other branch instead of becoming an `anyOf` arm.
     on(:or) do |node, props|
       left, right = node.children.map { |c| visit(c) }
       any_of = [left, right].uniq.filter(&:any?)
@@ -224,13 +259,16 @@ module Plumb
         val = any_of[defidx.zero? ? 1 : 0]
         props.merge(val).merge(DEFAULT => any_of[defidx][DEFAULT])
       else
-        # anyOf is associative, so splice a child that is itself a BARE `anyOf`
-        # (a nested Or from an n-ary factored union) into this level to keep the
-        # schema flat. Only when it is pure anyOf — other keys would be lost, and
-        # the default-bearing branches above are deliberately left un-spliced.
-        flat = any_of.flat_map { |s| s.keys == [ANY_OF] ? s[ANY_OF] : [s] }.uniq
-        props.merge(ANY_OF => flat)
+        props.merge(ANY_OF => splice_any_of(any_of))
       end
+    end
+
+    # anyOf is associative, so splice a child that is itself a BARE `anyOf` (a
+    # nested disjunction from an n-ary factored union) into this level to keep the
+    # schema flat. Only when it is pure anyOf — other keys would be lost, and a
+    # default-bearing branch is deliberately left un-spliced (see :or).
+    private def splice_any_of(any_of)
+      any_of.flat_map { |s| s.keys == [ANY_OF] ? s[ANY_OF] : [s] }.uniq
     end
 
     on(:not) do |node, props|

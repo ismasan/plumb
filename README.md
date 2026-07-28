@@ -2476,6 +2476,19 @@ Types::DateTime.to_json_schema
 # {"type"=>"string", "format"=>"date-time"}
 ```
 
+##### Node names for compositions
+
+Two-sided compositions report one of four `#node_name`s, depending on whether the node is a *computation* (some side changes the value) or a *type* (no side does):
+
+| Node name       | Built by                          | Meaning                                                     |
+| --------------- | --------------------------------- | ----------------------------------------------------------- |
+| `:and`          | `#>>` with a converting side      | Sequential composition — consumes the left's input, produces the right's output |
+| `:intersection` | `#>>`, `#/`, `#where`, `#check`, `#&` | The meet — both sides constrain the *same* value            |
+| `:or`           | `#\|` with a converting branch     | Left-biased choice — a branch may coerce, so the ends differ |
+| `:union`        | `#\|` with value-preserving branches | The join — a plain set of alternatives                     |
+
+For a visitor this matters because an `:intersection` describes one value (merge both sides' specs) while an `:and` may describe a conversion (build from the input side). Visitors that don't need the distinction can register just `on(:and)` / `on(:or)`: `:intersection` and `:union` fall back to those when no specific handler is defined.
+
 
 
 ## TODO:

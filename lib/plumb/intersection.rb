@@ -46,12 +46,10 @@ module Plumb
     # against it would make `#>>` stricter than it has ever been.
     def accepted_type = Plumb::Subtyping.resolved_output(children.last)
 
-    # Visitors still dispatch on :and in this phase, so that the JSON Schema and
-    # metadata handlers (and Plumb.resolve_base_types) keep working untouched
-    # while the node split lands. Naming would otherwise derive :intersection
-    # from the class name. Phase 7 gives it its own node_name and splits the
-    # handlers that currently branch on shape.
-    def node_name = :and
+    # node_name comes from Naming (:intersection, derived from the class). The
+    # JSON Schema and metadata visitors handle it separately from :and — see
+    # JSONSchemaVisitor's :intersection handler, which merges both sides' specs
+    # unconditionally because both describe one value.
   end
 
   # The type-AST name for the meet, dual to {Plumb::Union}.

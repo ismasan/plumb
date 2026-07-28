@@ -69,21 +69,20 @@ module Plumb
     return [] unless node.respond_to?(:node_name)
 
     case node.node_name
-    when :or
+    when :or, :union
       node.children.flat_map { |child| resolve_base_types(child) }
     when :function
       resolve_base_types(node.output_type)
+    when :intersection
+      # An Intersection IS its own #output_type, so following that would recurse
+      # forever. It narrows a single value, so its base types are its LEFT's —
+      # `String.where(size: 1..3)` is still a String.
+      resolve_base_types(node.children[0])
     when :and
-      # Both Conjunction nodes report :and in this phase, and they bottom out
-      # differently:
-      #   - an Intersection IS its own #output_type, so following that would
-      #     recurse forever. It narrows a single value, so its base types are its
-      #     LEFT's (`String.where(size: 1..3)` is still a String).
-      #   - a composition resolves through what it PRODUCES. And#output_type
-      #     already encodes whether the right side narrowed the left's output or
-      #     replaced it, so deferring to it keeps that rule in one place — no
-      #     second #value_preserving? test here.
-      node.is_a?(Intersection) ? resolve_base_types(node.children[0]) : resolve_base_types(node.output_type)
+      # A composition resolves through what it PRODUCES. And#output_type already
+      # encodes whether the right side narrowed the left's output or replaced it,
+      # so deferring to it keeps that rule in one place.
+      resolve_base_types(node.output_type)
     when :constraint
       # A refinement matcher carries its base type — resolve that (eg.
       # `Integer[1..10]` => [Integer], `User.check {}` => the User's base types).
