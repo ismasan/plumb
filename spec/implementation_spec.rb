@@ -44,6 +44,25 @@ module ImplementationSpecTypes
     def self._call(result) = result.valid(result.value.downcase)
   end
 
+  # Minimal typed steps, for the fusion cases below.
+  class Length
+    include Plumb::Implementation[Types::String => ::Integer]
+
+    private def _call(result) = result.valid(result.value.length)
+  end
+
+  class Double
+    include Plumb::Implementation[Types::Integer => ::Integer]
+
+    private def _call(result) = result.valid(result.value * 2)
+  end
+
+  class Stringify
+    extend Plumb::Implementation[Types::Integer => ::String]
+
+    def self._call(result) = result.valid(result.value.to_s)
+  end
+
   ADMIN = User.new('11111111-1111-1111-1111-111111111111', 'admin')
   USERS = { ADMIN.id => ADMIN }.freeze
 
@@ -356,6 +375,94 @@ module ImplementationSpecTypes
         end
         type = Types::Integer >> klass >> Types::String
         assert_result(type.resolve(10), '10', true)
+      end
+    end
+
+    # An Implementation runs the same `input -> fn -> output` mapping a Function
+    # does, so a chain of them collapses the same way — the seam's checks were
+    # proven at build time. @see Plumb::Function#fuse_with
+    describe 'fusion' do
+      let(:length) { Length.new }
+      let(:double) { Double.new }
+
+      it 'fuses a chain of Implementations into one Function' do
+        chain = length >> double
+
+        expect(chain).to be_instance_of(Plumb::Function)
+        expect(chain.input_type).to eq(Types::String)
+        expect(chain.output_type).to eq(Types::Integer)
+        assert_result(chain.resolve('hello'), 10, true)
+        # ...and keeps collapsing as the chain grows.
+        expect(length >> double >> double).to be_instance_of(Plumb::Function)
+        assert_result((length >> double >> double).resolve('hello'), 20, true)
+      end
+
+      it 'fuses with a plain Function on either side' do
+        expect(length >> Types::Integer.transform(::Integer) { |v| v + 1 }).to be_instance_of(Plumb::Function)
+        expect(Types::String.transform(::String, &:strip) >> length).to be_instance_of(Plumb::Function)
+      end
+
+      it 'fuses the extended (class-is-the-step) form too' do
+        chain = double >> Stringify
+
+        expect(chain).to be_instance_of(Plumb::Function)
+        assert_result(chain.resolve(5), '10', true)
+      end
+
+      it 'still runs the declared checks it did not drop' do
+        assert_result((length >> double).resolve(42), 42, false) # input check
+        expect { double >> length }.to raise_error(Plumb::TypeError) # Integer -> String
+      end
+
+      it 'keeps the #_call contract check across a fused seam' do
+        bad = Class.new do
+          include Plumb::Implementation[Types::String => Types::String]
+          private def _call(_result) = 'not a Result'
+        end.new
+
+        expect { (bad >> Types::String.transform(::String, &:upcase)).resolve('x') }
+          .to raise_error(Plumb::TypeError, /must return a Plumb::Result/)
+      end
+
+      it 'refuses to fuse a host that overrides #call' do
+        custom = Class.new do
+          include Plumb::Implementation[Types::Integer => Types::Integer]
+          # neither boundary check runs
+          def call(result) = result.valid(result.value + 1000)
+          private def _call(result) = result
+        end.new
+
+        expect(custom.fusable_step?).to be(false)
+        expect(double >> custom).to be_a(Plumb::And)
+        assert_result((double >> custom).resolve(5), 1010, true)
+      end
+
+      it 'refuses to fuse the opaque form, which has no checks worth dropping' do
+        expect(Opaque.new.fusable_step?).to be(false)
+        expect(Opaque.new >> Opaque.new).to be_a(Plumb::And)
+      end
+
+      it 'compares fused chains by the hosts that built them' do
+        expect(length >> double).to eq(Length.new >> Double.new)
+      end
+
+      # The mixin cannot see a host's constructor state, so the default
+      # Composable#== (declared types only) calls two differently-configured
+      # instances equal — with or without fusion. A stateful host fixes that by
+      # defining #==, and a fused chain has to honour it.
+      it 'defers fused-chain equality to a host that defines its own #==' do
+        multiplier = Class.new do
+          include Plumb::Implementation[Types::Integer => ::Integer]
+
+          attr_reader :factor
+
+          def initialize(factor) = @factor = factor
+          def ==(other) = other.is_a?(self.class) && other.factor == factor
+          private def _call(result) = result.valid(result.value * @factor)
+        end
+
+        expect(multiplier.new(2) >> double).to eq(multiplier.new(2) >> double)
+        expect(multiplier.new(2) >> double).not_to eq(multiplier.new(3) >> double)
       end
     end
   end
