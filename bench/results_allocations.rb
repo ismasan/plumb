@@ -1,11 +1,24 @@
 # frozen_string_literal: true
 
-# Surfaces where Plumb allocates Result objects (and error strings/containers)
-# while parsing. The headline metric is throwaway `Result::Invalid` objects:
-# these are allocated even on SUCCESSFUL parses whenever a value matches a
-# non-first branch of a union (`A | B`, `Lax::*`, `nullable`, defaults, enums),
-# because `Or#call` tries each branch in turn and each miss materialises an
-# Invalid that is then discarded.
+# Surfaces the throwaway work Plumb does while parsing — Result objects, error
+# strings and containers that are built and then discarded.
+#
+# The headline metric is INVALID TRANSITIONS: how many times a Result is flipped to
+# invalid during a parse, including SUCCESSFUL ones. A value matching a non-first
+# branch of a union (`A | B`, `Lax::*`, `nullable`, defaults, enums) pays for every
+# branch it fell through, because `Or#call` tries each in turn and each miss runs,
+# builds an error payload, and flips the cursor.
+#
+# This counts flips rather than `Result::Invalid` objects because there is no such
+# class: Valid and Invalid were collapsed into one Result carrying a boolean, which
+# is what lets the built-ins reuse the cursor in place (`#invalid!`) instead of
+# allocating one per miss. That collapse removed the ALLOCATION but not the WORK,
+# and the work is what this bench is about — so the flip is the honest successor to
+# the old object count.
+#
+# The `Result` row is the other half of the picture, and shows the collapse paying
+# off: it stays FLAT across all three regimes (4 per record) while the flips go
+# 0 -> 5 -> 14. Misses cost work, but no longer cost an allocation.
 #
 # Three payload regimes are run over the SAME schema so the difference is purely
 # the data, not the types:
@@ -21,16 +34,22 @@ Bundler.setup(:benchmark)
 require 'plumb'
 require 'memory_profiler'
 
-# Count every Result::Invalid ever constructed, so we can report the exact
-# per-record figure independently of the sampling profiler.
-$invalid_allocs = 0
-module CountInvalidAllocs
-  def initialize(*args, **kwargs)
-    $invalid_allocs += 1
+# Count every flip to invalid, so the per-record figure is exact rather than
+# sampled. Both forms are counted: #invalid allocates a fresh Result (the safe form
+# user code uses), #invalid! flips the receiver (the built-ins' hot path).
+$invalid_transitions = 0
+module CountInvalidTransitions
+  def invalid(*args, **kwargs)
+    $invalid_transitions += 1
+    super
+  end
+
+  def invalid!(*args, **kwargs)
+    $invalid_transitions += 1
     super
   end
 end
-Plumb::Result::Invalid.prepend(CountInvalidAllocs)
+Plumb::Result.prepend(CountInvalidTransitions)
 
 module Bench
   include Plumb::Types
@@ -57,21 +76,20 @@ REGIMES = {
   'fully invalid'      => { name: '',    age: 'xx', role: 'nope',   contact: 123 }
 }.freeze
 
-REPORTED_CLASSES = [
-  'Plumb::Result::Valid',
-  'Plumb::Result::Invalid',
-  'String',
-  'Array',
-  'Hash'
+REPORTED_CLASSES = %w[
+  Plumb::Result
+  String
+  Array
+  Hash
 ].freeze
 
 def run_regime(row)
   # warm (fill caches, JIT) and confirm validity classification
   valid = Bench::Record.resolve(row).valid?
 
-  $invalid_allocs = 0
+  $invalid_transitions = 0
   report = MemoryProfiler.report { N.times { Bench::Record.resolve(row) } }
-  invalid = $invalid_allocs
+  invalid = $invalid_transitions
 
   by_class = report.allocated_objects_by_class.each_with_object(Hash.new(0)) do |h, acc|
     acc[h[:data]] = h[:count]
@@ -97,13 +115,11 @@ puts header
 puts 'valid output?'.ljust(LABEL_W) + results.values.map { |r| cell.call(r[:valid]) }.join
 rule(header.size)
 
-# Headline: throwaway Invalid objects (exact count via the constructor counter).
-puts 'Result::Invalid'.ljust(LABEL_W) + results.values.map { |r| count.call(r[:invalid]) }.join
+# Headline: flips to invalid (exact count, not sampled).
+puts 'invalid flips'.ljust(LABEL_W) + results.values.map { |r| count.call(r[:invalid]) }.join
 
-# Other tracked classes, from the sampling profiler.
+# Allocations, from the sampling profiler.
 REPORTED_CLASSES.each do |klass|
-  next if klass == 'Plumb::Result::Invalid' # already shown (exact count)
-
   puts klass.sub('Plumb::', '').ljust(LABEL_W) +
        results.values.map { |r| count.call(r[:by_class][klass]) }.join
 end
@@ -114,8 +130,8 @@ puts 'TOTAL objects'.ljust(LABEL_W) + results.values.map { |r| count.call(r[:tot
 # Order sensitivity: the SAME union, matching the first vs the last branch.
 puts "\nOrder sensitivity — (Value[a] | Value[b] | Value[c]).resolve(x), #{N}x each:"
 [%w[admin first], %w[viewer last]].each do |value, position|
-  $invalid_allocs = 0
+  $invalid_transitions = 0
   N.times { Bench::Role.resolve(value) }
-  puts format('  match %-5s branch (%-6s): %d Invalid allocs (%.2f/record)',
-              position, value, $invalid_allocs, $invalid_allocs.to_f / N)
+  puts format('  match %-5s branch (%-6s): %d invalid flips (%.2f/record)',
+              position, value, $invalid_transitions, $invalid_transitions.to_f / N)
 end
