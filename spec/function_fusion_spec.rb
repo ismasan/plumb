@@ -12,6 +12,30 @@ RSpec.describe 'Function fusion' do
   let(:prepend) { Plumb::Function[String => String] { |r| r.valid('bbbb' + r.value) } }
   let(:int_from_string) { Types::String.transform(::Integer, :to_i) }
 
+  # The two properties Plumb::TypedStep names, so fuse_with can ask about a node's
+  # #call instead of testing for its class. Both implementations answer them.
+  describe 'the typed-step contract' do
+    let(:impl) do
+      Class.new do
+        include Plumb::Implementation[Types::String => ::Integer]
+        private def _call(result) = result.valid(result.value.length)
+      end.new
+    end
+
+    specify '#checks_output? — does #call end by validating output_type?' do
+      expect(append.checks_output?).to be(true)
+      expect(Plumb::Function.opaque { |r| r }.checks_output?).to be(false) # GuaranteedFunction
+      expect(impl.checks_output?).to be(true)
+    end
+
+    specify '#fusable_step? — is #call the canonical mapping, and typed?' do
+      expect(append.fusable_step?).to be(true)
+      expect(impl.fusable_step?).to be(true)
+      expect(Plumb::Function.opaque { |r| r }.fusable_step?).to be(false) # untyped
+      expect(Types::String.fusable_step?).to be(false) # not a typed step at all
+    end
+  end
+
   it 'fuses two Functions with a provable boundary into a single Function' do
     expect(fused).to be_instance_of(Plumb::Function)
     expect(fused.input_type).to eq(Types::String)

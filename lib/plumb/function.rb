@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'plumb/composable'
+require 'plumb/typed_step'
 
 module Plumb
   # A value-converting join, built by `Composable#transform` / `#build`.
@@ -11,6 +12,7 @@ module Plumb
   # (its `output_type`). See Plumb::Subtyping.subtype?.
   class Function
     include Composable
+    include TypedStep
 
     # Build a typed function from an input => output pair and a
     # callable that produces the new value.
@@ -164,15 +166,6 @@ module Plumb
       @inspect_label || %((#{@input_type.inspect} -> #{@output_type.inspect}))
     end
 
-    # An OPAQUE function wraps a callable whose types are unknown — both ends
-    # are Any (top), which is what `Composable.wrap` builds around any bare
-    # `#call(Result) => Result` object. Every other construction path (#transform,
-    # #build, coercions, Encoder.step) declares at least an output type, so this
-    # identifies exactly "a wrapped callable, not a typed conversion". Callers
-    # that need to reach the wrapped object, distinguish it from a real
-    # transform, or refuse to optimise across it use this.
-    def opaque? = @input_type == Types::Any && @output_type == Types::Any
-
     def call(result)
       result.map(@input_type).map(@fn).map(@output_type)
     end
@@ -188,58 +181,39 @@ module Plumb
     #     check does real per-field work and must keep running;
     #   - the dropped checks are value-preserving: a coercing boundary type
     #     changes the value, so it must keep running. self's output check needs
-    #     this only when it exists at all (a GuaranteedFunction carries none).
+    #     this only when it runs at all (see TypedStep#checks_output?).
     def fuse_with(other)
       return nil unless fusable_step? && other.fusable_step?
       return nil unless Plumb::Subtyping.subtype?(@output_type, other.input_type)
       return nil unless Plumb::Subtyping.value_preserving?(other.input_type)
-      return nil unless is_a?(GuaranteedFunction) || Plumb::Subtyping.value_preserving?(@output_type)
+      return nil unless !checks_output? || Plumb::Subtyping.value_preserving?(@output_type)
 
       fn1 = @fn
       fn2 = other.fn
-      # Rebuild as one of the two standard classes, not `other.class`: a subclass
-      # is fusable because it kept #call, which says nothing about its
-      # constructor, and this one takes (input, output, fn). Guaranteed-ness is
-      # what has to survive — the final output check runs iff `other` carried one.
-      klass = other.is_a?(GuaranteedFunction) ? GuaranteedFunction : Function
+      # Rebuild as one of the two standard classes, not `other.class`: a node is
+      # fusable because it kept #call, which says nothing about its constructor,
+      # and this one takes (input, output, fn). What has to survive is whether the
+      # final output check still runs — so ask `other`, which may not be a
+      # Function at all (see Implementation::TypeInterface).
+      klass = other.checks_output? ? Function : GuaranteedFunction
       klass.new(@input_type, other.output_type, ->(result) { result.map(fn1).map(fn2) },
                 identity: [identity, other.identity])
     end
 
-    # DERIVED, not declared: fusable iff #call was not replaced. The two that ARE
-    # the standard mapping are Function's full input -> fn -> output and
-    # GuaranteedFunction's input -> fn (whose missing output check is provably
-    # redundant, not skipped).
+    # DERIVED, not declared: this family's #call is Function's full
+    # input -> fn -> output or GuaranteedFunction's input -> fn (whose missing
+    # output check is provably redundant, not skipped). Anything else replaced it.
     #
-    # Asking the method table rather than trusting a list makes the answer
+    # Asking the method table rather than trusting a class list makes the answer
     # fail-safe — a new subclass with custom semantics is excluded because it
     # overrode #call, not because someone remembered to exclude it. FilteredHash
     # (per-field validation, neither boundary check) is caught that way, so this
     # file no longer has to know that class exists.
-    #
-    # Excluded when OPAQUE, too: two Any-ended functions would technically fuse
-    # (`Any <= Any`), but the only checks dropped are no-ops, so there is nothing to
-    # win — while fusing would hide both wrapped callables behind a composite proc,
-    # where #fn can no longer reach them (see Attributes.struct_class).
-    def fusable_step?
-      return false if opaque?
-
+    # @see Plumb::TypedStep#fusable_step?
+    def standard_call?
       owner = method(:call).owner
       owner.equal?(Function) || owner.equal?(GuaranteedFunction)
     end
-
-    # A Function's subtyping identity is what it produces — its declared,
-    # distinct output_type. See Plumb::Subtyping.subtype? and Composable#subtype_identity.
-    def subtype_identity = @output_type
-
-    # As a `left >> self` consumer, a Function accepts what its INPUT type
-    # accepts — not the input node verbatim. When the input is a Hash/container
-    # whose fields are themselves converting (eg. a codec's decode schema, whose
-    # `flags` field is a `String -> Integer` step), the accepted type is that
-    # input relaxed per field to the type it consumes. This lets an encode
-    # pipeline compose with the matching decode pipeline (`encode >> decode`):
-    # both meet at the same input type. Mirrors HashClass#accepted_type.
-    def accepted_type = Plumb::Subtyping.accepted_type(@input_type)
   end
 
   # A Function whose output check is known *at build time* to be redundant, so
@@ -256,5 +230,9 @@ module Plumb
     def call(result)
       result.map(@input_type).map(@fn)
     end
+
+    # The whole point of the class: no output check runs, so a seam has none to
+    # drop here. @see Plumb::TypedStep#checks_output?
+    def checks_output? = false
   end
 end

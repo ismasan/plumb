@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'plumb/composable'
+require 'plumb/typed_step'
 
 module Plumb
   # Turn a custom Ruby class into a first-class Plumb type.
@@ -149,10 +150,13 @@ module Plumb
     end
     private_class_method :types_module
 
-    # The typed-node interface, shared by both paths. Mirrors
-    # {Plumb::Function}: a conversion is identified for subtyping by what it
-    # PRODUCES, and accepts what its input type accepts.
+    # The typed-node interface, shared by both paths. The OTHER implementation of
+    # {Plumb::TypedStep} — same contract as {Plumb::Function}, differing only in
+    # that the host owns the object, so the declared pair comes from the mixin and
+    # the core is reached through the host's private #_call.
     module TypeInterface
+      include Plumb::TypedStep
+
       # The step interface, owned by the mixin: the declared checks around the
       # host's #_call. Included AFTER Composable, so this is the #call that runs
       # (Callable#call, the "implement me" stub, sits behind it).
@@ -180,14 +184,9 @@ module Plumb
       # fused chains compare by whatever equality the host defines.
       def identity = self
 
-      # Declaring no pair is the opaque case — see Function#opaque?, same rule.
-      def opaque? = input_type == Types::Any && output_type == Types::Any
-
-      # DERIVED the same way as Function#fusable_step?: the boundary checks are
-      # droppable iff the host left the mixin's #call in place. A host that
-      # overrides #call runs different checks, and nothing can be assumed about
-      # which of them a seam removes.
-      def fusable_step? = !opaque? && method(:call).owner.equal?(TypeInterface)
+      # This family's canonical #call is the one defined above, so a host that
+      # replaced it runs different checks. @see Plumb::TypedStep#fusable_step?
+      def standard_call? = method(:call).owner.equal?(TypeInterface)
 
       # Fuse forwards through a temporary Function — the same `input -> fn ->
       # output` shape this node already runs, so Function#fuse_with's proofs hold
@@ -218,14 +217,10 @@ module Plumb
               "Implement #{is_a?(::Module) ? 'self.' : '#'}_call(Plumb::Result) => Plumb::Result in #{_host_name}"
       end
 
-      # Visitors (and Composable#==) read a node's children.
+      # Visitors (and Composable#==) read a node's children. Computed, unlike
+      # Function's frozen ivar — the host owns its constructor, so there is no
+      # #initialize here to build one in.
       def children = [input_type, output_type]
-
-      # @see Composable#subtype_identity
-      def subtype_identity = output_type
-
-      # @see Composable#accepted_type, Function#accepted_type
-      def accepted_type = Plumb::Subtyping.accepted_type(input_type)
 
       # The host, for error messages — the class itself when extended, the
       # instance's class when included.

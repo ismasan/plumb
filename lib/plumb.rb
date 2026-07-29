@@ -123,6 +123,7 @@ end
 require 'plumb/result'
 require 'plumb/type_registry'
 require 'plumb/composable'
+require 'plumb/typed_step'
 require 'plumb/node_mapper'
 require 'plumb/covariant_fusion'
 require 'plumb/any_class'
