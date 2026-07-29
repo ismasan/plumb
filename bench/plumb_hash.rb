@@ -12,7 +12,11 @@ module PlumbHash
   BLANK_STRING = ''
   MONEY_EXP = /(\W{1}|\w{3})?[\d+,.]/
 
-  BlankStringOrDate = Forms::Nil | Forms::Date
+  # Blank string (or a valueless param) -> nil, otherwise an ISO date string -> Date.
+  # Mirrors DryTypesHash's `T::Params::Date.optional`, which is what this file is
+  # benchmarked against.
+  FormEncoders = Plumb::Codec::Forms
+  BlankStringOrDate = FormEncoders::NilEncoder | FormEncoders::DateEncoder
 
   # STUB_MONEY swaps the Monetize-parsing constructor for an identity
   # passthrough, so the benchmark can measure the schema WITHOUT the (shared)

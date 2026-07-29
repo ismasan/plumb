@@ -14,6 +14,11 @@ module Types
   # Turn an ISO8601 string into a Time object
   ISOTime = String.build(::Time, :parse).policy(:rescue, ArgumentError)
 
+  # An already-parsed Time, or an ISO8601 string coerced into one. Use
+  # `Plumb::Codec::Forms::TimeEncoder` instead if you also want to encode back to
+  # a string; ISOTime above covers the one direction this example needs.
+  Timestamp = Time | ISOTime
+
   # A UUID string, or generate a new one
   AutoUUID = UUID::V4.default { SecureRandom.uuid }
 end
@@ -57,7 +62,7 @@ class Event < Types::Data
   attribute :id, Types::AutoUUID
   attribute :stream_id, Types::String.present
   attribute :type, Types::String
-  attribute(:created_at, Types::Forms::Time.default { ::Time.now })
+  attribute(:created_at, Types::Timestamp.default { ::Time.now })
   attribute? :causation_id, Types::UUID::V4
   attribute? :correlation_id, Types::UUID::V4
   attribute :payload, Types::Static[nil]

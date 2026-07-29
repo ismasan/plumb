@@ -55,7 +55,9 @@ module Types
       image = result.value
       path = path_for(image.url)
       File.open(path, 'wb') { |f| f.write(image.io.read) }
-      result.valid image.where(url: path, io: File.new(path))
+      # `#with` — the copy-with-changes method on a Ruby ::Data. (Not Plumb's
+      # `#where`, which builds a refined TYPE; `image` here is a Data instance.)
+      result.valid image.with(url: path, io: File.new(path))
     end
 
     def path_for(url)
@@ -79,7 +81,11 @@ cache = Types::Cache.new('./examples/data/downloads')
 # 1). Take a valid URL string.
 # 2). Attempt reading the file from the cache. Return that if it exists.
 # 3). Otherwise, download the file from the internet and write it to the cache.
-IdempotentDownload = Types::Forms::URI::HTTP >> (cache.read | (Types::Download >> cache.write))
+# The leading step turns a URL string into a URI::HTTP (HTTPS included — it is a
+# subclass). The encoder composes here in its decode direction
+# (String -> URI::HTTP), picked automatically from what the rest of the pipeline
+# consumes.
+IdempotentDownload = Plumb::Codec::Forms::HTTPURIEncoder >> (cache.read | (Types::Download >> cache.write))
 
 # An array of downloadable images,
 # marked as concurrent so that all IO operations are run in threads.
