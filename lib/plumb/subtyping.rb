@@ -282,6 +282,7 @@ module Plumb
       return intersect_union(b, a) if b.is_a?(Disjunction)
 
       intersect_constraints(a, b) ||
+        intersect_literals(a, b) ||
         intersect_containers(a, b) ||
         (disjoint_atomic?(a, b) ? Types::Never : nil)
     end
@@ -314,6 +315,45 @@ module Plumb
       return Types::Never if merged.equal?(Constraint::EMPTY) # provably empty ⇒ Never
 
       Constraint.narrow(a.base, merged)
+    end
+
+    # Two literals meet as their singleton sets: distinct values share no
+    # inhabitant, so the meet is provably empty ⇒ Never (`Value['a'] &
+    # Value['b']`). Equal values need no answer here — #intersect's `a == b`
+    # dedupe already folded them — so this only ever returns Never or nil.
+    #
+    # Decided by `==`, the same test a literal match itself makes, so
+    # equality that crosses Ruby classes is honoured: `Value[5] & Value[5.0]` is
+    # NOT disjoint, because `5 == 5.0`. That is also why literals can't be told
+    # apart by base type — declaring `Value[5]`'s base to be Integer would make
+    # it disjoint from Float and wrongly sink `Value[5] & Types::Float` — and so
+    # why this reasons over values instead of routing through #disjoint_atomic?.
+    #
+    # Runs after #intersect_constraints, so two literals over the same base reach
+    # here only once Constraint.merge_matchers has declined them (it merges
+    # Ranges and Sets, not literals).
+    def intersect_literals(a, b)
+      av = literal_value(a)
+      bv = literal_value(b)
+      return nil if Undefined.equal?(av) || Undefined.equal?(bv)
+
+      av == bv ? nil : Types::Never
+    end
+
+    # The single value a node matches by equality, or `Undefined` for a node that
+    # matches more than one (so a caller can't mistake a membership test for a
+    # literal). Covers both spellings of a literal — `Types::Value['a']` and
+    # `Types::String['a']` are equally provably disjoint from `'b'` — but checks
+    # the two differently: a ValueClass matches by `==` whatever it holds, so any
+    # value qualifies, while a Constraint matches by `===`, so only the kinds
+    # whose `#===` IS `#==` do (see Constraint#literal?). A bare `Types::Value`
+    # already holds Undefined, which reads as "no literal" here.
+    def literal_value(node)
+      case node
+      when ValueClass then node.children.first
+      when Constraint then node.literal? ? node.matcher : Undefined
+      else Undefined
+      end
     end
 
     # Intersect two covariant containers of the same class (Array/Tuple/HashMap)

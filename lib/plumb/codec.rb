@@ -573,14 +573,15 @@ module Plumb
       end
 
       # A pure refinement carries no encodable type — it filters the adjacent
-      # type's values. A bare-matcher Constraint (opaque input, refining a
-      # sibling) qualifies, but a base-type Constraint — `Types::Date` IS
-      # `Constraint(::Date)` — is data an encoder must see (eg. in
-      # `Types::Date.where(year: ...)` == `And(Constraint(::Date), AVM)`).
+      # type's values. A baseless Constraint refining a sibling qualifies, but a
+      # base-type Constraint — `Types::Date` IS `Constraint(::Date)` — is data an
+      # encoder must see (eg. in `Types::Date.where(year: ...)` ==
+      # `And(Constraint(::Date), AVM)`), and so is a baseless Module gate, which
+      # names a type rather than filtering one.
       def pure_refinement?(child)
         case child
         when AttributeValueMatch, ValueClass, Not then true
-        when Constraint then child.input_type.is_a?(AnyClass)
+        when Constraint then child.base.nil? && !child.matcher.is_a?(::Module)
         else false
         end
       end

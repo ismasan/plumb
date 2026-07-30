@@ -46,6 +46,62 @@ RSpec.describe 'intersection (#&) and Never' do
     end
   end
 
+  describe 'literal intersection' do
+    it 'collapses two distinct literals to Never' do
+      type = ITypes::Value['a'] & ITypes::Value['b']
+      expect(type).to eq(ITypes::Never)
+      assert_result(type.resolve('a'), 'a', false)
+      assert_result(type.resolve('b'), 'b', false)
+    end
+
+    it 'keeps the literal when both sides are equal' do
+      expect(ITypes::Value['a'] & ITypes::Value['a']).to eq(ITypes::Value['a'])
+    end
+
+    # Membership is decided by `==`, so equality that crosses Ruby classes must
+    # not be read as disjoint: 5 == 5.0, and Value[5] does accept 5.0.
+    it 'does not collapse literals that are == across classes' do
+      expect(ITypes::Value[5] & ITypes::Value[5.0]).not_to eq(ITypes::Never)
+      assert_result(ITypes::Value[5].resolve(5.0), 5.0, true)
+    end
+
+    it 'collapses distinct numeric literals to Never' do
+      expect(ITypes::Value[5] & ITypes::Value[6]).to eq(ITypes::Never)
+    end
+
+    # The bare Value holds an Undefined sentinel — not a value to reason about.
+    it 'leaves a bare Types::Value to the runtime intersection' do
+      expect(ITypes::Value & ITypes::Value['a']).not_to eq(ITypes::Never)
+    end
+
+    # A literal has two spellings — Types::Value, and a Constraint over a literal
+    # matcher — and both are provably disjoint from a different literal.
+    it 'collapses distinct literals written as Constraint matchers' do
+      expect(ITypes::String['a'] & ITypes::String['b']).to eq(ITypes::Never)
+      expect(ITypes::Any[5] & ITypes::Any[6]).to eq(ITypes::Never)
+      expect(ITypes::Integer[5] & ITypes::String['a']).to eq(ITypes::Never)
+    end
+
+    it 'collapses across the two spellings' do
+      expect(ITypes::Value['a'] & ITypes::String['b']).to eq(ITypes::Never)
+      expect(ITypes::Value['a'] & ITypes::String['a']).not_to eq(ITypes::Never)
+    end
+
+    # Only matchers whose #=== is #== are literals. A Range/Set/Regexp matches
+    # many values, so two of them may still overlap.
+    it 'does not treat pattern matchers as literals' do
+      expect(ITypes::String[/a/] & ITypes::String[/b/]).not_to eq(ITypes::Never)
+      expect(ITypes::Integer[1..3] & ITypes::Integer[2..5]).to eq(ITypes::Integer[2..3])
+      expect(ITypes::Integer[Set[1, 2]] & ITypes::Integer[Set[2, 3]]).to eq(ITypes::Integer[Set[2]])
+    end
+
+    it 'behaves as Never in further compositions' do
+      empty = ITypes::Value['a'] & ITypes::Value['b']
+      expect(empty | ITypes::String).to eq(ITypes::String)
+      expect(ITypes::Integer & empty).to eq(ITypes::Never)
+    end
+  end
+
   describe 'disjoint base classes' do
     it 'collapses String & Integer to Never' do
       expect(ITypes::String & ITypes::Integer).to eq(ITypes::Never)
