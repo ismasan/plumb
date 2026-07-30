@@ -182,9 +182,14 @@ RSpec.describe 'composition reduction (>>)' do
   end
 
   describe 'bail cases fall back to And' do
+    # A transform declaring the type it accepts. The refinement is not folded into it
+    # (that would drop the 0..100 matcher), and its input slot is already typed, so
+    # boundary absorption declines too — see 'boundary absorption' in
+    # spec/function_fusion_spec.rb for the untyped-slot case, which does reduce.
     specify 'right is a transform (value-changing barrier)' do
-      chain = RTypes::Integer[0..100] >> RTypes::Any.transform(::Integer) { |v| v + 1 }
+      chain = RTypes::Integer[0..100] >> RTypes::Integer.transform(::Integer) { |v| v + 1 }
       expect(chain).to be_a(Plumb::And)
+      expect(chain.children.first).to eq(RTypes::Integer[0..100])
     end
 
     specify 'right is a union with a value-changing branch (not value-preserving)' do

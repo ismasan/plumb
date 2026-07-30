@@ -19,16 +19,10 @@ module Plumb
   # Include AFTER Composable, whose #subtype_identity / #accepted_type defaults
   # these replace.
   module TypedStep
-    # Declaring no types at all: both ends are Any (top), so neither check can
-    # fail and neither is worth dropping.
-    #
-    # For a {Plumb::Function} this means more, because every other construction
-    # path (#transform, #build, coercions, Encoder.step) declares at least an
-    # output type: an opaque Function is exactly the wrapper `Composable.wrap`
-    # builds around a bare `#call(Result) => Result` object, and its #fn is that
-    # object. Only Function carries that reading — an opaque Implementation IS the
-    # object, not a wrapper around one — so callers wanting to unwrap must test for
-    # Function too. @see Plumb::Attributes.struct_class, which owns that fact.
+    # Declaring no types at all: both ends are Any (top), so neither check can fail
+    # and neither is worth dropping. A statement about the declared types only — a node
+    # that WRAPS a caller's callable says so through Function#wraps_callable?, since a
+    # wrapper that has absorbed a neighbouring type into a slot is not opaque.
     def opaque? = input_type == Types::Any && output_type == Types::Any
 
     # A conversion is identified for subtyping by what it PRODUCES — the input

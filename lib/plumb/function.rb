@@ -103,7 +103,7 @@ module Plumb
       fn = callable || block
       raise ArgumentError, 'expected a callable or a block' unless fn.respond_to?(:call)
 
-      GuaranteedFunction.new(Types::Any, Types::Any, fn, inspect:, identity:)
+      GuaranteedFunction.new(Types::Any, Types::Any, fn, inspect:, identity:, wrapper: true)
     end
 
     def self.__set_types(inout)
@@ -125,15 +125,29 @@ module Plumb
     # @param identity [Object, nil] what this function IS, for `#==` — see #==.
     #   Defaults to `fn`, which is correct whenever `fn` is the caller's own
     #   callable rather than a wrapper built around it.
-    def initialize(input_type, output_type, fn = Plumb::NOOP, inspect: nil, identity: nil)
+    # @param wrapper [Boolean] whether this node merely WRAPS a caller-supplied
+    #   callable — see #wraps_callable?. Set by .opaque, the only builder that does.
+    def initialize(input_type, output_type, fn = Plumb::NOOP, inspect: nil, identity: nil, wrapper: false)
       @input_type = input_type
       @output_type = output_type
       @fn = fn
       @inspect_label = inspect
       @identity = identity || fn
+      @wraps_callable = wrapper
       @children = [input_type, output_type].freeze
       freeze
     end
+
+    # Is this node a plain WRAPPER around a callable the caller handed to Plumb (what
+    # `Composable.wrap` / `.opaque` build), rather than a #transform / #build /
+    # coercion whose #fn is a lambda Plumb built around a value-level block? It is what
+    # singles out a node whose #fn is worth reaching for — a struct class, or a proc a
+    # decorator wants to replace. @see Plumb::Attributes.struct_class
+    #
+    # DECLARED at construction, and not derivable from the types, which say nothing
+    # about it: boundary absorption moves a neighbouring type INTO a wrapper's slot, so
+    # `Types::Integer >> some_proc` is a wrapper with a typed end. @see #absorb_input
+    def wraps_callable? = @wraps_callable
 
     # Equal when they declare the same types AND apply the same transformation.
     #
@@ -159,7 +173,8 @@ module Plumb
     # new ones also has to carry the callable, the inspect label and the #==
     # identity — none of which a caller can see. @see Plumb::NodeMapper
     def with_children(children)
-      self.class.new(children[0], children[1], @fn, inspect: @inspect_label, identity: @identity)
+      self.class.new(children[0], children[1], @fn,
+                     inspect: @inspect_label, identity: @identity, wrapper: @wraps_callable)
     end
 
     private def _inspect
@@ -199,6 +214,75 @@ module Plumb
       klass.new(@input_type, other.output_type, ->(result) { result.map(fn1).map(fn2) },
                 identity: [identity, other.identity])
     end
+
+    # Take `type` as this node's OUTPUT slot, for `self >> type` — so
+    # `(Integer -> Any) >> Types::Float` becomes `(Integer -> Float)`, one node
+    # running one Float check instead of two nodes running an Any hop and a Float
+    # check. @see Composable#absorb_output for the shape; the conditions are here.
+    #
+    # `type` must be VALUE-PRESERVING: the slot runs it either way, but a converting
+    # neighbour is Function-to-Function work, and #fuse_with does that better (it
+    # fuses the two fns, rather than nesting one inside the other's output slot).
+    # Keeping the slot a plain type also keeps #output_type readable as a type.
+    #
+    # What happens to the slot's existing type depends on whether it is CHECKED:
+    #
+    #   - checked (a plain Function): its check is dropped, so `type` must reject
+    #     everything it rejected — `type <= output_type` — and the dropped check must
+    #     be value-preserving, since a coercing output slot does real work. Validity
+    #     and the produced value are preserved; the ERROR TEXT of a value both would
+    #     reject becomes the narrower type's, the same trade Optimizer.reduce_union
+    #     makes when it absorbs a union branch.
+    #   - unchecked (a GuaranteedFunction): nothing is dropped. When the guarantee
+    #     already implies `type` there is nothing to win either — that redundant gate
+    #     is reduce_step's to drop, so decline. Otherwise `type` takes the slot and the
+    #     node becomes a plain Function, since the check has to run — the guarantee goes
+    #     with the type that carried it.
+    def absorb_output(type)
+      return nil unless absorbable? && Plumb::Subtyping.value_preserving?(type)
+
+      if checks_output?
+        return nil unless Plumb::Subtyping.value_preserving?(@output_type)
+        return nil unless Plumb::Subtyping.subtype?(type, @output_type)
+
+        with_children([@input_type, type])
+      else
+        return nil if Plumb::Subtyping.subtype?(@output_type, type)
+
+        Function.new(@input_type, type, @fn, identity: @identity, wrapper: @wraps_callable)
+      end
+    end
+
+    # Take `type` as this node's INPUT slot, for `type >> self` — so
+    # `Types::Integer >> ->(r) { ... }` becomes `(Integer -> Any)` rather than
+    # `And(Integer, (Any -> Any))`. With #absorb_output, that is what collapses
+    # `Types::Integer >> ->(r) { r } >> Types::Float` to `(Integer -> Float)`:
+    # a little typed pipeline with arbitrary code in the middle.
+    #
+    # ONLY into an `Any` slot, where NO check is dropped — `type` simply runs where
+    # the no-op ran, so validity, value, errors and order are preserved exactly. The
+    # general form (any slot whose check `type` subsumes) is the left-hand gate drop
+    # Optimizer declines, and costs what that costs; see the note in its header.
+    #
+    # `type` must be value-preserving for the same reason as #absorb_output: an input
+    # slot holding a conversion would run correctly, but it stops being readable as
+    # the type this node accepts, and it blocks the fusion that WOULD collapse two
+    # converting steps into one.
+    def absorb_input(type)
+      return nil unless absorbable? && Plumb::Subtyping.value_preserving?(type)
+      return nil unless @input_type.is_a?(AnyClass)
+
+      with_children([type, @output_type])
+    end
+
+    # May a neighbouring type move into one of this node's slots? Only when #call is
+    # the canonical mapping — a replaced #call runs different checks, and nothing can
+    # be assumed about the slots (the same question #fusable_step? asks) — and only
+    # when this node renders as its TYPES. A LABELLED function (#generate, #invoke,
+    # the :default and :rescue policies, a filtered container) inspects as its label
+    # instead, so a type absorbed into a slot would vanish from #inspect; for those the
+    # label is the more useful reading, and the type runs as its own step.
+    private def absorbable? = standard_call? && @inspect_label.nil?
 
     # DERIVED, not declared: this family's #call is Function's full
     # input -> fn -> output or GuaranteedFunction's input -> fn (whose missing

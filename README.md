@@ -157,6 +157,30 @@ In other words, `A >> B` means "if A succeeds, pass its result to B. Otherwise r
 
 `#>>` also **type-checks the composition** at build time: if the left side could never produce a value the right side accepts, the chain is a dead end and it raises `Plumb::TypeError` before any data flows through. See [Composition type-checks](#composition-type-checks).
 
+#### A plain callable between two types
+
+A proc declares no types, so on its own it's an opaque step. Written *between* two types, those types move into its boundaries and the chain becomes a single typed function:
+
+```ruby
+Doubled = Types::Integer >> ->(result) { result.valid(result.value * 2) } >> Types::Integer
+
+Doubled.inspect             # => "(Types::Integer -> Types::Integer)"
+Doubled.input_type          # => Types::Integer
+Doubled.output_type         # => Types::Integer
+Doubled.parse(3)            # => 6
+Doubled.resolve('3').errors # => "Must be a Integer"
+```
+
+The checks are the ones you wrote — the input validated before the callable runs, the output after — but they run as one node's boundaries instead of a three-step chain, and the result reports what it accepts and produces, so it keeps composing (and type-checking) downstream. Either half works on its own: `Types::Integer >> a_proc` is `(Types::Integer -> Plumb::Types::Any)`, typed on the side you declared.
+
+Nothing is dropped to do this. A type is only absorbed when it leaves the value alone, and only into a boundary the step left undeclared — a step that says what it accepts keeps its own check:
+
+```ruby
+# The transform declares String as its input, so the leading gate stays a step.
+(Types::String >> Types::String.transform(::Integer, &:to_i)).inspect
+# => "(Types::String >> (Types::String -> Integer))"
+```
+
 #### Disjunction with `#|` ("Or")
 
 `A | B` means "if A returns a valid result, return that. Otherwise try B with the original input."

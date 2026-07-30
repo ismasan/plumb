@@ -32,6 +32,9 @@ module Plumb
   #   `left | right`                     reduce_union, then factor_union,
   #                                      else Disjunction.build
   #
+  # reduce_step is itself a ladder: intersection distribution, attribute narrowing,
+  # step fusion, refinement re-parenting, and finally boundary absorption.
+  #
   # The meet (`#&`) is NOT here — a greatest lower bound is lattice algebra, not a
   # rewrite, so it stays in Subtyping.intersect.
   #
@@ -45,6 +48,14 @@ module Plumb
   # where an enum-like union spends its time. The two rules want opposite things about
   # the same node (absorb the gate vs extract it), and at `>>` time there is no way to
   # know a `|` is coming. Factoring wins the bigger case.
+  #
+  # #absorb_boundary sits on the other side of that line, and where the check goes is
+  # what divides them: it moves a left-hand type into an `Any` input slot only, where
+  # there is no gate to drop, so what a union gives up is a step boundary in a chain
+  # whose middle step is an untyped callable. Extending it to a TYPED input slot
+  # (`Types::String >> (String -> Integer)` -> just the transform) is the declined rule
+  # in another form, and would need factor_union taught to unfold a value-preserving
+  # input slot back into a step before it could pay.
   module Optimizer
     module_function
 
@@ -84,22 +95,11 @@ module Plumb
         Disjunction.build(left, right)
     end
 
-    # Rung-1 structural reduction of `left >> right`. When `right` is a refinement
-    # (a `Constraint` chain) whose ROOT is a base-type (Module) gate that `left`'s
-    # output already guarantees, that gate is a duplicated runtime check: re-parent
-    # `right`'s refinement matchers onto `left` and drop it. Returns the reduced
-    # type, or `nil` to fall back to `Conjunction.build`.
-    #
-    # Keyed on the root TYPE only (`Subtyping.subtype?(left_output, root)`), NOT on matcher
-    # values — so `Integer[0..100] >> Integer[-10..110]` becomes
-    # `Integer[0..100][-10..110]` (the `-10..110` range is preserved), not the
-    # value-subsumed `Integer[0..100]` (that would be rung 2).
-    #
-    #   matchers=[-10..110], root=Constraint(::Integer), left guarantees Integer
-    #   => Constraint(-10..110, base: Integer[0..100]) == Integer[0..100][-10..110]
-    #
-    # Degenerate `left >> Integer` (`matchers == []`) returns `left` — a pure
-    # redundant type gate removed.
+    # Rung-1 structural reduction of `left >> right` — the ladder tried before
+    # absorption into a Conjunction: intersection distribution, attribute narrowing,
+    # step fusion, refinement re-parenting, boundary absorption. Each is a method or a
+    # commented block below, in that order. Returns the reduced type, or `nil` to fall
+    # back to `Conjunction.build`.
     def reduce_step(left, right)
       # A refinement narrows by each conjunct in turn: `left / (b ∧ c)` is
       # `(left / b) / c`. Being an Intersection IS the condition — it is only
@@ -125,6 +125,25 @@ module Plumb
         return fused
       end
 
+      reparent_refinement(left, right) || absorb_boundary(left, right)
+    end
+
+    # When `right` is a refinement (a `Constraint` chain) whose ROOT is a base-type
+    # (Module) gate that `left`'s output already guarantees, that gate is a duplicated
+    # runtime check: re-parent `right`'s refinement matchers onto `left` and drop it.
+    # Nil when it declines, which leaves the pair to the absorption rung.
+    #
+    # Keyed on the root TYPE only (`Subtyping.subtype?(left_output, root)`), NOT on matcher
+    # values — so `Integer[0..100] >> Integer[-10..110]` becomes
+    # `Integer[0..100][-10..110]` (the `-10..110` range is preserved), not the
+    # value-subsumed `Integer[0..100]` (that would be rung 2).
+    #
+    #   matchers=[-10..110], root=Constraint(::Integer), left guarantees Integer
+    #   => Constraint(-10..110, base: Integer[0..100]) == Integer[0..100][-10..110]
+    #
+    # Degenerate `left >> Integer` (`matchers == []`) returns `left` — a pure
+    # redundant type gate removed.
+    def reparent_refinement(left, right)
       return nil unless right.is_a?(Constraint)
 
       matchers = [] # innermost-first, excludes the root gate
@@ -140,6 +159,21 @@ module Plumb
       # Stack right's refinements onto left; Constraint.narrow intersects Ranges
       # so `Integer[0..100] >> Integer[0..]` collapses to `Integer[0..100]`.
       matchers.reduce(left) { |acc, m| Constraint.narrow(acc, m) }
+    end
+
+    # LAST RUNG. A typed step runs its boundary types as steps, so a plain type next
+    # to one can move into the matching slot: `Types::Integer >> a_proc >>
+    # Types::Float` becomes the single `(Integer -> Float)` instead of a three-node
+    # chain with an `Any` hop in the middle. The node owns the conditions (see
+    # Function#absorb_output / #absorb_input) and at most one side can accept, since
+    # each requires the OTHER side to be a value-preserving type — which a typed step
+    # never is, and a seam between two of those is #fuse_with's.
+    #
+    # Last in the ladder, so a pair another rule reduces gets that reduction instead:
+    # `#[]` on a transform re-parents (`String.transform(:to_i)[0..10]`), and a
+    # redundant gate is dropped rather than absorbed.
+    def absorb_boundary(left, right)
+      left.absorb_output(right) || right.absorb_input(left)
     end
 
     # Narrow `left` by attribute constraint `avm`: intersect it into `left`'s

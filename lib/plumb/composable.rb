@@ -348,6 +348,22 @@ module Plumb
     # @see Function#fusable_step?
     def fusable_step? = false
 
+    # BOUNDARY ABSORPTION — the one-sided companions to #fuse_with, for a seam
+    # where only one side is a typed step and the other is a plain type. A typed
+    # step already RUNS its boundary types as steps (`result.map(input).map(fn)
+    # .map(output)`), so a neighbouring type can move into the matching slot and
+    # the node then does the same work in one hop instead of two.
+    #
+    #   `self >> type` -> #absorb_output(type), asked of the LEFT (the step)
+    #   `type >> self` -> #absorb_input(type),  asked of the RIGHT (the step)
+    #
+    # Return the rebuilt node, or nil to decline. Implemented by Function (which
+    # owns the soundness conditions) and re-associated by And, so a step in the
+    # middle of a chain is reachable. Reached from Optimizer.reduce_step as its
+    # LAST rung: absorption only fires where no other reduction applies.
+    def absorb_output(_type) = nil
+    def absorb_input(_type) = nil
+
     # Chain two composable objects together.
     # A.K.A "and" or "sequence"
     # @example

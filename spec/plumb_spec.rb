@@ -98,12 +98,14 @@ RSpec.describe Plumb do
       assert_result(type2.resolve(%w[a b]), ['Hello a', 'Hello b'], true)
     end
 
-    it 'finds and replaces a callable wrapped in an opaque Function' do
+    it 'finds and replaces a callable wrapped in a Function' do
       type = (Types::Integer >> ->(r) { r.valid(r.value * 2) }).default(1)
       type2 = Plumb.decorate(type) do |node|
-        # #opaque? is what singles out a wrapped callable — a bare #is_a?(Function)
-        # would also match every #transform / #build / coercion in the tree.
-        if node.is_a?(Plumb::Function) && node.opaque?
+        # #wraps_callable? is what singles out a wrapped callable — a bare
+        # #is_a?(Function) would also match every #transform / #build / coercion in
+        # the tree, and the node's types are no guide either: `Integer >> proc`
+        # absorbs the Integer into the wrapper's input slot.
+        if node.is_a?(Plumb::Function) && node.wraps_callable?
           Plumb::Composable.wrap(->(r) { r.valid(r.value * 3) })
         else
           node

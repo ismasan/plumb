@@ -64,5 +64,20 @@ module Plumb
       fused = @right.fuse_with(other)
       fused && Conjunction.build(@left, fused)
     end
+
+    # Boundary absorption re-associates for the same reason #fuse_with does: the
+    # boundary a chain presents to a neighbour belongs to the step at that END of it,
+    # so `And(gate, f) >> Types::Float` reaches `f`'s output slot, and `Types::Integer
+    # >> And(f, x)` reaches `f`'s input slot. Nil when that end declines, and the
+    # rebuilt half carries its own soundness proof. @see Composable#absorb_output
+    def absorb_output(type)
+      absorbed = @right.absorb_output(type)
+      absorbed && Conjunction.build(@left, absorbed)
+    end
+
+    def absorb_input(type)
+      absorbed = @left.absorb_input(type)
+      absorbed && Conjunction.build(absorbed, @right)
+    end
   end
 end

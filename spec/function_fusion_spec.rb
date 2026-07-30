@@ -314,4 +314,134 @@ RSpec.describe 'Function fusion' do
       end
     end
   end
+
+  # BOUNDARY ABSORPTION — the one-sided companion to fusion, for a seam where only
+  # one side is a typed step. A typed step runs its boundary types as steps, so a
+  # plain type beside one moves into the matching slot instead of standing as its own
+  # node. What it buys is that an arbitrary callable keeps the types around it:
+  # `Types::Integer >> a_proc >> Types::Float` is one `(Integer -> Float)` node
+  # reporting both ends, rather than a three-deep chain reporting `Any`.
+  describe 'boundary absorption' do
+    let(:double) { ->(r) { r.valid(r.value * 2) } }
+
+    it 'collapses type >> callable >> type into a single typed Function' do
+      chain = Types::Integer >> double >> Types::Float
+
+      expect(chain).to be_instance_of(Plumb::Function)
+      expect(chain.input_type).to eq(Types::Integer)
+      expect(chain.output_type).to eq(Types::Float)
+      expect(chain.fn).to be(double)
+    end
+
+    it 'runs both checks, and the callable between them' do
+      chain = Types::Integer >> ->(r) { r.valid(r.value.to_f) } >> Types::Float
+
+      assert_result(chain.resolve(2), 2.0, true)
+      assert_result(chain.resolve('2'), '2', false)  # input check
+      assert_result(chain.resolve(2), 2.0, true)
+
+      no_convert = Types::Integer >> double >> Types::Float
+      assert_result(no_convert.resolve(2), 4, false) # output check: 4 is not a Float
+    end
+
+    it 'does not run the callable when the absorbed input check fails' do
+      seen = []
+      chain = Types::Integer >> ->(r) { seen << r.value; r.valid(r.value) } >> Types::Integer
+
+      expect(chain.resolve('nope').valid?).to be(false)
+      expect(seen).to be_empty
+    end
+
+    describe 'the input slot' do
+      it 'takes a preceding type, leaving the callable reachable' do
+        chain = Types::Integer >> double
+
+        expect(chain).to be_instance_of(Plumb::GuaranteedFunction)
+        expect(chain.input_type).to eq(Types::Integer)
+        expect(chain.output_type).to eq(Types::Any) # the callable's output is unknown
+        expect(chain.fn).to be(double)
+        expect(chain.wraps_callable?).to be(true)
+        assert_result(chain.resolve(2), 4, true)
+        assert_result(chain.resolve('x'), 'x', false)
+      end
+
+      # Only into an `Any` slot, where no check is dropped. A slot that declares a
+      # type is doing work, and absorbing over it is the left-hand gate drop
+      # Plumb::Optimizer declines — see the note in its header.
+      it 'declines a slot that already declares a type' do
+        chain = Types::String >> int_from_string
+
+        expect(chain).to be_a(Plumb::And)
+        expect(chain.children).to eq([Types::String, int_from_string])
+      end
+
+      it 'declines a preceding step that changes the value' do
+        # A record drops undeclared keys, so it is not a check — it stays a step of
+        # its own, and the callable sees only what the record let through.
+        chain = Types::Hash[name: Types::String] >> ->(r) { r.valid(r.value.keys) }
+
+        expect(chain).to be_a(Plumb::And)
+        assert_result(chain.resolve({ name: 'a', x: 1 }), [:name], true)
+      end
+    end
+
+    describe 'the output slot' do
+      let(:to_numeric) { Plumb::Function[Types::String => Types::Numeric] { |r| r.valid(r.value.to_f) } }
+
+      # Narrowing what a step produces is what `#>>` refuses (Numeric is not a Float),
+      # so this is the `#/` case — and the Numeric check goes, since every value the
+      # narrower Float admits it admitted too.
+      it 'takes a narrower type in place of a checked output' do
+        narrowed = to_numeric / Types::Float
+
+        expect(narrowed).to be_instance_of(Plumb::Function)
+        expect(narrowed.input_type).to eq(Types::String)
+        expect(narrowed.output_type).to eq(Types::Float)
+        assert_result(narrowed.resolve('1.5'), 1.5, true)
+        assert_result(narrowed.resolve(10), 10, false)
+      end
+
+      it 'declines a type the checked output does not cover' do
+        expect(to_numeric / Types::Any[::Numeric, ::String]).to be_a(Plumb::Conjunction)
+      end
+
+      # An unchecked output is a build-time guarantee (see GuaranteedFunction). When it
+      # already implies the type there is nothing to absorb — that redundant gate is
+      # reduce_step's to drop, and dropping it keeps the guarantee.
+      it 'leaves a guarantee that already implies the type' do
+        expect(int_from_string >> Types::Integer).to be(int_from_string)
+      end
+
+      it 'declines a step that changes the value, which fusion handles better' do
+        chain = (Types::Integer >> double) >> Types::Integer.transform(::String, &:to_s)
+
+        expect(chain).to be_a(Plumb::And)
+        expect(chain.parse(2)).to eq('4')
+      end
+    end
+
+    # Re-association, as for #fuse_with: the boundary a chain presents belongs to the
+    # step at that end of it.
+    it 'reaches a step behind a leading type gate' do
+      to_numeric = Plumb::Function[Types::Numeric => Types::Numeric] { |r| r.valid(r.value.to_f) }
+      chain = (Types::Integer >> to_numeric) / Types::Float
+
+      expect(chain).to be_a(Plumb::And)
+      expect(chain.children.first).to eq(Types::Integer)
+      expect(chain.children.last.output_type).to eq(Types::Float)
+      assert_result(chain.resolve(2), 2.0, true)
+      assert_result(chain.resolve(2.0), 2.0, false) # the gate runs
+    end
+
+    # A labelled function renders as its label instead of its types, so a type
+    # absorbed into a slot would disappear from #inspect. Plumb's own wrappers are
+    # the labelled ones, and for them the label is the useful reading.
+    it 'leaves a labelled function alone' do
+      generated = Types::Integer.generate { 10 }
+
+      expect(generated).to be_a(Plumb::And)
+      expect(generated.inspect).to include('generator')
+      expect(generated.parse).to eq(10)
+    end
+  end
 end
