@@ -2565,6 +2565,39 @@ Two-sided compositions report one of four `#node_name`s, depending on whether th
 
 For a visitor this matters because an `:intersection` describes one value (merge both sides' specs) while an `:and` may describe a conversion (build from the input side). Visitors that don't need the distinction can register just `on(:and)` / `on(:or)`: `:intersection` and `:union` fall back to those when no specific handler is defined.
 
+### Mermaid diagrams
+
+Because a composition is just a tree of `>>` (sequence) and `|` (choice) nodes, it can also be rendered as a [Mermaid](https://mermaid.js.org) `flowchart`. Every Plumb type supports `#to_mermaid`. `>>` becomes sequential arrows; `|` becomes a fork, where the preceding step fans out to each alternative (and a following step joins them back).
+
+```ruby
+type = (A >> B) | (C >> (D | B))
+puts type.to_mermaid
+```
+
+```mermaid
+flowchart LR
+  start(( ))
+  n1["A"]
+  n2["B"]
+  n3["C"]
+  n4["D"]
+  n5["B"]
+  start --> n1
+  start --> n3
+  n1 --> n2
+  n3 --> n4
+  n3 --> n5
+```
+
+Each box is labelled by the node's metadata `:title` (or `:label`) when present, otherwise by its `#inspect` — so constant-bound types show their constant name. Structural nodes (`>>`, `|`) shape the graph; every other type (steps, transforms, refinements, hashes, arrays, …) renders as a single opaque box. Recursive types (`#defer`) render as one box rather than recursing forever.
+
+The direction is configurable, and the visitor can be used directly:
+
+```ruby
+type.to_mermaid(direction: 'TB')
+Plumb::MermaidVisitor.call(type)
+```
+
 
 
 ## TODO:

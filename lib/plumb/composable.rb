@@ -827,6 +827,14 @@ module Plumb
       JSONSchemaVisitor.call(self, root:)
     end
 
+    # Render this composition as a Mermaid `flowchart`. `>>` becomes sequential
+    # arrows and `|` becomes a fork. See Plumb::MermaidVisitor.
+    # @option direction [String] flowchart direction ('LR', 'TB', …)
+    # @return [String]
+    def to_mermaid(direction: 'LR')
+      MermaidVisitor.call(self, direction:)
+    end
+
     # Build a step that will invoke one or more methods on the value.
     # Ex 1: Types::String.invoke(:downcase)
     # Ex 2: Types::Array.invoke(:[], 1)
