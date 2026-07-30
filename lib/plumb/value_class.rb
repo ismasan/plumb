@@ -3,6 +3,16 @@
 require 'plumb/composable'
 
 module Plumb
+  # A single literal value, matched by `==`.
+  #
+  # Unlike the other bare matchers — a Constraint with no base, an
+  # AttributeValueMatch — this does NOT report `Types::Any` as its #input_type.
+  # Those opt out of #>>'s subtype check because they narrow arbitrary input and
+  # have no declared domain to check against; a literal's domain is a known
+  # singleton, so it keeps the default (`self`) and accepts only its own value.
+  # That is what makes `Value['a'] >> Value['b']` raise rather than build a chain
+  # no value can satisfy. Narrowing a wider type down to a literal is spelled
+  # `#[]` (`Types::String['a']`), which builds the refinement directly.
   class ValueClass
     include Composable
 
@@ -21,11 +31,6 @@ module Plumb
     end
 
     def [](value) = self.class.new(value)
-
-    # A value constraint accepts any input and narrows it, so its input is Any
-    # (opts out of #>> composition type-checks; the constraint refines, it does
-    # not gate by Ruby type).
-    def input_type = Types::Any
 
     # Matches a specific value and passes it through unchanged.
     def value_preserving? = true

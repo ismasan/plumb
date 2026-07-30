@@ -8,6 +8,7 @@ require 'plumb/stream_class'
 module Plumb
   class ArrayClass
     include Composable
+    include CovariantFusion
 
     attr_reader :children
 
@@ -52,7 +53,8 @@ module Plumb
     end
 
     def filtered
-      Constraint.new(::Array) >> Function.opaque(inspect: "Array[#{element_type}].filtered") do |result|
+      Constraint.new(::Array) >> Function.opaque(inspect: "Array[#{element_type}].filtered",
+                                                identity: [:filtered_array, element_type]) do |result|
         arr = result.value.each.with_object([]) do |e, memo|
           r = element_type.resolve(e)
           memo << r.value if r.valid?
@@ -104,14 +106,31 @@ module Plumb
     class ConcurrentArrayClass < self
       private
 
+      # Same contract as the sequential version above — collect each element's value,
+      # and its errors when it is invalid. Two ways this diverged from it:
+      #
+      #   - an element that resolved to an INVALID Result recorded nothing, because
+      #     only `f.reason` (an exception) was collected. With no errors recorded,
+      #     #call reports the whole array VALID, so
+      #     `Array[Integer].concurrent.resolve(['x'])` came back valid — a concurrent
+      #     Array was not really validating its elements.
+      #   - a REJECTED future (the element step raised) has a nil #value, so reading
+      #     `#value` on it raised `NoMethodError: undefined method 'value' for nil`
+      #     instead of surfacing the cause. The sequential path lets such an exception
+      #     propagate, so re-raise the reason to match it.
+      #
+      # No cursor reuse here, unlike the sequential path: the futures resolve on
+      # different threads, so each needs its own Result.
       def map_array_elements(result)
-        errors = {}
+        array = result.value
+        errors = Hash.new(capacity: array.size)
+        futures = array.map { |e| Concurrent::Future.execute { element_type.resolve(e) } }
 
-        values = result.value
-                       .map { |e| Concurrent::Future.execute { element_type.resolve(e) } }
-                       .map.with_index do |f, idx|
-          re = f.value
-          errors[idx] = f.reason if f.rejected?
+        values = futures.map.with_index do |future, idx|
+          re = future.value # blocks until settled; nil when rejected
+          raise future.reason if future.rejected?
+
+          errors[idx] = re.errors unless re.valid?
           re.value
         end
 

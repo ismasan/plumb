@@ -282,11 +282,15 @@ module Plumb
         case type
         when Deferred then return visit_deferred(type, path)
         when StaticClass then return visit_static(type, path)
-        when Or then return visit_or(type, path)
-        when And then return visit_and(type, path)
-        when Metadata then return rebuild(type, type.type, path) { |t| Metadata.new(t, type.metadata) }
-        when Policy then return rebuild(type, type.children.first, path) { |t| Policy.new(type.policy_name, type.arg, t) }
-        when Composable::Node then return rebuild(type, type.type, path) { |t| t.as_node(type.node_name, type.args) }
+        when Disjunction then return visit_or(type, path)
+        # Intersection BEFORE Conjunction — it is one too, and the two need
+        # opposite treatment (a meet may be reordered, a pipeline may not).
+        when Intersection then return visit_intersection(type, path)
+        when Conjunction then return visit_composition(type, path)
+        # Transparent wrappers: NodeMapper owns how each is rebuilt, so there is no
+        # second table of recipes to keep in step with it.
+        when Metadata, Policy, Composable::Node
+          return NodeMapper.map(type) { |t| visit(t, path) }
         end
 
         enc = encoder_for(type, path)
@@ -370,7 +374,11 @@ module Plumb
 
           Function.new(schema, struct, Plumb::NOOP)
         else
-          Function.new(struct, schema, ->(result) { result.valid!(result.value.attributes) })
+          # The lambda is fresh per call, so name what the step IS as its identity —
+          # otherwise `(Person >> Codec) == (Person >> Codec)` is false while the
+          # decode direction (which passes NOOP) is true. @see Function#==
+          Function.new(struct, schema, ->(result) { result.valid!(result.value.attributes) },
+                       identity: [:struct_encode, struct])
         end
       end
 
@@ -398,7 +406,7 @@ module Plumb
         # BigDecimal under the Numeric noop) would emit raw instead of encoding.
         if (enc = encoder_for(type, path))
           encoded = replace(type, enc, path).parse(value)
-          And.new(ValueClass.new(value), StaticClass.new(encoded.freeze))
+          Conjunction.build(ValueClass.new(value), StaticClass.new(encoded.freeze))
         elsif @codec.noop_value?(value)
           ValueClass.new(value)
         else
@@ -467,22 +475,15 @@ module Plumb
       def visit_hash(type, path)
         return noop_or_fail(type, path) if type._schema.empty? # the bare "any Hash" — a leaf
 
-        changed = false
-        schema = type._schema.each_with_object({}) do |(key, field), h|
-          seg = key.literal? ? key.to_s : key.inspect
-          v = visit(field, path + [seg])
-          changed ||= !v.equal?(field)
-          h[key] = v
+        NodeMapper.map_record(type) do |field, key|
+          visit(field, path + [key.literal? ? key.to_s : key.inspect])
         end
-        changed ? type.class.new(schema:) : type
       end
 
       def visit_array(type, path)
-        element = type.children.first
-        return noop_or_fail(type, path) if element.is_a?(AnyClass) # untyped Array — a leaf
+        return noop_or_fail(type, path) if type.children.first.is_a?(AnyClass) # untyped — a leaf
 
-        v = visit(element, path + ['[]'])
-        v.equal?(element) ? type : type[v]
+        NodeMapper.map_children(type) { |element| visit(element, path + ['[]']) }
       end
 
       def visit_tuple(type, path)
@@ -503,49 +504,84 @@ module Plumb
       # variant schema (all HashClasses); the tag key's literal value is a
       # native pass-through, so the discriminator survives.
       def visit_tagged_hash(type, path)
-        variants = type.children.map { |c| visit(c, path) }
-        return type if variants.zip(type.children).all? { |v, c| v.equal?(c) }
-
-        TaggedHash.new(type.hash_type, type.key, variants)
+        NodeMapper.map_children(type) { |variant| visit(variant, path) }
       end
 
       def visit_or(type, path)
         left, right = type.children
         l = visit(left, path)
         r = visit(right, path)
-        l.equal?(left) && r.equal?(right) ? type : Or.new(l, r)
+        l.equal?(left) && r.equal?(right) ? type : Disjunction.build(l, r)
       end
 
-      # An And chain is a data-bearing type refined by pure filters (a #where's
-      # AttributeValueMatch, a #check Constraint, ...). Rewrite the data type(s).
+      # A MEET: a data-bearing type refined by pure filters (a #where's
+      # AttributeValueMatch, a #check Constraint, ...). Every side constrains the SAME
+      # value and nothing converts, so the sides may be flattened and reordered freely,
+      # which is what makes the partition sound.
+      #
       # On DECODE the codec replaces the schema, so the refinements are the only
-      # validation of the decoded value — keep them AFTER the input ->
-      # output conversion. On ENCODE the schema has already validated the
-      # value (the suffix runs inside `And(schema, suffix)`), so the refinements
-      # are redundant and would run on the produced input value — drop them.
-      def visit_and(type, path)
-        steps = flatten_and(type)
+      # validation of the decoded value — keep them AFTER the conversion. On ENCODE the
+      # value was already validated upstream and they would run on the encoded form, so
+      # drop them.
+      def visit_intersection(type, path)
+        steps = flatten_intersection(type)
         refinements, data = steps.partition { |s| pure_refinement?(s) }
         rewritten = data.map { |d| visit(d, path) }
         return type if rewritten.each_with_index.all? { |r, i| r.equal?(data[i]) }
 
         ordered = @direction == :decode ? rewritten + refinements : rewritten
-        ordered.reduce { |l, r| And.new(l, r) }
+        ordered.reduce { |l, r| Conjunction.build(l, r) }
       end
 
-      def flatten_and(type)
-        type.children.flat_map { |c| c.is_a?(And) ? flatten_and(c) : [c] }
+      # Flattens MEETS ONLY. Descending through a composition here is what caused
+      # a refinement to be lifted past a conversion — see #visit_composition.
+      def flatten_intersection(type)
+        type.children.flat_map { |c| c.is_a?(Intersection) ? flatten_intersection(c) : [c] }
+      end
+
+      # A PIPELINE (`And`): each step consumes what the previous one produced, so
+      # position is meaning. Nothing may be flattened out of it, reordered, or
+      # lifted — visit both sides IN PLACE.
+      #
+      # The meet treatment above must NOT be applied here. Doing so silently breaks
+      # any refinement sitting BEFORE a conversion:
+      # `Date.where(year: 2024) >> Date.transform(::String)` is
+      # `And(Intersection(Date, AVM), Function)`, and flattening across the And puts
+      # the `year` check last — after the Date has become a String, where it can
+      # never pass, so the decoder rejects every input.
+      #
+      # A refinement child is left exactly where it is rather than visited: it
+      # carries no encodable type (see #pure_refinement?), so the codec has nothing
+      # to rewrite in it, and it validates whatever the step before it produced.
+      #
+      # DECODE rewrites AT MOST ONE data step — the first facing the wire. `And(a, b)`
+      # feeds the input to `a`, and `b` receives what `a` produced, so once `a` accepts
+      # the encoded form while still producing what it produced, `b` needs nothing.
+      # Rewriting it too decodes twice: #bridge_input splices `b`'s own decode step in
+      # front, the already-decoded value hits a step expecting the encoded form, and the
+      # pipeline rejects everything. A step only counts as having consumed the wire if
+      # its rewrite actually CHANGED it.
+      def visit_composition(type, path)
+        left, right = type.children
+        l = pure_refinement?(left) ? left : visit(left, path)
+        # `right` receives what `left` produced, so it faces the wire only when
+        # `left`'s rewrite left it unchanged.
+        wire_consumed = @direction == :decode && !l.equal?(left)
+        r = pure_refinement?(right) || wire_consumed ? right : visit(right, path)
+
+        l.equal?(left) && r.equal?(right) ? type : Conjunction.build(l, r)
       end
 
       # A pure refinement carries no encodable type — it filters the adjacent
-      # type's values. A bare-matcher Constraint (opaque input, refining a
-      # sibling) qualifies, but a base-type Constraint — `Types::Date` IS
-      # `Constraint(::Date)` — is data an encoder must see (eg. in
-      # `Types::Date.where(year: ...)` == `And(Constraint(::Date), AVM)`).
+      # type's values. A baseless Constraint refining a sibling qualifies, but a
+      # base-type Constraint — `Types::Date` IS `Constraint(::Date)` — is data an
+      # encoder must see (eg. in `Types::Date.where(year: ...)` ==
+      # `And(Constraint(::Date), AVM)`), and so is a baseless Module gate, which
+      # names a type rather than filtering one.
       def pure_refinement?(child)
         case child
         when AttributeValueMatch, ValueClass, Not then true
-        when Constraint then child.input_type.is_a?(AnyClass)
+        when Constraint then child.base.nil? && !child.matcher.is_a?(::Module)
         else false
         end
       end
@@ -573,12 +609,6 @@ module Plumb
         end
       end
 
-      # Visit a transparent wrapper's inner type; keep the wrapper when
-      # nothing changed, else re-wrap via the block.
-      def rebuild(original, inner, path)
-        v = visit(inner, path)
-        v.equal?(inner) ? original : yield(v)
-      end
     end
 
     # ------------------------------------------------------------------

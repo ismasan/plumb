@@ -188,4 +188,127 @@ RSpec.describe Plumb::Pipeline do
       expect(pipeline.resolve(2).value).to eq(5)
     end
   end
+
+  # A Pipeline is a transparent wrapper around its accumulated composition, so its
+  # #children must be that composition. They used to be captured in #initialize
+  # before any step had been added, so a Pipeline reported no steps at all.
+  describe '#children' do
+    let(:pipeline) do
+      Plumb::Pipeline.new(type: Types::Integer) { |pl| pl.step(Types::Integer[0..10]) }
+    end
+
+    it 'is the accumulated composition, not the starting type' do
+      expect(pipeline.children.size).to eq(1)
+      expect(pipeline.children.first).not_to eq(Types::Integer)
+      expect(pipeline.children.first).to eq(Types::Integer[0..10])
+    end
+
+    # Composable#== compares #children, so a stale snapshot made every Pipeline with
+    # the same starting type equal regardless of its steps.
+    it 'distinguishes pipelines with different steps' do
+      other = Plumb::Pipeline.new(type: Types::Integer) { |pl| pl.step(Types::Integer[20..30]) }
+
+      expect(pipeline).not_to eq(other)
+      expect(pipeline).to eq(Plumb::Pipeline.new(type: Types::Integer) { |pl| pl.step(Types::Integer[0..10]) })
+    end
+
+    # Every visitor walks #children, so the steps were invisible to all of them.
+    it 'lets a visitor see the steps' do
+      expect(pipeline.to_json_schema).to eq(
+        'type' => 'integer', 'minimum' => 0, 'maximum' => 10
+      )
+    end
+
+    it 'keeps tracking the type when the pipeline is left unfrozen' do
+      pl = Plumb::Pipeline.new(type: Types::Integer, freeze_after: false)
+      expect(pl.children.first).to eq(Types::Integer)
+
+      pl.step(Types::Integer[0..10])
+      expect(pl.children.first).to eq(Types::Integer[0..10])
+    end
+  end
+
+  # The `output_type` + block form used to build its Function directly, using the
+  # Function's input slot as the chain link. That never reached #>> / #/, so it never
+  # reached the optimiser: each block step nested inside the last.
+  describe 'block steps go through the optimiser' do
+    def build(n, type: Types::Any)
+      Plumb::Pipeline.new(type:) do |pl|
+        n.times { |i| pl.step(::String) { |r| r.valid("#{r.value}#{i}") } }
+      end
+    end
+
+    # A step's input type is what the pipeline currently produces: the previous step's
+    # output, or the pipeline's initial type when it is the first step. Observed while
+    # building, since adjacent steps then fuse and the seam stops being a separate node.
+    it 'derives each block step\'s input type from the step before it' do
+      pl = Plumb::Pipeline.new(type: Types::String, freeze_after: false)
+
+      pl.step(::Integer) { |r| r.valid(r.value.length) }
+      first = pl.children.first.children.last
+      expect(first.input_type).to eq(Types::String)                      # the initial type
+      expect(first.output_type).to eq(Plumb::Composable.wrap(::Integer))
+
+      pl.step(::Date) { |r| r.valid(::Date.new(2024, 1, r.value)) }
+      expect(pl.output_type).to eq(Plumb::Composable.wrap(::Date))
+      expect(pl.parse('abcd')).to eq(::Date.new(2024, 1, 4))
+    end
+
+    # The derivation survives fusion: the collapsed step reports the pipeline's initial
+    # type as its input, not Types::Any. Using Any would have produced `(Any -> Date)`.
+    it 'keeps the chain\'s ends after the steps fuse' do
+      pipeline = Plumb::Pipeline.new(type: Types::String) do |pl|
+        pl.step(::Integer) { |r| r.valid(r.value.length) }
+        pl.step(::Date) { |r| r.valid(::Date.new(2024, 1, r.value)) }
+      end
+      fused = pipeline.children.first.children.last
+
+      expect(fused).to be_instance_of(Plumb::Function)
+      expect(fused.input_type).to eq(Types::String)
+      expect(fused.output_type).to eq(Plumb::Composable.wrap(::Date))
+      expect(pipeline.input_type).to eq(Types::String)
+      expect(pipeline.output_type).to eq(Plumb::Composable.wrap(::Date))
+    end
+
+    it 'fuses consecutive block steps into a single Function' do
+      inner = build(3).children.first
+
+      expect(inner).to be_instance_of(Plumb::Function)
+      expect(inner.input_type).to eq(Types::Any)
+      expect(inner.output_type).to eq(Plumb::Composable.wrap(::String))
+    end
+
+    it 'runs every step, in order' do
+      expect(build(3).parse('a')).to eq('a012')
+    end
+
+    it 'still chains correctly from a typed start' do
+      pl = build(2, type: Types::String)
+
+      expect(pl.parse('a')).to eq('a01')
+      expect(pl.resolve(42).valid?).to be(false) # the starting type still gates
+    end
+
+    it 'interleaves with plain type steps' do
+      pl = Plumb::Pipeline.new(type: Types::String) do |p|
+        p.step(Types::String.present)
+        p.step(::String) { |r| r.valid(r.value.upcase) }
+        p.step(::Symbol) { |r| r.valid(r.value.to_sym) }
+      end
+
+      expect(pl.parse('abc')).to eq(:ABC)
+      expect(pl.resolve('').valid?).to be(false)
+    end
+
+    # The block form declares only what it PRODUCES, so there is no declared input for
+    # the strict check to compare against and #step! behaves as #step. Converting the
+    # value is exactly what the block is for.
+    it 'accepts a block step declaring a different output type under step!' do
+      pl = Plumb::Pipeline.new(type: Types::String) do |p|
+        p.step!(::Integer) { |r| r.valid(r.value.length) }
+      end
+
+      expect(pl.parse('abcd')).to eq(4)
+    end
+  end
 end

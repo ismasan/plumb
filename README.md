@@ -157,6 +157,41 @@ In other words, `A >> B` means "if A succeeds, pass its result to B. Otherwise r
 
 `#>>` also **type-checks the composition** at build time: if the left side could never produce a value the right side accepts, the chain is a dead end and it raises `Plumb::TypeError` before any data flows through. See [Composition type-checks](#composition-type-checks).
 
+#### A plain callable between two types
+
+A proc declares no types, so on its own it's an opaque step. Written *between* two types, those types move into its boundaries and the chain becomes a single typed function:
+
+```ruby
+Doubled = Types::Integer >> ->(result) { result.valid(result.value * 2) } >> Types::Integer
+
+Doubled.inspect             # => "(Types::Integer -> Types::Integer)"
+Doubled.input_type          # => Types::Integer
+Doubled.output_type         # => Types::Integer
+Doubled.parse(3)            # => 6
+Doubled.resolve('3').errors # => "Must be a Integer"
+```
+
+The checks are the ones you wrote — the input validated before the callable runs, the output after — but they run as one node's boundaries instead of a three-step chain, and the result reports what it accepts and produces, so it keeps composing (and type-checking) downstream. Either half works on its own: `Types::Integer >> a_proc` is `(Types::Integer -> Plumb::Types::Any)`, typed on the side you declared.
+
+Nothing is dropped to do this: a type only moves into a boundary the step left undeclared, so it runs exactly where the no-op ran. That includes a type that *builds* a value, so a struct pipeline collapses the same way:
+
+```ruby
+Person  = Types::Data[name: Types::String]
+Renamer = Person >> ->(r) { r.valid(r.value.with(name: r.value.name.upcase)) } >> Person
+
+Renamer.inspect                 # => "(Person -> Person)"
+Renamer.parse(name: 'ada').name # => "ADA"
+Renamer.resolve(name: 42).errors # => {name: "Must be a String"}
+```
+
+What keeps its own node is a step that declares what it accepts, or one carrying its own callable — two of those meeting is transform fusion's business rather than absorption's:
+
+```ruby
+# The transform declares String as its input, so the leading gate stays a step.
+(Types::String >> Types::String.transform(::Integer, &:to_i)).inspect
+# => "(Types::String >> (Types::String -> Integer))"
+```
+
 #### Disjunction with `#|` ("Or")
 
 `A | B` means "if A returns a valid result, return that. Otherwise try B with the original input."
@@ -1235,6 +1270,47 @@ emails = Types::Array[Types::String[/@/]]
 ```
 
 Prefer the latter (`Types::Array[Types::String[/@/]]`), as that first validates that each element is a `String` before matching against the regular expression.
+
+#### Chained array maps fuse into a single pass
+
+`Types::Array` is covariant in its element type, so mapping `f` over an array and then mapping `g` is the same as mapping `f >> g` once. Composing two arrays applies that, and the collection is traversed once instead of twice:
+
+```ruby
+Trim      = Types::String.transform(::String, &:strip)
+Downcase  = Types::String.transform(::String, &:downcase)
+Symbolize = Types::String.transform(::Symbol, &:to_sym)
+
+# Written as three separate maps over the collection...
+Tags = Types::Array[Trim] >> Types::Array[Downcase] >> Types::Array[Symbolize]
+
+# ...built as one.
+Tags.class   # => Plumb::ArrayClass
+Tags.inspect # => "Array[(Types::String -> Symbol)]"
+Tags == Types::Array[Trim >> Downcase >> Symbolize] # => true
+
+Tags.parse(['  RUBY ', ' Plumb', 'CSV  ']) # => [:ruby, :plumb, :csv]
+```
+
+This is worth knowing when the element steps are defined apart from one another and only meet at a boundary — you get the single-pass version without hand-fusing it. On a 200-element array the three-stage chain above goes from 154.6µs to 102.2µs per value, and the two intermediate arrays are never built.
+
+Validation is unaffected. The JSON Schema still describes the input side, and errors are still keyed by element index:
+
+```ruby
+Tags.to_json_schema                       # => {"type" => "array", "items" => {"type" => "string"}}
+Tags.resolve(['ok', 42, ' fine ']).errors # => {1 => "Must be a String"}
+```
+
+`Types::Tuple`, the `Types::Hash[K, V]` map form and `Types::Stream` fuse the same way. Fusion needs the element boundary to be provable — what the left element produces must be accepted by the right — so anything the checker can't prove is left as two passes:
+
+```ruby
+# Narrowing isn't provable, so this stays two passes (and `#>>` would reject it outright).
+Types::Array[Trim] / Types::Array[Types::String[/^a/]]
+
+# Different containers, so no functor law to apply.
+Types::Array[Trim] / Types::Stream[Symbolize]
+```
+
+That guard is what keeps errors identical: two passes report stage by stage, so if the right map could reject what the left produced, one pass could surface errors two passes never reach. Records (`Types::Hash[name: ...]`) don't fuse either, since a record can drop, add and make keys optional.
 
 #### Concurrent arrays
 
@@ -2475,6 +2551,19 @@ end
 Types::DateTime.to_json_schema
 # {"type"=>"string", "format"=>"date-time"}
 ```
+
+##### Node names for compositions
+
+Two-sided compositions report one of four `#node_name`s, depending on whether the node is a *computation* (some side changes the value) or a *type* (no side does):
+
+| Node name       | Built by                          | Meaning                                                     |
+| --------------- | --------------------------------- | ----------------------------------------------------------- |
+| `:and`          | `#>>` with a converting side      | Sequential composition — consumes the left's input, produces the right's output |
+| `:intersection` | `#>>`, `#/`, `#where`, `#check`, `#&` | The meet — both sides constrain the *same* value            |
+| `:or`           | `#\|` with a converting branch     | Left-biased choice — a branch may coerce, so the ends differ |
+| `:union`        | `#\|` with value-preserving branches | The join — a plain set of alternatives                     |
+
+For a visitor this matters because an `:intersection` describes one value (merge both sides' specs) while an `:and` may describe a conversion (build from the input side). Visitors that don't need the distinction can register just `on(:and)` / `on(:or)`: `:intersection` and `:union` fall back to those when no specific handler is defined.
 
 
 

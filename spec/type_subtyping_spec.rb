@@ -365,6 +365,27 @@ RSpec.describe 'subtyping: Plumb::Subtyping.subtype? and #<=' do
       expect { STypes::Array[STypes::Integer] >> STypes::Array[STypes::String] }.to raise_error(Plumb::TypeError)
     end
 
+    # A literal accepts only its own value, so a chain of two distinct literals
+    # is uninhabited and is rejected at composition rather than at runtime. Both
+    # spellings gate: Types::Value, and a Constraint over a literal matcher.
+    it 'raises for disjoint literals' do
+      expect { STypes::Value['a'] >> STypes::Value['b'] }.to raise_error(Plumb::TypeError)
+      expect { STypes::Any[5] >> STypes::Any[6] }.to raise_error(Plumb::TypeError)
+      expect { STypes::String >> STypes::Value['a'] }.to raise_error(Plumb::TypeError) # narrowing — use []
+      expect(STypes::Value['a'] >> STypes::Value['a']).to eq(STypes::Value['a'])
+      expect(STypes::Value['a'] >> STypes::String).to eq(STypes::Value['a'])
+      expect(STypes::String['a'].resolve('a').valid?).to be(true) # #[] is the narrowing spelling
+    end
+
+    # A pattern matcher narrows over a domain it cannot name, so it still opts
+    # out of the check rather than rejecting every left-hand side.
+    it 'lets bare pattern matchers opt out' do
+      expect(STypes::Any[/x/].input_type).to eq(STypes::Any)
+      expect(STypes::Any[1..3].input_type).to eq(STypes::Any)
+      expect { STypes::String >> STypes::Any[/x/] }.not_to raise_error
+      expect { STypes::String >> STypes::Any[1..3] }.not_to raise_error
+    end
+
     it 'allows a chain when the left output is a subtype of the right input' do
       expect { STypes::Integer >> STypes::Numeric }.not_to raise_error
       expect { STypes::Integer[2..10] >> STypes::Integer[0..40] }.not_to raise_error

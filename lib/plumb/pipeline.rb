@@ -43,8 +43,7 @@ module Plumb
     attr_reader :children
 
     def initialize(type: Types::Any, freeze_after: true, &setup)
-      @type = type
-      @children = [type].freeze
+      self.type = type
       @around_blocks = self.class.around_blocks.dup
 
       configure(&setup) if block_given?
@@ -82,6 +81,13 @@ module Plumb
     # Strict counterpart of `#step`: chains with `#>>`, so it raises
     # `Plumb::TypeError` at build time if the step can't accept what the pipeline
     # currently produces. See #step.
+    #
+    # NOTE the `output_type` + block form cannot fail this check: the step's input type
+    # is DERIVED from what the pipeline already produces (see #add_step), so the two
+    # match by construction and `#step!` behaves as `#step` there. That is not a gap —
+    # `pl.step!(::Integer) { … }` after a String pipeline is legitimate, because the
+    # block is what does the converting; only the value it RETURNS is checked, against
+    # the declared output type.
     def step!(callable = nil, &block)
       add_step(callable, strict: true, &block)
     end
@@ -93,24 +99,53 @@ module Plumb
 
     private
 
-    # Shared body for #step / #step!. The `output_type` + block form always
-    # builds a Function (a declared conversion) regardless of `strict`; the
-    # plain form chains with `#>>` when strict, `#/` otherwise.
+    # #children has to track @type. Composable#== compares children and every visitor
+    # walks them, so capturing them once in #initialize — before `configure` had added
+    # any steps — meant a Pipeline reported no steps at all: `pl.children` was
+    # `[Types::Any]` however many steps it had, any two pipelines with the same
+    # starting type compared `==`, and visitors saw an empty composition.
+    #
+    # Assigned together through here so the two cannot drift, and eagerly rather than
+    # lazily because #initialize freezes the Pipeline afterwards.
+    private def type=(new_type)
+      @type = new_type
+      @children = [new_type].freeze
+    end
+
+    # Shared body for #step / #step!. Both forms chain with `#>>` when strict and `#/`
+    # otherwise; only what gets chained differs.
+    #
+    # The `output_type` + block form used to bypass the operators entirely, building
+    # `Function.new(@type, out, block)` — using the Function's INPUT slot as the chain
+    # link, so the accumulated pipeline became the new step's input check. That runs
+    # correctly, but it never reaches #>> / #/ and therefore never reaches the
+    # optimiser: each block step nested inside the last, and consecutive ones could not
+    # reduce.
+    #
+    # It is built as an ordinary step and chained like every other one instead. Its
+    # declared input is what the pipeline currently PRODUCES — the previous step's
+    # output type, or the pipeline's initial type when it is the first step — so the
+    # step reports honestly what it accepts, and the boundary between two of them is
+    # provable by construction, which is what lets Function#fuse_with collapse
+    # consecutive block steps into a single Function rather than nesting them.
+    #
+    # The block form is deliberately not passed through #prepare_step or the `around`
+    # wrappers, which is how it has always behaved.
     def add_step(callable, strict:, &block)
       if !callable.nil? && block
-        @type = Function.new(@type, Composable.wrap(callable), block)
-        return self
+        callable = Function.new(Plumb::Subtyping.resolved_output(@type), Composable.wrap(callable), block)
+      else
+        callable ||= block
+        unless is_a_step?(callable)
+          raise ArgumentError,
+                "#step expects an interface #call(Result) Result, but got #{callable.inspect}"
+        end
+
+        callable = prepare_step(callable)
+        callable = @around_blocks.reverse.reduce(callable) { |cl, bl| AroundStep.new(cl, bl) } if @around_blocks.any?
       end
 
-      callable ||= block
-      unless is_a_step?(callable)
-        raise ArgumentError,
-              "#step expects an interface #call(Result) Result, but got #{callable.inspect}"
-      end
-
-      callable = prepare_step(callable)
-      callable = @around_blocks.reverse.reduce(callable) { |cl, bl| AroundStep.new(cl, bl) } if @around_blocks.any?
-      @type = strict ? (@type >> callable) : (@type / callable)
+      self.type = strict ? (@type >> callable) : (@type / callable)
       self
     end
 

@@ -16,6 +16,7 @@ module Plumb
   #   end
   class StreamClass
     include Composable
+    include CovariantFusion
 
     attr_reader :children
 
@@ -28,6 +29,9 @@ module Plumb
 
     # return a new Stream definition.
     # @param element_type [Composable] the type of the elements in the stream
+    # @see Plumb::NodeMapper
+    def with_children(children) = self[children.first]
+
     def [](element_type)
       self.class.new(element_type:)
     end
@@ -44,8 +48,8 @@ module Plumb
     def input_type = StreamClass.each_interface
 
     # The [Step] interface
-    # @param result [Result::Valid]
-    # @return [Result::Valid, Result::Invalid]
+    # @param result [Result]
+    # @return [Result]
     def call(result)
       result = input_type.call(result)
       return result unless result.valid?
@@ -71,7 +75,7 @@ module Plumb
 
     # @return [Composable] a step that resolves to an Enumerator that filters out invalid elements
     def filtered
-      self >> Function.opaque(inspect: 'filtered') do |result|
+      self >> Function.opaque(inspect: 'filtered', identity: [:filtered_stream, self]) do |result|
         set = result.value.lazy.filter_map { |e| e.value if e.valid? }
         result.valid(set)
       end

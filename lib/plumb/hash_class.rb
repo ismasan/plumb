@@ -194,7 +194,10 @@ module Plumb
         end
         result.valid!(output)
       end
-      FilteredHash.new(self, relaxed_to_optional, op)
+      # `op` is built fresh per call, so name what the step IS as its identity —
+      # otherwise every `.filtered` node is unequal to every other, and so is any
+      # composite containing one. @see Function#==
+      FilteredHash.new(self, relaxed_to_optional, op, identity: [:filtered_hash, self])
     end
 
     # A version of this Hash that first symbolizes string keys (via
@@ -357,7 +360,7 @@ module Plumb
     # a subtype of `key_type`, and each value type is a subtype of `value_type`.
     # A catch-all `_: T` carries the Any key matcher, so `Any <= key_type` fails
     # unless the map accepts any key — an open Hash is NOT a subtype of a
-    # Symbol-keyed map (this is what the old `@inclusive` guard expressed).
+    # Symbol-keyed map.
     def hashmap_subtype?(other)
       return false if _schema.empty?
 
@@ -426,6 +429,9 @@ module Plumb
 
     def accepted_type = FilteredHash.each_pair_interface
 
+    # Neither boundary check runs — the per-field validation in HashClass#filtered
+    # subsumes both. Overriding #call is also what excludes this node from fusion,
+    # with nothing further to declare. @see Function#fusable_step?
     def call(result) = fn.call(result)
 
     private def _inspect = "#{input_type.inspect}.filtered"

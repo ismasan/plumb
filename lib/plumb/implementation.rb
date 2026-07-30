@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'plumb/composable'
+require 'plumb/typed_step'
 
 module Plumb
   # Turn a custom Ruby class into a first-class Plumb type.
@@ -149,10 +150,13 @@ module Plumb
     end
     private_class_method :types_module
 
-    # The typed-node interface, shared by both paths. Mirrors
-    # {Plumb::Function}: a conversion is identified for subtyping by what it
-    # PRODUCES, and accepts what its input type accepts.
+    # The typed-node interface, shared by both paths. The OTHER implementation of
+    # {Plumb::TypedStep} — same contract as {Plumb::Function}, differing only in
+    # that the host owns the object, so the declared pair comes from the mixin and
+    # the core is reached through the host's private #_call.
     module TypeInterface
+      include Plumb::TypedStep
+
       # The step interface, owned by the mixin: the declared checks around the
       # host's #_call. Included AFTER Composable, so this is the #call that runs
       # (Callable#call, the "implement me" stub, sits behind it).
@@ -163,13 +167,44 @@ module Plumb
         result = result.map(input_type)
         return result if result.invalid?
 
+        _checked_call(result).map(output_type)
+      end
+
+      # The middle of #call — the host's #_call plus the contract check on what it
+      # returned — as a `Result => Result` callable, which is exactly what a
+      # {Plumb::Function}'s `fn` is. Exposing it is what lets a chain of
+      # Implementations FUSE: `Length.new >> Double.new` collapses to a single
+      # Function running both, instead of an And re-checking Integer at the seam.
+      #
+      # A fresh Method object per call, so read it at COMPOSITION time only (as
+      # #fuse_with does), never per value.
+      def fn = method(:_checked_call)
+
+      # What this step IS, for Function#== once fused: the host itself, so two
+      # fused chains compare by whatever equality the host defines.
+      def identity = self
+
+      # This family's canonical #call is the one defined above, so a host that
+      # replaced it runs different checks. @see Plumb::TypedStep#fusable_step?
+      def standard_call? = method(:call).owner.equal?(TypeInterface)
+
+      # Fuse forwards through a temporary Function — the same `input -> fn ->
+      # output` shape this node already runs, so Function#fuse_with's proofs hold
+      # verbatim and there is no second implementation of them to keep in step.
+      def fuse_with(other)
+        return nil unless fusable_step?
+
+        Plumb::Function.new(input_type, output_type, fn, identity:).fuse_with(other)
+      end
+
+      private def _checked_call(result)
         out = _call(result)
         unless out.is_a?(Result)
           raise Plumb::TypeError,
                 "#{_host_name}#_call(Plumb::Result) must return a Plumb::Result, got #{out.inspect}"
         end
 
-        out.map(output_type)
+        out
       end
 
       # The value-level contract, implemented by the host (privately, by
@@ -182,14 +217,10 @@ module Plumb
               "Implement #{is_a?(::Module) ? 'self.' : '#'}_call(Plumb::Result) => Plumb::Result in #{_host_name}"
       end
 
-      # Visitors (and Composable#==) read a node's children.
+      # Visitors (and Composable#==) read a node's children. Computed, unlike
+      # Function's frozen ivar — the host owns its constructor, so there is no
+      # #initialize here to build one in.
       def children = [input_type, output_type]
-
-      # @see Composable#subtype_identity
-      def subtype_identity = output_type
-
-      # @see Composable#accepted_type, Function#accepted_type
-      def accepted_type = Plumb::Subtyping.accepted_type(input_type)
 
       # The host, for error messages — the class itself when extended, the
       # instance's class when included.

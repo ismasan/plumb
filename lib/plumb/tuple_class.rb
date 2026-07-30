@@ -5,6 +5,7 @@ require 'plumb/composable'
 module Plumb
   class TupleClass
     include Composable
+    include CovariantFusion
 
     attr_reader :children
 

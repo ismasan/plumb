@@ -14,6 +14,9 @@ module Plumb
     # @param policy_name [Symbol]
     # @param arg [Object, nil] the argument to the policy, if any.
     # @param step [Step] the step composition wrapped by this policy.
+    # @see Plumb::NodeMapper
+    def with_children(children) = self.class.new(policy_name, arg, children.first)
+
     def initialize(policy_name, arg, step)
       @policy_name = policy_name
       @arg = arg
@@ -34,8 +37,8 @@ module Plumb
     def output_type = @step.output_type
 
     # The standard Step interface.
-    # @param result [Result::Valid]
-    # @return [Result::Valid, Result::Invalid]
+    # @param result [Result]
+    # @return [Result]
     def call(result) = @step.call(result)
 
     private def _inspect = @step.inspect

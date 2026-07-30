@@ -145,9 +145,11 @@ module Plumb
     def <(other) = (self <= other) && !(self >= other)
     def >(other) = (self >= other) && !(self <= other)
 
-    # Leaf hook for Plumb::Subtyping.subtype?, called once the algebra (And/Or/
-    # Function/top) has been peeled away. It must NOT delegate back to #<= (that
-    # would recurse); it recurses only through Plumb::Subtyping.subtype?.
+    # Leaf hook for Plumb::Subtyping.subtype?, called once the algebra
+    # (Intersection/Or/top, and the #subtype_identity projection that replaces a
+    # converting node with what it produces) has been peeled away. It must NOT
+    # delegate back to #<= (that would recurse); it recurses only through
+    # Plumb::Subtyping.subtype?.
     #
     # Default behaviour:
     #   1. reflexive structural equality;
@@ -187,7 +189,7 @@ module Plumb
   #  Composable mixes in composition methods to classes.
   # such as #>>, #|, #not, and others.
   # Any Composable class can participate in Plumb compositions.
-  # A host object only needs to implement the Step interface `call(Result::Valid) => Result::Valid | Result::Invalid`
+  # A host object only needs to implement the Step interface `call(Result) => Result`
   module Composable
     include Callable
 
@@ -207,8 +209,8 @@ module Plumb
     #
     # @example
     #   ten = Composable.wrap(10)
-    #   ten.resolve(10) # => Result::Valid
-    #   ten.resolve(11) # => Result::Invalid
+    #   ten.resolve(10) # => a valid Result
+    #   ten.resolve(11) # => an invalid Result
     #
     # @param callable [Object]
     # @return [Composable]
@@ -322,7 +324,7 @@ module Plumb
     # Whether this type returns its input value UNCHANGED on success — a
     # coreflexive refinement (a pure filter). Lets `#|` absorb a redundant
     # branch (`Integer | Numeric == Numeric`) without dropping a coercion. See
-    # Subtyping.reduce_union, which memoizes this per frozen node in TypeCache.
+    # Optimizer.reduce_union, which memoizes this per frozen node in TypeCache.
     # Default false; refinements opt in, transforms stay false. A covariant
     # container (Array/Tuple/HashMap) preserves the value exactly when all its
     # element/child types do — so `Array[Integer] >> Array[Numeric]` collapses
@@ -334,9 +336,33 @@ module Plumb
 
     # Fuse `self >> other` into a single node when the runtime checks at the
     # boundary between them are provably redundant, or nil when fusion doesn't
-    # apply. A reduction rung in Subtyping.reduce_step, so both `#>>` and `#/`
-    # reach it. See Function#fuse_with, the only implementor.
+    # apply. A reduction rung in Optimizer.reduce_step, so both `#>>` and `#/`
+    # reach it. Implemented by Function (transform fusion) and CovariantFusion
+    # (the functor law for containers).
     def fuse_with(_other) = nil
+
+    # Can Function#fuse_with drop this node's boundary checks? Only the node
+    # knows: the answer is yes exactly when its #call runs the standard
+    # input -> fn -> output mapping, so the checks removed at a seam are checks
+    # it would really have run. Default false — a node opts in by saying so.
+    # @see Function#fusable_step?
+    def fusable_step? = false
+
+    # BOUNDARY ABSORPTION — the one-sided companions to #fuse_with, for a seam
+    # where only one side is a typed step and the other is a plain type. A typed
+    # step already RUNS its boundary types as steps (`result.map(input).map(fn)
+    # .map(output)`), so a neighbouring type can move into the matching slot and
+    # the node then does the same work in one hop instead of two.
+    #
+    #   `self >> type` -> #absorb_output(type), asked of the LEFT (the step)
+    #   `type >> self` -> #absorb_input(type),  asked of the RIGHT (the step)
+    #
+    # Return the rebuilt node, or nil to decline. Implemented by Function (which
+    # owns the soundness conditions) and re-associated by And, so a step in the
+    # middle of a chain is reachable. Reached from Optimizer.reduce_step as its
+    # LAST rung: absorption only fires where no other reduction applies.
+    def absorb_output(_type) = nil
+    def absorb_input(_type) = nil
 
     # Chain two composable objects together.
     # A.K.A "and" or "sequence"
@@ -370,8 +396,7 @@ module Plumb
       # `self` already subsumes (`String.where(size: 3..10) >> .where(size: 0..)`
       # -> the former). A non-redundant `other` (a transform, or a narrowing
       # refinement) stays an And.
-      Plumb::Subtyping.reduce_step(self, other) ||
-        (Plumb::Subtyping.redundant_refinement?(self, other) ? self : And.new(self, other))
+      Plumb::Optimizer.rewrite_step(self, other)
     end
 
     # Compose like #>> but WITHOUT the strict subtype check — the escape hatch
@@ -393,7 +418,7 @@ module Plumb
     # Chain two composable objects together as a disjunction ("or").
     # When one value-preserving branch subsumes the other (`Integer | Numeric`,
     # or `X | X`), the union absorbs to the wider branch — see
-    # Subtyping.reduce_union. Functions/containers never reduce (they may accept
+    # Optimizer.reduce_union. Functions/containers never reduce (they may accept
     # inputs the survivor rejects), so coercion unions are preserved.
     #
     # @param other [Composable]
@@ -402,9 +427,7 @@ module Plumb
       other = Composable.resolve_operand(other, op: :|, left: self)
       return self if other.is_a?(NeverClass) # X | Never == X
 
-      Plumb::Subtyping.reduce_union(self, other) ||
-        Plumb::Subtyping.factor_union(self, other) ||
-        Or.new(self, other)
+      Plumb::Optimizer.rewrite_union(self, other)
     end
 
     # Intersection ("and"/meet) — the symmetric dual of #|. Builds the greatest
@@ -415,13 +438,14 @@ module Plumb
     # containers, and distributing over unions — and collapses a PROVABLY-empty
     # intersection to `Types::Never` (`Integer[2..10] & Integer[11..100]`,
     # `String & Integer`). When it can prove neither a narrowing nor emptiness it
-    # falls back to `And.new` — a runtime intersection where both sides must pass.
+    # falls back to `Conjunction.build` — a runtime intersection where both sides
+    # must pass.
     #
     # @param other [Composable]
     # @return [Composable]
     def &(other)
       other = Composable.resolve_operand(other, op: :&, left: self)
-      Plumb::Subtyping.intersect(self, other) || And.new(self, other)
+      Plumb::Subtyping.intersect(self, other) || Conjunction.build(self, other)
     end
 
     # Transform value. Requires specifying the resulting type of the value after transformation.
@@ -545,7 +569,7 @@ module Plumb
       # `And(self, matcher)`): the matcher records `self` as its base, so it
       # subtypes and composes as "a `self` narrowed by the matcher". When `self`
       # is the Any top the matcher stands alone (`Any[String]` == the String
-      # matcher), preserving the old collapsing behaviour. Routed through
+      # matcher), matching the collapsing `AnyClass#>>` provides. Routed through
       # Constraint.narrow so stacked Range refinements intersect
       # (`Integer[0..100][10..]` == `Integer[10..100]`).
       Constraint.narrow((is_a?(AnyClass) ? nil : self), *args)
@@ -564,7 +588,7 @@ module Plumb
     # (eg. `Generic[::URI::HTTP]` narrows a URI to an HTTP URI). When `self` is
     # the Any top type the constraint stands alone (`Any[::String]` == the
     # String matcher), preserving the collapsing that `AnyClass#>>` provides.
-    # Applies the same base-type reduction as #>> (see Subtyping.reduce_step), so
+    # Applies the same base-type reduction as #>> (see Optimizer.reduce_step), so
     # `Integer[0..40] / Integer[2..10]` re-parents to `Integer[0..40][2..10]`
     # rather than re-checking `::Integer`. `reduce_step` bails for a non-Constraint
     # constraint (eg. #value's ValueClass), leaving the And.
@@ -573,7 +597,7 @@ module Plumb
     private def constrain(constraint)
       return constraint if is_a?(AnyClass)
 
-      Plumb::Subtyping.reduce_step(self, constraint) || And.new(self, constraint)
+      Plumb::Optimizer.rewrite_refinement(self, constraint)
     end
 
     #  Support #as_node.
@@ -709,18 +733,28 @@ module Plumb
     # @param factory_method [Symbol] method to call on the class to instantiate it.
     # @return [And]
     def build(cns, factory_method = :new, &block)
-      transform_step(cns, block || ->(value) { cns.send(factory_method, value) })
+      # Without a block the callable is a fresh lambda per call, so name what the
+      # step actually IS — the (class, factory method) pair — as its identity.
+      transform_step(cns, block || ->(value) { cns.send(factory_method, value) },
+                     identity: block || [cns, factory_method])
     end
 
     # Build a Function that validates the input (self), applies a value-level
     # callable, and declares `target_type` as the (validated) output type.
-    private def transform_step(target_type, callable, guaranteed: false)
+    # @param identity [Object, nil] what the step IS, for Function#==. Defaults to
+    #   `callable`; pass it explicitly when `callable` is itself built fresh here
+    #   and so would differ between two identical constructions (see #build).
+    private def transform_step(target_type, callable, guaranteed: false, identity: nil)
       klass = guaranteed ? GuaranteedFunction : Function
       # Flip the cursor in place with the transformed value — the transform owns
       # the result it is handed (the argument is evaluated first, reading the
       # pre-transform value), so no fresh Result is needed.
+      #
+      # The wrapper lambda is new on every call, so it cannot serve as the node's
+      # identity — `callable` (the caller's own) does.
       klass.new(self, Composable.wrap(target_type),
-                ->(result) { result.valid!(callable.call(result.value)) })
+                ->(result) { result.valid!(callable.call(result.value)) },
+                identity: identity || callable)
     end
 
     # Expand `#transform(:to_i)` into a typed transform to `output_type`, using
@@ -765,7 +799,9 @@ module Plumb
       generator ||= block
       raise ArgumentError, 'expected a generator' unless generator.respond_to?(:call)
 
-      Function.opaque(inspect: 'generator') { |r| r.valid(generator.call) } >> self
+      Function.opaque(inspect: 'generator', identity: [:generate, generator]) do |r|
+        r.valid(generator.call)
+      end >> self
     end
 
     # Build a Plumb::Pipeline with this object as the starting step.
@@ -800,7 +836,10 @@ module Plumb
       case args
       in [::Symbol => method_name, *rest]
         label = [method_name.inspect, rest.inspect].join(' ')
-        self >> Function.opaque(inspect: label) do |result|
+        # The block is new on each call, but the step it implements is determined
+        # by the method and its arguments — so name that as the identity, and two
+        # `invoke(:downcase)` steps stay #== (see Function#==).
+        self >> Function.opaque(inspect: label, identity: [:invoke, method_name, rest, block]) do |result|
           result.valid(result.value.public_send(method_name, *rest, &block))
         end
       in [Array => methods] if methods.all? { |m| m.is_a?(Symbol) }

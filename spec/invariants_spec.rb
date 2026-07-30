@@ -1,0 +1,614 @@
+# frozen_string_literal: true
+
+require 'spec_helper'
+require 'yaml'
+
+# CHARACTERISATION HARNESS for Plumb's internal representation.
+#
+# Plumb's AST gets rebuilt from time to time — nodes split, reduction rules move.
+# Whatever the internals do, `expression.resolve(value)` must keep preserving:
+#
+#   - validity
+#   - the resulting value
+#   - accumulated errors
+#   - execution order
+#
+# This file pins exactly that, as a CORPUS rather than type-by-type. The rest of
+# the suite asserts what each type does; this asserts that the whole set keeps
+# doing it however the AST underneath is arranged.
+#
+# RULES OF ENGAGEMENT
+#
+#   - The `resolve` expectations below (validity / value / errors) and the
+#     execution-order probes are the oracle. A failure in them is a regression,
+#     not a spec that needs updating.
+#
+#   - The SUBTYPE RELATION snapshot (spec/fixtures/subtype_relation.yml) is
+#     different: it records what `<=` currently answers over a small grid, so a
+#     change to the relation shows up as one reviewable diff rather than as a
+#     scattering of individual failures. When it moves, read the diff and confirm
+#     every line is intended, then regenerate:
+#
+#         REGENERATE_SNAPSHOTS=1 bundle exec rspec spec/invariants_spec.rb
+#
+#     Regenerating to make a red build green is how a silent behaviour change gets
+#     through. The LAWS in that section (reflexivity, transitivity, top, bottom, and
+#     that no type sits under two disjoint types) are not snapshots and must never be
+#     regenerated away.
+#
+#     A companion AST-shape snapshot lived here while the node classes were being
+#     split. It was scaffolding, and a mutation sweep over 13 mutations found it
+#     caught nothing the named specs and the sections above do not — so it is gone,
+#     fixture included.
+RSpec.describe 'internal representation invariants' do
+  # A single corpus entry: a built type plus the inputs it is exercised with.
+  #
+  # @param label [String] stable key — also the snapshot key, so don't rename
+  #   without regenerating
+  # @param type [Plumb::Composable]
+  # @param cases [Array<Array>] [input, valid?, expected_value, expected_errors]
+  #   `expected_errors` is omitted when nil (the valid case) or when the error
+  #   payload is not worth pinning verbatim — pass :any to assert only that
+  #   errors are present.
+  Entry = Struct.new(:label, :type, :cases, keyword_init: true)
+
+  UNDEF = Plumb::Undefined
+
+  # ---------------------------------------------------------------------------
+  # Fixtures the corpus needs
+  # ---------------------------------------------------------------------------
+
+  class Money
+    attr_reader :cents
+
+    def initialize(cents) = @cents = cents
+    def ==(other) = other.is_a?(Money) && other.cents == cents
+    def inspect = "#<Money #{cents}>"
+  end
+
+  # A Plumb::Implementation instance-step (parameterized) and class-step.
+  class Multiplier
+    include Plumb::Implementation[Types::Integer => Types::Integer]
+
+    def initialize(factor) = @factor = factor
+    private def _call(result) = result.valid(result.value * @factor)
+  end
+
+  class Downcaser
+    extend Plumb::Implementation[Types::String => Types::String]
+
+    def self._call(result) = result.valid(result.value.downcase)
+  end
+
+  Person = Types::Data[name: Types::String, age: Types::Integer]
+
+  LinkedList = Types::Hash[
+    value: Types::Integer,
+    next: Types::Any.defer { LinkedList } | Types::Nil
+  ]
+
+  FormPerson, PersonForm = Plumb::Codec::Forms.for(Person)
+
+  # ---------------------------------------------------------------------------
+  # The corpus
+  # ---------------------------------------------------------------------------
+
+  # rubocop:disable Metrics/BlockLength
+  CORPUS = [
+    # --- tops and bottoms ---------------------------------------------------
+    Entry.new(label: 'Any', type: Types::Any, cases: [
+                [1, true, 1], ['x', true, 'x'], [nil, true, nil]
+              ]),
+    Entry.new(label: 'Never', type: Types::Never, cases: [
+                [1, false, 1, :any], [nil, false, nil, :any]
+              ]),
+    Entry.new(label: 'Undefined', type: Types::Undefined, cases: [
+                [UNDEF, true, UNDEF], [1, false, 1, :any]
+              ]),
+
+    # --- root constraints ---------------------------------------------------
+    Entry.new(label: 'String', type: Types::String, cases: [
+                ['a', true, 'a'], [1, false, 1, 'Must be a String']
+              ]),
+    Entry.new(label: 'Integer', type: Types::Integer, cases: [
+                [1, true, 1], ['a', false, 'a', 'Must be a Integer']
+              ]),
+    Entry.new(label: 'Boolean', type: Types::Boolean, cases: [
+                [true, true, true], [false, true, false], [1, false, 1, :any]
+              ]),
+    Entry.new(label: 'Email', type: Types::Email, cases: [
+                ['a@b.com', true, 'a@b.com'], ['nope', false, 'nope', :any]
+              ]),
+    Entry.new(label: 'UUID::V4', type: Types::UUID::V4, cases: [
+                ['9f5a5b0a-1b3d-4c5e-8f7a-2b3c4d5e6f70', true, '9f5a5b0a-1b3d-4c5e-8f7a-2b3c4d5e6f70'],
+                ['nope', false, 'nope', :any]
+              ]),
+
+    # --- refinements (partial identities) -----------------------------------
+    Entry.new(label: 'Integer[18..]', type: Types::Integer[18..], cases: [
+                [18, true, 18], [17, false, 17, :any], ['a', false, 'a', :any]
+              ]),
+    Entry.new(label: 'Integer[0..100][10..] (stacked, intersects)',
+              type: Types::Integer[0..100][10..], cases: [
+                [10, true, 10], [100, true, 100], [9, false, 9, :any], [101, false, 101, :any]
+              ]),
+    Entry.new(label: 'Integer[1,2,3] (Set)', type: Types::Integer[1, 2, 3], cases: [
+                [2, true, 2], [4, false, 4, :any]
+              ]),
+    Entry.new(label: 'String[/^a/]', type: Types::String[/^a/], cases: [
+                ['abc', true, 'abc'], ['bcd', false, 'bcd', :any]
+              ]),
+    Entry.new(label: 'String.where(size: 1..3)', type: Types::String.where(size: 1..3), cases: [
+                ['ab', true, 'ab'], ['abcd', false, 'abcd', :any], [1, false, 1, :any]
+              ]),
+    Entry.new(label: 'String.where(size:) chained (merges)',
+              type: Types::String.where(size: 0..40).where(size: 10..100), cases: [
+                ['a' * 20, true, 'a' * 20], ['a' * 5, false, 'a' * 5, :any], ['a' * 50, false, 'a' * 50, :any]
+              ]),
+    Entry.new(label: 'String.check', type: Types::String.check('must start with a') { |v| v.start_with?('a') },
+              cases: [
+                ['abc', true, 'abc'], ['bcd', false, 'bcd', 'must start with a']
+              ]),
+    Entry.new(label: 'Any.value(:sym)', type: Types::Any.value(:sym), cases: [
+                [:sym, true, :sym], [:other, false, :other, :any]
+              ]),
+
+    # --- transforms ---------------------------------------------------------
+    Entry.new(label: 'String.transform(Integer, :to_i)',
+              type: Types::String.transform(::Integer, &:to_i), cases: [
+                ['12', true, 12], [12, false, 12, :any]
+              ]),
+    Entry.new(label: 'String.transform(:to_sym) (coercion shorthand)',
+              type: Types::String.transform(:to_sym), cases: [
+                ['a', true, :a], [1, false, 1, :any]
+              ]),
+    Entry.new(label: 'Integer.build(Money)', type: Types::Integer.build(Money), cases: [
+                [100, true, Money.new(100)], ['x', false, 'x', :any]
+              ]),
+    Entry.new(label: 'String.build(Date, :parse) rescued',
+              type: Types::String.build(::Date, :parse).policy(:rescue, ::Date::Error), cases: [
+                ['2024-01-02', true, ::Date.new(2024, 1, 2)], ['nope', false, 'nope', :any]
+              ]),
+    Entry.new(label: 'String.invoke(:downcase)', type: Types::String.invoke(:downcase), cases: [
+                ['AB', true, 'ab'], [1, false, 1, :any]
+              ]),
+    Entry.new(label: 'String.invoke([:strip, :upcase]) (chain)',
+              type: Types::String.invoke(%i[strip upcase]), cases: [
+                ['  ab ', true, 'AB']
+              ]),
+    Entry.new(label: 'String.policy(:split)', type: Types::String.policy(:split), cases: [
+                ['a,b,c', true, %w[a b c]], ['a', true, %w[a]]
+              ]),
+
+    # --- sequential composition ---------------------------------------------
+    Entry.new(label: 'String >> transform (compose, converting)',
+              type: Types::String >> Types::String.transform(::Integer, &:to_i), cases: [
+                ['12', true, 12], [12, false, 12, :any]
+              ]),
+    Entry.new(label: 'transform >> transform (fuses)',
+              type: Types::String.transform(::Integer, &:to_i) >> Types::Integer.build(Money), cases: [
+                ['5', true, Money.new(5)]
+              ]),
+    Entry.new(label: 'Integer[0..100] >> Integer[-10..110] (reduces)',
+              type: Types::Integer[0..100] >> Types::Integer[-10..110], cases: [
+                [50, true, 50], [101, false, 101, :any]
+              ]),
+    Entry.new(label: 'String / String[/a/] (unchecked compose)',
+              type: Types::String / Types::String[/a/], cases: [
+                ['a', true, 'a'], ['b', false, 'b', :any]
+              ]),
+    # Converting LEFT, value-preserving RIGHT — the mixed case. The right side
+    # narrows what the left produces rather than replacing it, so the chain still
+    # produces a String. Base-type resolution and #output_type must both say so.
+    Entry.new(label: 'transform >> where (converting left, preserving right)',
+              type: Types::String.transform(::String, &:strip).where(size: 1..3), cases: [
+                ['  ab  ', true, 'ab'], ['  abcdef  ', false, 'abcdef', :any], [1, false, 1, :any]
+              ]),
+
+    # --- unions / choice ----------------------------------------------------
+    Entry.new(label: 'String | Integer (disjoint union)',
+              type: Types::String | Types::Integer, cases: [
+                ['a', true, 'a'], [1, true, 1], [nil, false, nil, :any]
+              ]),
+    Entry.new(label: 'Integer | Numeric (absorbs to Numeric)',
+              type: Types::Integer | Types::Numeric, cases: [
+                [1, true, 1], [1.5, true, 1.5], ['a', false, 'a', :any]
+              ]),
+    Entry.new(label: 'Integer | String.transform (coercion choice)',
+              type: Types::Integer | Types::String.transform(::Integer, &:to_i), cases: [
+                [1, true, 1], ['2', true, 2], [nil, false, nil, :any]
+              ]),
+    Entry.new(label: 'String[/a/] | String[/b/] (factored union)',
+              type: Types::String[/a/] | Types::String[/b/], cases: [
+                ['a', true, 'a'], ['b', true, 'b'], ['c', false, 'c', :any], [1, false, 1, :any]
+              ]),
+    Entry.new(label: 'Lax::Integer', type: Types::Lax::Integer, cases: [
+                [1, true, 1], ['2', true, 2], ['1,200', true, 1200], [2.7, true, 2], [nil, false, nil, :any]
+              ]),
+    Entry.new(label: 'Lax::String', type: Types::Lax::String, cases: [
+                ['a', true, 'a'], [1, true, '1'], [1.5, true, '1.5']
+              ]),
+    Entry.new(label: 'Lax::Decimal', type: Types::Lax::Decimal, cases: [
+                ['1.5', true, BigDecimal('1.5')], [2, true, BigDecimal('2')]
+              ]),
+
+    # --- intersections ------------------------------------------------------
+    Entry.new(label: 'Integer[2..] & Integer[0..100] (narrows)',
+              type: Types::Integer[2..] & Types::Integer[0..100], cases: [
+                [50, true, 50], [1, false, 1, :any], [101, false, 101, :any]
+              ]),
+    Entry.new(label: 'Integer[2..10] & Integer[11..100] (empty -> Never)',
+              type: Types::Integer[2..10] & Types::Integer[11..100], cases: [
+                [5, false, 5, :any], [50, false, 50, :any]
+              ]),
+    Entry.new(label: 'String & Integer (disjoint -> Never)',
+              type: Types::String & Types::Integer, cases: [
+                ['a', false, 'a', :any], [1, false, 1, :any]
+              ]),
+    Entry.new(label: 'String.where(size: 1..3) & String[/a/] (runtime And)',
+              type: Types::String.where(size: 1..3) & Types::String[/a/], cases: [
+                ['ab', true, 'ab'], ['b', false, 'b', :any], ['abcd', false, 'abcd', :any]
+              ]),
+    Entry.new(label: 'Array[Integer] & Array[Integer[0..10]] (covariant meet)',
+              type: Types::Array[Types::Integer] & Types::Array[Types::Integer[0..10]], cases: [
+                [[1, 2], true, [1, 2]], [[20], false, [20], :any]
+              ]),
+
+    # --- containers ---------------------------------------------------------
+    Entry.new(label: 'Array[Integer]', type: Types::Array[Types::Integer], cases: [
+                [[1, 2], true, [1, 2]], [[], true, []], [['a'], false, ['a'], :any], ['a', false, 'a', :any]
+              ]),
+    Entry.new(label: 'Array[Lax::Integer] (coercing elements)',
+              type: Types::Array[Types::Lax::Integer], cases: [
+                [%w[1 2], true, [1, 2]], [[nil], false, [nil], :any]
+              ]),
+    Entry.new(label: 'Array.where(size: 1..2)', type: Types::Array.where(size: 1..2), cases: [
+                [[1], true, [1]], [[], false, [], :any]
+              ]),
+    Entry.new(label: 'Tuple[String, Integer]', type: Types::Tuple[Types::String, Types::Integer], cases: [
+                [['a', 1], true, ['a', 1]], [['a', 'b'], false, ['a', 'b'], :any], [['a'], false, ['a'], :any]
+              ]),
+    Entry.new(label: 'Hash[Symbol, Integer] (hash map)',
+              type: Types::Hash[Types::Symbol, Types::Integer], cases: [
+                [{ a: 1 }, true, { a: 1 }], [{ 'a' => 1 }, false, { 'a' => 1 }, :any]
+              ]),
+    Entry.new(label: 'Hash record', type: Types::Hash[name: Types::String, age: Types::Integer], cases: [
+                [{ name: 'a', age: 1 }, true, { name: 'a', age: 1 }],
+                [{ name: 'a', age: 1, extra: 2 }, true, { name: 'a', age: 1 }],
+                [{ name: 'a' }, false, { name: 'a' }, :any],
+                [{ name: 1, age: 'x' }, false, { name: 1, age: 'x' }, :any]
+              ]),
+    Entry.new(label: 'Hash record with optional + default',
+              type: Types::Hash[name: Types::String, age?: Types::Integer,
+                                role: Types::String.default('user')], cases: [
+                                  [{ name: 'a' }, true, { name: 'a', role: 'user' }],
+                                  [{ name: 'a', age: 3, role: 'admin' }, true, { name: 'a', age: 3, role: 'admin' }]
+                                ]),
+    Entry.new(label: 'Hash record with catch-all',
+              type: Types::Hash[name: Types::String, _: Types::Integer], cases: [
+                [{ name: 'a', b: 1 }, true, { name: 'a', b: 1 }],
+                [{ name: 'a', b: 'x' }, false, { name: 'a', b: 'x' }, :any]
+              ]),
+    Entry.new(label: 'Hash record coercing field',
+              type: Types::Hash[age: Types::Lax::Integer], cases: [
+                [{ age: '3' }, true, { age: 3 }]
+              ]),
+    Entry.new(label: 'SymbolizedHash', type: Types::SymbolizedHash, cases: [
+                [{ 'a' => 1 }, true, { a: 1 }],
+                [{ 'u' => { 'n' => 'x' } }, true, { u: { n: 'x' } }]
+              ]),
+    Entry.new(label: 'LinkedList (recursive)', type: LinkedList, cases: [
+                [{ value: 1, next: nil }, true, { value: 1, next: nil }],
+                [{ value: 1, next: { value: 2, next: nil } }, true,
+                 { value: 1, next: { value: 2, next: nil } }],
+                [{ value: 1, next: { value: 'x', next: nil } }, false,
+                 { value: 1, next: { value: 'x', next: nil } }, :any]
+              ]),
+
+    # --- negation, statics, interfaces --------------------------------------
+    Entry.new(label: 'String.not', type: Types::String.not, cases: [
+                [1, true, 1], ['a', false, 'a', :any]
+              ]),
+    Entry.new(label: 'Integer.static(10)', type: Types::Integer.static(10), cases: [
+                [1, true, 10], [UNDEF, true, 10], ['x', true, 10]
+              ]),
+    Entry.new(label: 'Interface[:upcase]', type: Types::Interface[:upcase], cases: [
+                ['a', true, 'a'], [1, false, 1, :any]
+              ]),
+    Entry.new(label: 'Range[Integer]', type: Types::Range[Types::Integer], cases: [
+                [(1..2), true, (1..2)], ['a', false, 'a', :any]
+              ]),
+
+    # --- policies and wrappers ----------------------------------------------
+    Entry.new(label: 'String.present', type: Types::String.present, cases: [
+                ['a', true, 'a'], ['', false, '', :any]
+              ]),
+    Entry.new(label: 'Integer.nullable', type: Types::Integer.nullable, cases: [
+                [nil, true, nil], [1, true, 1], ['a', false, 'a', :any]
+              ]),
+    Entry.new(label: 'String.default("x")', type: Types::String.default('x'), cases: [
+                [UNDEF, true, 'x'], ['a', true, 'a'], [1, false, 1, :any]
+              ]),
+    Entry.new(label: 'Integer.options([1, 2])', type: Types::Integer.options([1, 2]), cases: [
+                [1, true, 1], [3, false, 3, :any]
+              ]),
+    Entry.new(label: 'String.metadata(label:)', type: Types::String.metadata(label: 'Name'), cases: [
+                ['a', true, 'a'], [1, false, 1, :any]
+              ]),
+    Entry.new(label: 'Any.policy(respond_to: :upcase)',
+              type: Types::Any.policy(respond_to: :upcase), cases: [
+                ['a', true, 'a'], [1, false, 1, :any]
+              ]),
+
+    # --- structs, implementations, codecs, pipelines ------------------------
+    # An invalid struct parse still returns a (partially populated, invalid)
+    # struct instance, not the input Hash.
+    Entry.new(label: 'Data[name:, age:]', type: Person, cases: [
+                [{ name: 'a', age: 1 }, true, Person.new(name: 'a', age: 1)],
+                [{ name: 'a' }, false, Person.new(name: 'a'), :any]
+              ]),
+    Entry.new(label: 'Implementation instance (Multiplier)', type: Multiplier.new(3), cases: [
+                [2, true, 6], ['x', false, 'x', :any]
+              ]),
+    Entry.new(label: 'Implementation class (Downcaser)', type: Downcaser, cases: [
+                ['AB', true, 'ab'], [1, false, 1, :any]
+              ]),
+    Entry.new(label: 'Codec::Forms >> Person (decode)', type: FormPerson, cases: [
+                [{ name: 'a', age: '3' }, true, Person.new(name: 'a', age: 3)]
+              ]),
+    Entry.new(label: 'Person -> form (encode)', type: PersonForm, cases: [
+                [Person.new(name: 'a', age: 3), true, { name: 'a', age: '3' }]
+              ]),
+    Entry.new(label: 'Pipeline', type: Types::Integer.pipeline { |pl| pl.step(Types::Integer[0..10]) }, cases: [
+                [5, true, 5], [50, false, 50, :any]
+              ]),
+    Entry.new(label: 'Function[String => Integer]',
+              type: Plumb::Function[::String => ::Integer] { |r| r.valid(r.value.size) }, cases: [
+                ['abc', true, 3], [1, false, 1, :any]
+              ]),
+    Entry.new(label: 'Stream[Integer]', type: Types::Stream[Types::Integer], cases: []),
+    Entry.new(label: 'Integer.generate', type: Types::Integer.generate { 42 }, cases: [
+                [1, true, 42], [UNDEF, true, 42]
+              ])
+  ].freeze
+  # rubocop:enable Metrics/BlockLength
+
+  it 'has unique corpus labels' do
+    labels = CORPUS.map(&:label)
+    expect(labels.uniq.size).to eq(labels.size)
+  end
+
+  # ---------------------------------------------------------------------------
+  # 1. Behaviour: validity, value, errors.  This is the oracle — do not edit.
+  # ---------------------------------------------------------------------------
+  describe 'resolve preserves validity, value and errors' do
+    CORPUS.each do |entry|
+      next if entry.cases.empty?
+
+      context entry.label do
+        entry.cases.each_with_index do |(input, valid, value, errors), idx|
+          it "case #{idx}: #{input.inspect}" do
+            result = entry.type.resolve(input)
+
+            expect(result.valid?).to be(valid), lambda {
+              "expected #{entry.label}.resolve(#{input.inspect}) to be " \
+                "#{valid ? 'valid' : 'invalid'}, got errors: #{result.errors.inspect}"
+            }
+            expect(result.value).to eq(value)
+
+            case errors
+            when nil then expect(result.errors).to be_nil
+            when :any then expect(result.errors).not_to be_nil
+            else expect(result.errors).to eq(errors)
+            end
+          end
+        end
+      end
+    end
+  end
+
+  # Streams are lazy, so they need their own assertion shape.
+  describe 'Stream[Integer]' do
+    let(:type) { Types::Stream[Types::Integer] }
+
+    it 'yields valid results lazily and keeps the values' do
+      results = type.parse([1, 2, 3].each).to_a
+      expect(results.map(&:valid?)).to eq([true, true, true])
+      expect(results.map(&:value)).to eq([1, 2, 3])
+    end
+
+    it 'reports per-element invalidity without raising' do
+      results = type.parse([1, 'x'].each).to_a
+      expect(results.map(&:valid?)).to eq([true, false])
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # 2. Execution order.  Also the oracle — do not edit.
+  #
+  # An optimisation rewrite that reorders, duplicates or drops a step is
+  # invisible to the value/validity assertions above whenever the steps are
+  # individually value-preserving. These probes make it visible: each step
+  # appends a marker to a shared log, and the log is asserted verbatim.
+  # ---------------------------------------------------------------------------
+  describe 'execution order' do
+    # A value-preserving step that records that it ran.
+    #
+    # Wrapped in #as_node so that two probes are DISTINCT nodes. An opaque
+    # Function's children are `[Any, Any]` regardless of its callable, so two
+    # bare probes compare `==` and a reducer would collapse them (`a & b` folds
+    # to `a`) — the probes would then measure the reducer's view of them rather
+    # than execution order. The node_name breaks that tie.
+    def probe(log, marker)
+      Plumb::Function.opaque(inspect: "probe:#{marker}") do |result|
+        log << marker
+        result
+      end.as_node(:"probe_#{marker}")
+    end
+
+    # A converting step that records that it ran.
+    def converting_probe(log, marker, &fn)
+      Plumb::Function.opaque(inspect: "convert:#{marker}") do |result|
+        log << marker
+        result.valid(fn.call(result.value))
+      end.as_node(:"convert_#{marker}")
+    end
+
+    it 'runs a >> chain left to right' do
+      log = []
+      type = probe(log, :a) >> probe(log, :b) >> probe(log, :c)
+      type.resolve(1)
+      expect(log).to eq(%i[a b c])
+    end
+
+    it 'runs each converting step exactly once, in order' do
+      log = []
+      type = converting_probe(log, :inc) { |v| v + 1 } >>
+             converting_probe(log, :double) { |v| v * 2 }
+      result = type.resolve(1)
+      expect(log).to eq(%i[inc double])
+      expect(result.value).to eq(4) # (1+1)*2 — not 1+1+1 or (1*2)+1
+    end
+
+    it 'stops a >> chain at the first failure' do
+      log = []
+      type = probe(log, :a) >> Types::Integer >> probe(log, :b)
+      type.resolve('not an integer')
+      expect(log).to eq(%i[a])
+    end
+
+    it 'tries | branches left to right and stops at the first success' do
+      log = []
+      type = (probe(log, :left) >> Types::Integer) | (probe(log, :right) >> Types::String)
+      type.resolve(1)
+      expect(log).to eq(%i[left])
+    end
+
+    it 'falls through to the right | branch after the left fails' do
+      log = []
+      type = (probe(log, :left) >> Types::Integer) | (probe(log, :right) >> Types::String)
+      type.resolve('a')
+      expect(log).to eq(%i[left right])
+    end
+
+    it 'runs both sides of an intersection' do
+      log = []
+      type = probe(log, :a) & probe(log, :b)
+      type.resolve(1)
+      expect(log).to eq(%i[a b])
+    end
+
+    it 'runs a record\'s fields once each' do
+      log = []
+      type = Types::Hash[a: probe(log, :a) >> Types::Integer, b: probe(log, :b) >> Types::Integer]
+      type.resolve({ a: 1, b: 2 })
+      expect(log.sort).to eq(%i[a b])
+    end
+
+    it 'runs an array element step once per element' do
+      log = []
+      type = Types::Array[probe(log, :e) >> Types::Integer]
+      type.resolve([1, 2, 3])
+      expect(log).to eq(%i[e e e])
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # 3. Subtyping relation snapshot.
+  #
+  # Pin the whole relation over a small grid, so a change to it is enumerable in
+  # one diff rather than discovered one spec at a time.
+  # ---------------------------------------------------------------------------
+  describe 'subtype relation' do
+    RELATION_FIXTURE = ::File.expand_path('fixtures/subtype_relation.yml', __dir__)
+
+    GRID = {
+      'Any' => Types::Any,
+      'Never' => Types::Never,
+      'String' => Types::String,
+      'Integer' => Types::Integer,
+      'Numeric' => Types::Numeric,
+      'Integer[0..100]' => Types::Integer[0..100],
+      'Integer[10..]' => Types::Integer[10..],
+      'String[/a/]' => Types::String[/a/],
+      'String.where(size: 1..3)' => Types::String.where(size: 1..3),
+      'String|Integer' => Types::String | Types::Integer,
+      'String->Integer' => Types::String.transform(::Integer, &:to_i),
+      'String >> String->Integer' => Types::String >> Types::String.transform(::Integer, &:to_i),
+      'Integer[0..100] & Integer[10..]' => Types::Integer[0..100] & Types::Integer[10..],
+      'Array[Integer]' => Types::Array[Types::Integer],
+      'Array[Numeric]' => Types::Array[Types::Numeric],
+      'Hash[a: Integer]' => Types::Hash[a: Types::Integer],
+      'Hash[a: Integer, b: String]' => Types::Hash[a: Types::Integer, b: Types::String]
+    }.freeze
+
+    ACTUAL_RELATION = GRID.keys.each_with_object({}) do |a, acc|
+      acc[a] = GRID.keys.select { |b| Plumb::Subtyping.subtype?(GRID[a], GRID[b]) }
+    end.freeze
+
+    if ENV['REGENERATE_SNAPSHOTS']
+      it 'regenerates the fixture' do
+        ::File.write(RELATION_FIXTURE, ACTUAL_RELATION.to_yaml)
+      end
+    else
+      expected = ::File.exist?(RELATION_FIXTURE) ? ::YAML.unsafe_load_file(RELATION_FIXTURE) : {}
+
+      ACTUAL_RELATION.each do |a, supertypes|
+        it "#{a} <= ..." do
+          skip 'not in fixture — regenerate' unless expected.key?(a)
+
+          expect(supertypes).to eq(expected[a])
+        end
+      end
+    end
+
+    # These hold regardless of the fixture — they are the lattice laws the
+    # refactor must not break.
+    it 'is reflexive' do
+      GRID.each { |label, type| expect(Plumb::Subtyping.subtype?(type, type)).to be(true), label }
+    end
+
+    it 'has Any as top' do
+      GRID.each { |label, type| expect(Plumb::Subtyping.subtype?(type, Types::Any)).to be(true), label }
+    end
+
+    it 'has Never as bottom' do
+      GRID.each { |label, type| expect(Plumb::Subtyping.subtype?(Types::Never, type)).to be(true), label }
+    end
+
+    it 'is transitive' do
+      keys = GRID.keys
+      keys.each do |a|
+        keys.each do |b|
+          next unless Plumb::Subtyping.subtype?(GRID[a], GRID[b])
+
+          keys.each do |c|
+            next unless Plumb::Subtyping.subtype?(GRID[b], GRID[c])
+
+            expect(Plumb::Subtyping.subtype?(GRID[a], GRID[c])).to be(true),
+                                                                   "#{a} <= #{b} <= #{c}, but not #{a} <= #{c}"
+          end
+        end
+      end
+    end
+
+    # A type may not be a subtype of two PROVABLY DISJOINT types.
+    #
+    # The trap this guards: applying the meet rule (`(a1 ∧ a2) <= b` if either
+    # conjunct is) to a COMPOSITION rather than only to a genuine Intersection.
+    # `String >> (String -> Integer)` would then be a subtype of both String and
+    # Integer. A composition is instead projected onto what it produces — see
+    # And#subtype_identity.
+    it 'never places a type under two disjoint types' do
+      disjoint = [%w[String Integer], %w[String Numeric]]
+      GRID.each do |label, type|
+        disjoint.each do |(x, y)|
+          both = Plumb::Subtyping.subtype?(type, GRID[x]) && Plumb::Subtyping.subtype?(type, GRID[y])
+          next if type.is_a?(Plumb::NeverClass) # bottom is under everything, legitimately
+
+          expect(both).to be(false), "#{label} is a subtype of both #{x} and #{y}"
+        end
+      end
+    end
+  end
+end

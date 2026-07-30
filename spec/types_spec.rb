@@ -249,6 +249,62 @@ RSpec.describe Plumb::Types do
     expect(failed.errors).to eq(['Must be a String', 'Must be a Integer'])
   end
 
+  # Combining the errors of failed alternatives is a monoid: `nil` is the identity
+  # and concatenation is the operation. The law that matters is ASSOCIATIVITY —
+  # `(A|B)|C` and `A|(B|C)` describe the same set of alternatives, so they owe the
+  # same errors. Taking only `errors.first` from the right-hand side made a
+  # right-nested union drop every alternative after the first.
+  describe 'union error accumulation' do
+    let(:a) { Types::String['a'] }
+    let(:b) { Types::String['b'] }
+    let(:c) { Types::String['c'] }
+    let(:all) { ['Must be equal to a', 'Must be equal to b', 'Must be equal to c'] }
+
+    it 'is associative' do
+      left_nested = Plumb::Or.new(Plumb::Or.new(a, b), c)
+      right_nested = Plumb::Or.new(a, Plumb::Or.new(b, c))
+
+      expect(left_nested.resolve('zzz').errors).to eq(all)
+      expect(right_nested.resolve('zzz').errors).to eq(all)
+    end
+
+    it 'reports every alternative however the union was nested' do
+      expect((a | (b | c)).resolve('zzz').errors).to eq(all)
+      expect(((a | b) | c).resolve('zzz').errors).to eq(all)
+    end
+
+    it 'does not mutate the errors of the result it was handed' do
+      inner = Plumb::Or.new(a, b)
+      inner_errors = inner.resolve('zzz').errors.dup
+      Plumb::Or.new(inner, c).resolve('zzz')
+
+      expect(inner.resolve('zzz').errors).to eq(inner_errors)
+    end
+
+    describe '.merge_errors' do
+      it 'treats nil as the identity' do
+        expect(Plumb::Disjunction.merge_errors(nil, 'x')).to eq('x')
+        expect(Plumb::Disjunction.merge_errors('x', nil)).to eq('x')
+        expect(Plumb::Disjunction.merge_errors(nil, nil)).to be_nil
+      end
+
+      it 'is associative over any mix of scalars and lists' do
+        combos = [['a', 'b', 'c'], [%w[a b], 'c', 'd'], ['a', %w[b c], %w[d e]], [%w[a b], %w[c d], 'e']]
+        combos.each do |x, y, z|
+          merge = ->(l, r) { Plumb::Disjunction.merge_errors(l, r) }
+          expect(merge.call(merge.call(x, y), z)).to eq(merge.call(x, merge.call(y, z))), "for #{[x, y, z].inspect}"
+        end
+      end
+
+      # A record's / an array's errors are a Hash keyed by field or index. That
+      # structure is meaningful and this operation is never applied to it — a Hash
+      # is one alternative's errors, not a list of alternatives.
+      it 'keeps a structured error as a single alternative' do
+        expect(Plumb::Disjunction.merge_errors({ a: 'bad' }, 'x')).to eq([{ a: 'bad' }, 'x'])
+      end
+    end
+  end
+
   describe '#input_type and #output_type' do
     it 'returns self for a leaf type' do
       expect(Types::String.input_type).to eq(Types::String)
@@ -268,17 +324,26 @@ RSpec.describe Plumb::Types do
     end
 
     it 'resolves through longer chains, past the intermediate steps' do
-      # (A >> B >> C) == ((A >> B) >> C). Function steps keep the And nesting,
-      # but the chain as a whole only accepts what its first step accepts and
-      # only produces what its last step produces.
+      # (A >> B >> C) == ((A >> B) >> C): the chain as a whole only accepts what its
+      # first step accepts and only produces what its last step produces.
       a = Types::Integer[1..5]
       b = Types::Integer.transform(::String, :to_s)
       c = Types::String.transform(::Integer, :to_i)
       chain = a >> b >> c
       expect(chain.input_type).to eq(a)
       expect(chain.output_type).to eq(Types::Integer)
-      # the nesting is still there — it is just not what the io types report
-      expect(chain.children).to eq([a >> b, c])
+      # `b` and `c` are adjacent conversions with a provable boundary, so they fuse
+      # into one — `>>` is associative, so a non-fusable head no longer blocks the
+      # tail from reducing (see And#fuse_with).
+      expect(chain.children.size).to eq(2)
+      expect(chain.children.first).to eq(a)
+      # a GuaranteedFunction here: `:to_i` provably produces an Integer, and fusion
+      # preserves that (its output check was already known redundant)
+      expect(chain.children.last).to be_a(Plumb::Function)
+      expect(chain.children.last.input_type).to eq(Types::Integer)
+      expect(chain.children.last.output_type).to eq(Plumb::Composable.wrap(::Integer))
+      assert_result(chain.resolve(3), 3, true)
+      assert_result(chain.resolve(9), 9, false)
       assert_result(chain.resolve(3), 3, true)
     end
 
@@ -900,9 +965,13 @@ RSpec.describe Plumb::Types do
     end
 
     specify '#concurrent' do
-      slow_type = Types::Any.transform(NilClass) do |r|
+      # Declares the output type it actually produces. It used to declare NilClass
+      # while returning the String unchanged, so every element failed its own output
+      # check — and the assertion below only passed because the concurrent path was
+      # discarding element errors.
+      slow_type = Types::Any.transform(::String) do |value|
         sleep(0.02)
-        r
+        value
       end
       array = Types::Array.of(slow_type).concurrent
       assert_result(array.resolve(1), 1, false)
@@ -913,6 +982,40 @@ RSpec.describe Plumb::Types do
       expect(elapsed).to be < 30
 
       assert_result(array.nullable.resolve(nil), nil, true)
+    end
+
+    # A concurrent Array must be indistinguishable from a sequential one except for
+    # scheduling. It was not: element errors were dropped, so an invalid element made
+    # the whole array report VALID, and an element step that RAISED produced a
+    # NoMethodError about nil instead of the cause.
+    describe '#concurrent matches the sequential path' do
+      it 'collects an invalid element\'s errors' do
+        seq = Types::Array[Types::Integer]
+        con = Types::Array[Types::Integer].concurrent
+        input = ['x', 2]
+
+        expect(con.resolve(input).valid?).to be(false)
+        expect(con.resolve(input).errors).to eq(seq.resolve(input).errors)
+        expect(con.resolve(input).value).to eq(seq.resolve(input).value)
+      end
+
+      it 'agrees with the sequential path across a range of inputs' do
+        seq = Types::Array[Types::Integer]
+        con = Types::Array[Types::Integer].concurrent
+
+        [[], [1, 2], ['x'], [1, 'x', 3], [nil], %w[a b]].each do |input|
+          a = seq.resolve(input)
+          b = con.resolve(input)
+          expect([b.valid?, b.value, b.errors]).to eq([a.valid?, a.value, a.errors]), "for #{input.inspect}"
+        end
+      end
+
+      it 'propagates an exception from an element step, as the sequential path does' do
+        boom = Plumb::Composable.wrap(->(_r) { raise 'kaboom' })
+
+        expect { Types::Array[boom].resolve([1]) }.to raise_error(RuntimeError, 'kaboom')
+        expect { Types::Array[boom].concurrent.resolve([1]) }.to raise_error(RuntimeError, 'kaboom')
+      end
     end
 
     specify '#stream' do
@@ -950,7 +1053,7 @@ RSpec.describe Plumb::Types do
 
     specify 'a union of disjoint members is preserved' do
       type = Types::Range[Integer] | Types::Range[String]
-      expect(type).to be_a(Plumb::Or)
+      expect(type).to be_a(Plumb::Union)
     end
   end
 
@@ -1085,6 +1188,16 @@ RSpec.describe Plumb::Types do
         'properties' => { 'name' => { 'type' => 'string' }, 'age' => { 'type' => 'integer' } },
         'required' => []
       )
+    end
+
+    specify '#filtered is compared by the schema it filters, not by its fresh block' do
+      schema = Types::Hash[name: Types::String, age: Types::Integer]
+      expect(schema.filtered).to eq(schema.filtered)
+      expect(schema.filtered).not_to eq(Types::Hash[name: Types::String].filtered)
+      # ...so composites containing one stay comparable, and reduce.
+      expect(Types::Hash[a: schema.filtered]).to eq(Types::Hash[a: schema.filtered])
+      expect(Types::Array[schema.filtered]).to eq(Types::Array[schema.filtered])
+      expect(schema.filtered & schema.filtered).to eq(schema.filtered)
     end
 
     specify '#defer' do

@@ -36,6 +36,10 @@ module Plumb
       node.base ? visit(node.base, props) : props
     end
 
+    # This visitor doesn't reason about types, so the Conjunction/Disjunction split
+    # makes no difference to it: :intersection and :union reach these same handlers
+    # through VisitorHandlers::NODE_NAME_FALLBACKS. Registering duplicate bodies
+    # would be a second mechanism for one job, and the copies could drift.
     on(:and) do |node, props|
       left, right = node.children.map { |child| visit(child) }
       props.merge(left).merge(right)

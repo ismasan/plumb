@@ -115,14 +115,18 @@ module Plumb
 
     # The struct class behind `node`, or nil. Structs appear in two shapes: a
     # Plumb::Attributes class itself (Types::Data subclasses are Composable
-    # classes), or the opaque Function that Composable.wrap builds around a plain
+    # classes), or the Function that Composable.wrap builds around a plain
     # `include Plumb::Attributes` class — the class is the wrapped callable, so
     # it is reached via #fn (a Function's #children are its types). This is the
     # one owner of that representation fact — used by #build_nested and Codec's
     # rewriter.
+    #
+    # Keyed on Function#wraps_callable? rather than on the types the node declares:
+    # boundary absorption can move a neighbouring type into a wrapper's slot (see
+    # Function#absorb_input), and it wraps the same class either way.
     def self.struct_class(node)
       return node if node.is_a?(::Class) && node <= Attributes
-      return nil unless node.is_a?(Plumb::Function) && node.opaque?
+      return nil unless node.is_a?(Plumb::Function) && node.wraps_callable?
 
       callable = node.fn
       callable.is_a?(::Class) && callable <= Attributes ? callable : nil
@@ -246,8 +250,8 @@ module Plumb
       MUST_BE_HASH = ['Must be a Hash of attributes'].freeze
 
       # The Plumb::Callable interface
-      # @param result [Plumb::Result::Valid]
-      # @return [Plumb::Result::Valid, Plumb::Result::Invalid]
+      # @param result [Plumb::Result]
+      # @return [Plumb::Result]
       def call(result)
         return result if result.value.is_a?(self)
         return result.invalid(errors: MUST_BE_HASH) unless result.value.respond_to?(:to_h)
@@ -308,11 +312,11 @@ module Plumb
               child = node.children.first
               child = __plumb_struct_class__ if child == Types::Any
               Types::Array[build_nested(name, child, &block)]
-            # An opaque function is a wrapped callable — possibly a struct class,
-            # possibly not; #build_nested raises if it isn't. Deliberately NOT
-            # every Function: a typed one is a #transform / #build / coercion,
-            # which a nested-attributes block has no business rewriting.
-            elsif (node.is_a?(Plumb::Function) && node.opaque?) ||
+            # A wrapper function holds a caller-supplied callable — possibly a struct
+            # class, possibly not; #build_nested raises if it isn't. Deliberately NOT
+            # every Function: a #transform / #build / coercion wraps a lambda Plumb
+            # built, which a nested-attributes block has no business rewriting.
+            elsif (node.is_a?(Plumb::Function) && node.wraps_callable?) ||
                   (node.is_a?(Class) && node <= Plumb::Attributes)
               build_nested(name, node, &block)
             else

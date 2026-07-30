@@ -642,6 +642,57 @@ module CodecSpecTypes
       end
     end
 
+    # A PIPELINE (`And`) is not a meet: position is meaning. Rewriting one as if it
+    # were a meet — flattening it, partitioning refinements out and re-appending
+    # them at the end, bridging every step's input — breaks any chain where a
+    # refinement sits before a conversion.
+    describe 'pipelines (a conversion with refinements around it)' do
+      # `Date.where(year:) >> (Date -> String)` is
+      # And( Intersection(Constraint(::Date), AVM(year)), Function(Date -> String) ).
+      let(:refined_then_converted) do
+        Types::Date.where(year: 2024) >> Types::Date.transform(::String, &:to_s)
+      end
+
+      it 'keeps a refinement on the DECODED value before the conversion' do
+        decoder = JSONCodec >> refined_then_converted
+
+        # Decoding produces what the original chain produced — a String.
+        expect(decoder.parse('2024-01-01')).to eq('2024-01-01')
+        # ...and the year check still rejects, because it runs on the Date, not on
+        # the String the conversion produced (where it could never pass).
+        expect(decoder.resolve('1999-01-01').valid?).to be(false)
+      end
+
+      it 'decodes the wire only once' do
+        decoder = JSONCodec >> refined_then_converted
+        # The step after the head receives the head's OUTPUT, already decoded, so
+        # it must not get its own decode step spliced in front of it. When it did,
+        # the already-decoded Date was fed to a step expecting the encoded String
+        # and EVERY input was rejected.
+        expect(decoder.resolve('2024-01-01').valid?).to be(true)
+      end
+
+      it 'works the same nested in a record' do
+        decoder = JSONCodec >> Types::Hash[d: refined_then_converted]
+        expect(decoder.parse({ d: '2024-01-01' })).to eq({ d: '2024-01-01' })
+        expect(decoder.resolve({ d: '1999-01-01' }).valid?).to be(false)
+      end
+
+      it 'handles two conversions in a row' do
+        chain = Types::Date.transform(::String, &:to_s) >> Types::String.transform(:to_sym)
+        expect((JSONCodec >> chain).parse('2024-01-01')).to eq(:'2024-01-01')
+      end
+
+      # The meet case must be unaffected: there the sides all describe ONE value,
+      # so flattening and reordering is sound and the refinement belongs with its
+      # data type.
+      it 'still rewrites a plain refinement (a meet) as before' do
+        decoder = JSONCodec >> Types::Date.where(year: 2024)
+        expect(decoder.parse('2024-01-01')).to eq(DATE)
+        expect(decoder.resolve('1999-01-01').valid?).to be(false)
+      end
+    end
+
     describe 'visitors' do
       it 'describes the input side of a decoded schema' do
         schema = Plumb::JSONSchemaVisitor.call(JSONCodec >> Person)

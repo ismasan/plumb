@@ -16,6 +16,21 @@ module Plumb
     def EMPTY.inspect = 'Plumb::Constraint::EMPTY'
     EMPTY.freeze
 
+    # Matcher kinds whose `#===` is just `#==` — they match exactly ONE value.
+    # Two distinct ones are therefore provably disjoint, and as a `#>>` consumer
+    # one accepts only its own value. Deliberately excludes Module/Range/Regexp/
+    # Set/proc: their `#===` is a type, membership or pattern test that matches
+    # many values (and `Set#===` is `#include?` on Ruby >= 3.1).
+    LITERAL_MATCHERS = [::String, ::Symbol, ::Numeric, ::TrueClass, ::FalseClass, ::NilClass].freeze
+
+    # The matcher-level form of #literal?, for the one caller that has a matcher
+    # but no instance to ask: #matcher_may_match?, which runs from the constructor
+    # BEFORE `@matcher` is assigned. Prefer #literal? on an existing Constraint.
+    #
+    # @param matcher [#===]
+    # @return [Boolean] whether `matcher` matches a single value by equality
+    def self.literal_matcher?(matcher) = LITERAL_MATCHERS.any? { |kind| matcher.is_a?(kind) }
+
     attr_reader :children, :base, :matcher
 
     # @param matcher [#===] the value/type/predicate to match against
@@ -97,13 +112,23 @@ module Plumb
     private_class_method :intersect_ranges
 
     # As the consumer of a `left >> self` chain:
-    #   - a refinement (has a base) or a Class/Module gate accepts exactly what it
-    #     validates — itself — so `Integer >> Integer[1..10]` is correctly
-    #     rejected (narrow with `#[]` instead), and the default `#accepted_type`
-    #     (its resolved input) is `self`;
-    #   - a bare non-Module matcher (regex/range/literal/proc with no base) merely
-    #     narrows arbitrary input, so it reports Any and opts out of the check.
-    def input_type = base || @matcher.is_a?(::Module) ? self : Types::Any
+    #   - a refinement (has a base), a Class/Module gate, or a literal matcher
+    #     accepts exactly what it validates — itself — so `Integer >>
+    #     Integer[1..10]` and `Any[5] >> Any[6]` are correctly rejected (narrow
+    #     with `#[]` instead), and the default `#accepted_type` (its resolved
+    #     input) is `self`;
+    #   - a bare pattern matcher (regex/range/set/proc with no base) narrows
+    #     arbitrary input over a domain it cannot name, so it reports Any and opts
+    #     out of the check.
+    def input_type
+      return self if base || @matcher.is_a?(::Module) || literal?
+
+      Types::Any
+    end
+
+    # Whether this constraint matches a SINGLE value, by equality — so two
+    # distinct ones are provably disjoint (see Subtyping#literal_value).
+    def literal? = Constraint.literal_matcher?(@matcher)
 
     # A matcher validates without changing the value, so `Match >> Match` (of the
     # same matcher) is redundant and `#>>` collapses it — and a redundant `#|`
@@ -184,12 +209,12 @@ module Plumb
 
     # Could `matcher` match at least one instance of `klass`?
     def matcher_may_match?(matcher, klass)
+      return matcher.is_a?(klass) if Constraint.literal_matcher?(matcher)
+
       case matcher
       when ::Module then !!((matcher <= klass) || (klass <= matcher))
       when ::Range then (e = matcher.begin || matcher.end).nil? || e.is_a?(klass)
       when ::Regexp then klass <= ::String || klass <= ::Symbol
-      when ::String, ::Symbol, ::Numeric, ::TrueClass, ::FalseClass, ::NilClass
-        matcher.is_a?(klass)
       else
         true # proc / opaque `#===` object: domain unknown, allow
       end

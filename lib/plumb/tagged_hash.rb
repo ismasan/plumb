@@ -8,6 +8,9 @@ module Plumb
 
     attr_reader :key, :children, :hash_type
 
+    # @see Plumb::NodeMapper
+    def with_children(children) = self.class.new(hash_type, key, children)
+
     def initialize(hash_type, key, children)
       @hash_type = hash_type
       @key = Key.wrap(key)

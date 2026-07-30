@@ -19,6 +19,9 @@ module Plumb
       super
     end
 
+    # @see Plumb::NodeMapper
+    def with_children(children) = self.class.new(children.first, errors: errors)
+
     def initialize(step = nil, errors: nil)
       @step = Composable.wrap(step)
       @errors = errors || "must not be #{step.inspect}"

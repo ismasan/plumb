@@ -5,7 +5,7 @@ require 'spec_helper'
 
 # Rung-1 structural reduction of `left >> right`: when `right` re-asserts a base
 # TYPE that `left` already guarantees, that duplicated gate is dropped by
-# re-parenting `right`'s refinements onto `left` (see Plumb::Subtyping.reduce_step).
+# re-parenting `right`'s refinements onto `left` (see Plumb::Optimizer.reduce_step).
 RSpec.describe 'composition reduction (>>)' do
   module RTypes
     include Plumb::Types
@@ -182,9 +182,14 @@ RSpec.describe 'composition reduction (>>)' do
   end
 
   describe 'bail cases fall back to And' do
+    # A transform declaring the type it accepts. The refinement is not folded into it
+    # (that would drop the 0..100 matcher), and its input slot is already typed, so
+    # boundary absorption declines too — see 'boundary absorption' in
+    # spec/function_fusion_spec.rb for the untyped-slot case, which does reduce.
     specify 'right is a transform (value-changing barrier)' do
-      chain = RTypes::Integer[0..100] >> RTypes::Any.transform(::Integer) { |v| v + 1 }
+      chain = RTypes::Integer[0..100] >> RTypes::Integer.transform(::Integer) { |v| v + 1 }
       expect(chain).to be_a(Plumb::And)
+      expect(chain.children.first).to eq(RTypes::Integer[0..100])
     end
 
     specify 'right is a union with a value-changing branch (not value-preserving)' do
@@ -195,8 +200,10 @@ RSpec.describe 'composition reduction (>>)' do
 
     specify 'right is rooted in a non-Module matcher (bare range)' do
       # Any[1..100]'s input_type is Any, so there is no duplicated type gate.
+      # Both sides preserve the value, so the un-reduced pair is the MEET —
+      # contrast the coercing case above, which is a pipeline (And).
       chain = RTypes::Integer[0..100] >> RTypes::Any[1..1000]
-      expect(chain).to be_a(Plumb::And)
+      expect(chain).to be_a(Plumb::Intersection)
     end
   end
 
@@ -221,8 +228,10 @@ RSpec.describe 'composition reduction (>>)' do
       expect(RTypes::Any / RTypes::String).to eq(RTypes::String)
     end
 
-    it 'leaves #value as an And (ValueClass is not a Constraint)' do
-      expect(RTypes::String.value('x')).to be_a(Plumb::And)
+    it 'leaves #value as a conjunction (ValueClass is not a Constraint)' do
+      # An Intersection, not an And: a ValueClass matches without changing the
+      # value, so both sides refine one value rather than forming a pipeline.
+      expect(RTypes::String.value('x')).to be_a(Plumb::Intersection)
     end
   end
 
@@ -240,8 +249,76 @@ RSpec.describe 'composition reduction (>>)' do
       expect(RTypes::Integer[0..10] | RTypes::Integer).to eq(RTypes::Integer)
     end
 
-    it 'keeps disjoint branches as an Or' do
-      expect(RTypes::String | RTypes::Integer).to be_a(Plumb::Or)
+    it 'keeps disjoint branches as a Union' do
+      # Not absorbed (still two branches), and a Union rather than an Or: both
+      # branches pass the value through, so the node is a plain type join.
+      expect(RTypes::String | RTypes::Integer).to be_a(Plumb::Union)
+    end
+
+    # A join is n-ary: `A | B | C` is stored as a nested pair but means one flat
+    # branch set, so absorption has to see all of it. Comparing only the two
+    # operands made the result depend on the order the branches were written,
+    # because `subtype?(Union(A, B), C)` needs EVERY branch to be within C.
+    describe 'absorbs across the whole branch set, not just adjacent pairs' do
+      # Counts branches through both node kinds: absorption produces a Union, but a
+      # set containing a coercion stays an Or, and both are branch sets here.
+      def branch_count(type)
+        type.is_a?(Plumb::Disjunction) ? type.children.sum { |c| branch_count(c) } : 1
+      end
+
+      it 'drops a branch subsumed by a LATER one' do
+        u = RTypes::Integer | RTypes::String | RTypes::Numeric
+        expect(branch_count(u)).to eq(2) # Integer absorbed into Numeric
+        expect(u).to eq(RTypes::String | RTypes::Numeric)
+      end
+
+      it 'still drops a branch subsumed by an EARLIER one' do
+        expect(RTypes::Numeric | RTypes::String | RTypes::Integer)
+          .to eq(RTypes::Numeric | RTypes::String)
+      end
+
+      it 'collapses a four-branch union to its two widest' do
+        u = RTypes::Integer[1..5] | RTypes::String | RTypes::Integer | RTypes::Numeric
+        expect(branch_count(u)).to eq(2)
+      end
+
+      it 'dedupes repeated branches' do
+        expect(RTypes::String | RTypes::String | RTypes::String).to eq(RTypes::String)
+      end
+
+      it 'absorbs covariant containers across the set' do
+        u = RTypes::Array[RTypes::Integer] | RTypes::String | RTypes::Array[RTypes::Numeric]
+        expect(branch_count(u)).to eq(2)
+        expect(u).to eq(RTypes::String | RTypes::Array[RTypes::Numeric])
+      end
+
+      it 'leaves unrelated branches alone' do
+        u = RTypes::String | RTypes::Integer | RTypes::Symbol | RTypes::Nil
+        expect(branch_count(u)).to eq(4)
+      end
+
+      # The soundness guards still hold across the whole set, not just pairwise.
+      it 'never absorbs a coercion branch' do
+        coerce = RTypes::String.transform(::Integer, :to_i)
+        u = coerce | RTypes::Numeric | RTypes::Integer
+        expect(branch_count(u)).to eq(3)
+        assert_result(u.resolve('5'), 5, true) # the coercion still runs
+      end
+
+      it 'never absorbs an identity-carrying wrapper' do
+        u = RTypes::Email | RTypes::String | RTypes::Integer
+        expect(branch_count(u)).to eq(3)
+        expect(u.to_json_schema.to_s).to include('email')
+      end
+
+      it 'preserves the accepted value set exactly' do
+        unreduced = [RTypes::Integer, RTypes::String, RTypes::Numeric]
+        reduced = RTypes::Integer | RTypes::String | RTypes::Numeric
+        [1, 1.5, 'x', :sym, nil, BigDecimal('2')].each do |v|
+          expected = unreduced.any? { |t| t.resolve(v).valid? }
+          expect(reduced.resolve(v).valid?).to be(expected), "for #{v.inspect}"
+        end
+      end
     end
 
     it 'does NOT reduce a coercion (transform) branch — the union is preserved' do
@@ -256,7 +333,7 @@ RSpec.describe 'composition reduction (>>)' do
       # A named node (Email) is subtype-equal to String, but absorbing it would
       # drop its :email identity — and its JSON-schema `format`.
       u = RTypes::Email | RTypes::String
-      expect(u).to be_a(Plumb::Or)
+      expect(u).to be_a(Plumb::Union)
       expect(u.to_json_schema(root: false)['anyOf'])
         .to include('type' => 'string', 'format' => 'email')
 
@@ -277,14 +354,18 @@ RSpec.describe 'composition reduction (>>)' do
   end
 
   describe 'union factoring: shared base checked once (distributivity)' do
-    it 'factors a shared root type into a :refined_union of And(base, Or(suffixes))' do
+    it 'factors a shared root type into a :refined_union of Intersection(base, Or(suffixes))' do
       u = RTypes::String[/d/] | RTypes::String[/c/]
 
       expect(u.node_name).to eq(:refined_union)
-      expect(u.type).to be_a(Plumb::And)
+      # An Intersection: the base and the disjunction of suffixes both describe
+      # the same String, so the factored node is a refinement of the base — which
+      # is why its #output_type keeps the base rather than collapsing to the
+      # bare suffixes (asserted below).
+      expect(u.type).to be_a(Plumb::Intersection)
       base, suffixes = u.type.children
       expect(base).to eq(RTypes::String)               # base
-      expect(suffixes).to be_a(Plumb::Or)              # disjunction of bare suffixes
+      expect(suffixes).to be_a(Plumb::Union)           # join of bare (preserving) suffixes
       # the io types report what the factored union consumes and produces — a
       # String in, a String narrowed by the disjunction out — not its two sides.
       expect(u.type.input_type).to eq(RTypes::String)
@@ -314,8 +395,8 @@ RSpec.describe 'composition reduction (>>)' do
       expect(u.type.input_type).to eq(RTypes::String[/a/])
     end
 
-    it 'keeps disjoint roots as a plain Or' do
-      expect(RTypes::String[/d/] | RTypes::Integer[1..3]).to be_a(Plumb::Or)
+    it 'keeps disjoint roots as a plain Union' do
+      expect(RTypes::String[/d/] | RTypes::Integer[1..3]).to be_a(Plumb::Union)
     end
 
     it 'lets absorption win when one branch subsumes the other' do
@@ -341,7 +422,11 @@ RSpec.describe 'composition reduction (>>)' do
 
         expect(u.node_name).to eq(:refined_union)
         expect(u.type.input_type).to eq(RTypes::String)  # A pulled out (checked once)
-        expect(u.type.output_type).to be_a(Plumb::Or)    # (B | C)
+        # The node holding the suffixes is an Or — they transform. Its OUTPUT
+        # projection is the join of what they produce, which converts nothing,
+        # so that is a Union.
+        expect(u.type.children[1]).to be_a(Plumb::Or)
+        expect(u.type.output_type).to be_a(Plumb::Union) # (B | C)
       end
 
       it 'is runtime-equivalent to the un-factored union (suffixes still run)' do
@@ -363,7 +448,7 @@ RSpec.describe 'composition reduction (>>)' do
         left   = Plumb::And.new(coerce, RTypes::Integer[1..])
         right  = Plumb::And.new(coerce, RTypes::Integer[0..0])
 
-        expect(Plumb::Subtyping.factor_union(left, right)).to be_nil
+        expect(Plumb::Optimizer.factor_union(left, right)).to be_nil
       end
     end
 
@@ -380,7 +465,7 @@ RSpec.describe 'composition reduction (>>)' do
 
         assert_result(u.resolve('a!'), 'a!', true)
         assert_result(u.resolve('b!'), 'b!', true)
-        assert_result(u.resolve('c!'), 'c!', true) # third branch, previously behind a re-checked base
+        assert_result(u.resolve('c!'), 'c!', true) # third branch, folded into the shared prefix
         assert_result(u.resolve('zzz'), 'zzz', false)
         expect(u.resolve(9).valid?).to be(false)
       end
@@ -470,7 +555,7 @@ end
 
 # A record `left >> right` reduces to `left` when `right` merely re-validates
 # left's output without dropping or converting anything (see
-# Subtyping.redundant_record_refinement?).
+# Optimizer.redundant_record_refinement?).
 RSpec.describe 'record (Hash) composition reductions' do
   module HRTypes
     include Plumb::Types

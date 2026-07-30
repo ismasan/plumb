@@ -1,0 +1,102 @@
+---
+Any:
+- Any
+Never:
+- Any
+- Never
+- String
+- Integer
+- Numeric
+- Integer[0..100]
+- Integer[10..]
+- String[/a/]
+- 'String.where(size: 1..3)'
+- String|Integer
+- String->Integer
+- String >> String->Integer
+- Integer[0..100] & Integer[10..]
+- Array[Integer]
+- Array[Numeric]
+- 'Hash[a: Integer]'
+- 'Hash[a: Integer, b: String]'
+String:
+- Any
+- String
+- String|Integer
+Integer:
+- Any
+- Integer
+- Numeric
+- String|Integer
+- String->Integer
+- String >> String->Integer
+Numeric:
+- Any
+- Numeric
+Integer[0..100]:
+- Any
+- Integer
+- Numeric
+- Integer[0..100]
+- String|Integer
+- String->Integer
+- String >> String->Integer
+Integer[10..]:
+- Any
+- Integer
+- Numeric
+- Integer[10..]
+- String|Integer
+- String->Integer
+- String >> String->Integer
+String[/a/]:
+- Any
+- String
+- String[/a/]
+- String|Integer
+'String.where(size: 1..3)':
+- Any
+- String
+- 'String.where(size: 1..3)'
+- String|Integer
+String|Integer:
+- Any
+- String|Integer
+String->Integer:
+- Any
+- Integer
+- Numeric
+- String|Integer
+- String->Integer
+- String >> String->Integer
+String >> String->Integer:
+- Any
+- Integer
+- Numeric
+- String|Integer
+- String->Integer
+- String >> String->Integer
+Integer[0..100] & Integer[10..]:
+- Any
+- Integer
+- Numeric
+- Integer[0..100]
+- Integer[10..]
+- String|Integer
+- String->Integer
+- String >> String->Integer
+- Integer[0..100] & Integer[10..]
+Array[Integer]:
+- Any
+- Array[Integer]
+- Array[Numeric]
+Array[Numeric]:
+- Any
+- Array[Numeric]
+'Hash[a: Integer]':
+- Any
+- 'Hash[a: Integer]'
+'Hash[a: Integer, b: String]':
+- Any
+- 'Hash[a: Integer]'
+- 'Hash[a: Integer, b: String]'
