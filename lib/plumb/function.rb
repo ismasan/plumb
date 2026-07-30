@@ -220,29 +220,33 @@ module Plumb
     # running one Float check instead of two nodes running an Any hop and a Float
     # check. @see Composable#absorb_output for the shape; the conditions are here.
     #
-    # `type` must be VALUE-PRESERVING: the slot runs it either way, but a converting
-    # neighbour is Function-to-Function work, and #fuse_with does that better (it
-    # fuses the two fns, rather than nesting one inside the other's output slot).
-    # Keeping the slot a plain type also keeps #output_type readable as a type.
+    # The conditions are about THE SLOT — what is dropped — not about the neighbour.
+    # For `F(B => C) >> D` taking D into the C slot:
     #
-    # What happens to the slot's existing type depends on whether it is CHECKED:
+    #   - C is CHECKED (a plain Function). Its check goes, so C must not TRANSFORM
+    #     (`value_preserving?(C)`, or the value the node produces changes) and D must
+    #     reject everything C rejected. `D <= C` states the latter only while D is
+    #     value-preserving: the subtype relation identifies a converting D by what it
+    #     PRODUCES, and what matters here is what it ACCEPTS. `Types::Static[10] <=
+    #     Types::Integer` holds — its value IS an Integer — yet a Static accepts
+    #     anything, so absorbing it would swallow the dropped Integer check and turn an
+    #     invalid `'abc'` into a valid `10`.
+    #   - C is UNCHECKED (a GuaranteedFunction). Nothing is dropped, so there is nothing
+    #     to prove and D may convert freely — it runs in the slot exactly where the
+    #     no-op ran. When the guarantee already implies D there is nothing to win, and
+    #     that redundant gate is reduce_step's to drop, so decline. Otherwise D takes the
+    #     slot and the node becomes a plain Function, since the check has to run: the
+    #     guarantee goes with the type that carried it.
     #
-    #   - checked (a plain Function): its check is dropped, so `type` must reject
-    #     everything it rejected — `type <= output_type` — and the dropped check must
-    #     be value-preserving, since a coercing output slot does real work. Validity
-    #     and the produced value are preserved; the ERROR TEXT of a value both would
-    #     reject becomes the narrower type's, the same trade Optimizer.reduce_union
-    #     makes when it absorbs a union branch.
-    #   - unchecked (a GuaranteedFunction): nothing is dropped. When the guarantee
-    #     already implies `type` there is nothing to win either — that redundant gate
-    #     is reduce_step's to drop, so decline. Otherwise `type` takes the slot and the
-    #     node becomes a plain Function, since the check has to run — the guarantee goes
-    #     with the type that carried it.
+    # Validity, value and order are preserved either way. The ERROR TEXT of a value both
+    # C and D would reject becomes D's, the same trade Optimizer.reduce_union makes when
+    # it absorbs a union branch.
     def absorb_output(type)
-      return nil unless absorbable? && Plumb::Subtyping.value_preserving?(type)
+      return nil unless absorbable? && !step_neighbour?(type)
 
       if checks_output?
         return nil unless Plumb::Subtyping.value_preserving?(@output_type)
+        return nil unless Plumb::Subtyping.value_preserving?(type)
         return nil unless Plumb::Subtyping.subtype?(type, @output_type)
 
         with_children([@input_type, type])
@@ -259,17 +263,19 @@ module Plumb
     # `Types::Integer >> ->(r) { r } >> Types::Float` to `(Integer -> Float)`:
     # a little typed pipeline with arbitrary code in the middle.
     #
-    # ONLY into an `Any` slot, where NO check is dropped — `type` simply runs where
-    # the no-op ran, so validity, value, errors and order are preserved exactly. The
-    # general form (any slot whose check `type` subsumes) is the left-hand gate drop
-    # Optimizer declines, and costs what that costs; see the note in its header.
+    # Again the conditions are about THE SLOT. For `A >> F(B => C)` taking A into the B
+    # slot, B's check is what goes, so B must not TRANSFORM and A must reject everything
+    # B rejected — `value_preserving?(B) && A <= B`. Here `A <= B` says exactly the right
+    # thing whatever A is: the relation identifies a converting A by what it PRODUCES,
+    # and what B sees IS what A produced. Whether A preserves the value is irrelevant —
+    # A runs either way, in the slot or beside it.
     #
-    # `type` must be value-preserving for the same reason as #absorb_output: an input
-    # slot holding a conversion would run correctly, but it stops being readable as
-    # the type this node accepts, and it blocks the fusion that WOULD collapse two
-    # converting steps into one.
+    # SCOPE: only an `Any` slot, where both conditions hold trivially and no check is
+    # dropped at all, so errors are preserved verbatim too. The general form is the
+    # left-hand gate drop Optimizer declines, and costs what that costs; see the note in
+    # its header.
     def absorb_input(type)
-      return nil unless absorbable? && Plumb::Subtyping.value_preserving?(type)
+      return nil unless absorbable? && !step_neighbour?(type)
       return nil unless @input_type.is_a?(AnyClass)
 
       with_children([type, @output_type])
@@ -283,6 +289,14 @@ module Plumb
     # instead, so a type absorbed into a slot would vanish from #inspect; for those the
     # label is the more useful reading, and the type runs as its own step.
     private def absorbable? = standard_call? && @inspect_label.nil?
+
+    # Is `type` itself a TYPED STEP? Then the seam belongs to #fuse_with rather than
+    # here: it composes the two fns instead of nesting one node inside the other's slot,
+    # and where fusion declines (two opaque wrappers) both nodes stay so that each #fn
+    # remains reachable. A ROUTING rule, not a soundness one — which rewrite owns the
+    # pair. Everything else is a type, and a type runs as a step whether it sits in a
+    # slot or beside one.
+    private def step_neighbour?(type) = type.is_a?(Plumb::TypedStep)
 
     # DERIVED, not declared: this family's #call is Function's full
     # input -> fn -> output or GuaranteedFunction's input -> fn (whose missing

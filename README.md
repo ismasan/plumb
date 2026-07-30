@@ -173,7 +173,18 @@ Doubled.resolve('3').errors # => "Must be a Integer"
 
 The checks are the ones you wrote — the input validated before the callable runs, the output after — but they run as one node's boundaries instead of a three-step chain, and the result reports what it accepts and produces, so it keeps composing (and type-checking) downstream. Either half works on its own: `Types::Integer >> a_proc` is `(Types::Integer -> Plumb::Types::Any)`, typed on the side you declared.
 
-Nothing is dropped to do this. A type is only absorbed when it leaves the value alone, and only into a boundary the step left undeclared — a step that says what it accepts keeps its own check:
+Nothing is dropped to do this: a type only moves into a boundary the step left undeclared, so it runs exactly where the no-op ran. That includes a type that *builds* a value, so a struct pipeline collapses the same way:
+
+```ruby
+Person  = Types::Data[name: Types::String]
+Renamer = Person >> ->(r) { r.valid(r.value.with(name: r.value.name.upcase)) } >> Person
+
+Renamer.inspect                 # => "(Person -> Person)"
+Renamer.parse(name: 'ada').name # => "ADA"
+Renamer.resolve(name: 42).errors # => {name: "Must be a String"}
+```
+
+What keeps its own node is a step that declares what it accepts, or one carrying its own callable — two of those meeting is transform fusion's business rather than absorption's:
 
 ```ruby
 # The transform declares String as its input, so the leading gate stays a step.

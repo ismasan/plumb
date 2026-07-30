@@ -344,6 +344,23 @@ RSpec.describe 'Function fusion' do
       assert_result(no_convert.resolve(2), 4, false) # output check: 4 is not a Float
     end
 
+    # Any Plumb type composes this way, including one that BUILDS a value: a
+    # `Types::Data` struct turns a Hash into an instance, and both slots here are
+    # no-ops, so it moves into them like any other type.
+    it 'collapses a chain around a Types::Data struct' do
+      person = Types::Data[name: Types::String]
+      renamer = person >> ->(r) { r.valid(r.value.with(name: r.value.name.upcase)) } >> person
+
+      expect(renamer).to be_instance_of(Plumb::Function)
+      expect(renamer.input_type).to be(person)
+      expect(renamer.output_type).to be(person)
+      expect(renamer.parse(name: 'ada').name).to eq('ADA')
+      expect(renamer.parse(person.new(name: 'ada')).name).to eq('ADA')
+      assert_result(renamer.resolve('nope'), 'nope', false)
+      # The struct's own field errors survive the collapse.
+      expect(renamer.resolve(name: 42).errors).to eq({ name: 'Must be a String' })
+    end
+
     it 'does not run the callable when the absorbed input check fails' do
       seen = []
       chain = Types::Integer >> ->(r) { seen << r.value; r.valid(r.value) } >> Types::Integer
@@ -375,13 +392,26 @@ RSpec.describe 'Function fusion' do
         expect(chain.children).to eq([Types::String, int_from_string])
       end
 
-      it 'declines a preceding step that changes the value' do
-        # A record drops undeclared keys, so it is not a check — it stays a step of
-        # its own, and the callable sees only what the record let through.
+      # An `Any` slot has no check to drop, so a CONVERTING type is absorbed too — it
+      # runs in the slot exactly where the no-op ran. A record still drops undeclared
+      # keys before the callable sees the value.
+      it 'takes a preceding type that changes the value' do
         chain = Types::Hash[name: Types::String] >> ->(r) { r.valid(r.value.keys) }
 
-        expect(chain).to be_a(Plumb::And)
+        expect(chain).to be_instance_of(Plumb::GuaranteedFunction)
+        expect(chain.input_type).to eq(Types::Hash[name: Types::String])
         assert_result(chain.resolve({ name: 'a', x: 1 }), [:name], true)
+      end
+
+      # A typed step runs its own fn between its own checks, so a seam between two of
+      # them is #fuse_with's; where fusion declines — two opaque wrappers — both nodes
+      # stay, keeping each #fn reachable.
+      it 'declines a preceding typed step' do
+        chain = int_from_string >> ->(r) { r.valid(r.value + 1) }
+
+        expect(chain).to be_a(Plumb::And)
+        expect(chain.children.first).to be(int_from_string)
+        expect(chain.parse('5')).to eq(6)
       end
     end
 
@@ -403,6 +433,22 @@ RSpec.describe 'Function fusion' do
 
       it 'declines a type the checked output does not cover' do
         expect(to_numeric / Types::Any[::Numeric, ::String]).to be_a(Plumb::Conjunction)
+      end
+
+      # `D <= C` alone is not enough to drop C's check: the subtype relation identifies a
+      # CONVERTING D by what it PRODUCES, and what matters here is what it ACCEPTS.
+      # `Types::Static[10] <= Types::Integer` holds — its value is an Integer — but a
+      # Static accepts anything, so taking the slot would swallow the Integer check.
+      it 'declines a converting type that would swallow the dropped check' do
+        to_int = Plumb::Function[Types::Any => Types::Integer] { |r| r.valid(r.value) }
+        static = Types::Static[10]
+        expect(Plumb::Subtyping.subtype?(static, Types::Integer)).to be(true)
+
+        chain = to_int >> static
+
+        expect(chain).to be_a(Plumb::And)
+        assert_result(chain.resolve('abc'), 'abc', false) # the Integer check still runs
+        assert_result(chain.resolve(5), 10, true)
       end
 
       # An unchecked output is a build-time guarantee (see GuaranteedFunction). When it
