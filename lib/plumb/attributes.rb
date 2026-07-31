@@ -256,7 +256,17 @@ module Plumb
         return result if result.value.is_a?(self)
         return result.invalid(errors: MUST_BE_HASH) unless result.value.respond_to?(:to_h)
 
-        instance = new(result.value.to_h)
+        # Defining #to_h is not the same as converting to one: Array, Range and Set
+        # all define it and raise unless their elements are already pairs
+        # (`[1].to_h` => TypeError). A value that will not convert is simply not a
+        # Hash of attributes, so report that instead of raising out of #resolve.
+        begin
+          attributes = result.value.to_h
+        rescue ::TypeError, ::ArgumentError
+          return result.invalid(errors: MUST_BE_HASH)
+        end
+
+        instance = new(attributes)
         instance.valid? ? result.valid(instance) : result.invalid(instance, errors: instance.errors.to_h)
       end
 

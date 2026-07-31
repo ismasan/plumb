@@ -71,10 +71,24 @@ RSpec.describe 'subtyping: Plumb::Subtyping.subtype? and #<=' do
       expect(STypes::Integer[0..20] <= STypes::Integer[1..10]).to be(false)
     end
 
+    # A literal matches with Ruby's `==`, so a numeric literal describes every
+    # numeric spelling of its value — `Types::Any[5]` accepts `5`, `5.0`, `5r` and
+    # `BigDecimal('5')`. Its class is therefore Numeric, not Integer, and a type
+    # that admits only Integers is NOT above it.
     it 'places literals within ranges and classes' do
-      expect(STypes::Any[5] <= STypes::Integer[1..10]).to be(true)
-      expect(STypes::Any[5] <= STypes::Integer).to be(true)
-      expect(STypes::Any[50] <= STypes::Integer[1..10]).to be(false)
+      expect(STypes::Any[5] <= STypes::Any[1..10]).to be(true)
+      expect(STypes::Any[5] <= STypes::Numeric).to be(true)
+      expect(STypes::Any[50] <= STypes::Any[1..10]).to be(false)
+
+      # An Integer-based refinement rejects `5.0`, which `Any[5]` accepts.
+      expect(STypes::Any[5] <= STypes::Integer).to be(false)
+      expect(STypes::Any[5] <= STypes::Integer[1..10]).to be(false)
+      expect(STypes::Integer[1..10].resolve(5.0).valid?).to be(false)
+      expect(STypes::Any[5].resolve(5.0).valid?).to be(true)
+
+      # Non-numeric literals have no cross-class equality to account for.
+      expect(STypes::Any['a'] <= STypes::String).to be(true)
+      expect(STypes::Any['a'] <= STypes::String[/a/]).to be(true)
     end
   end
 
@@ -620,8 +634,12 @@ RSpec.describe 'subtyping: Plumb::Subtyping.subtype? and #<=' do
     it 'normalizes raw classes/values on either side' do
       expect(Plumb::Subtyping.subtype?(STypes::Integer, ::Numeric)).to be(true)
       expect(Plumb::Subtyping.subtype?(::Integer, STypes::Numeric)).to be(true)
-      expect(Plumb::Subtyping.subtype?(5, STypes::Integer)).to be(true)
+      # A raw value normalizes to the same value match as `Types::Value[5]`, which
+      # matches by `==` — so it describes Numeric rather than Integer.
+      expect(Plumb::Subtyping.subtype?(5, STypes::Numeric)).to be(true)
+      expect(Plumb::Subtyping.subtype?(5, STypes::Integer)).to be(false)
       expect(Plumb::Subtyping.subtype?(5, STypes::String)).to be(false)
+      expect(Plumb::Subtyping.subtype?('a', STypes::String)).to be(true)
     end
   end
 

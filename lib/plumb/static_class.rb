@@ -28,6 +28,23 @@ module Plumb
     # at composition time, eg. `Types::Static['foo'] >> Types::Integer` raises.
     def input_type = Types::Any
 
+    # A static step is identified by the value it PRODUCES, so it is a subtype of
+    # any type that value satisfies — which is what lets `Types::Integer.static(10)`
+    # (ie. `Static[10] >> Types::Integer`) compose, while `Static['foo'] >>
+    # Types::Integer` raises.
+    #
+    # Asked of the value itself rather than through Subtyping.atomic_subtype?,
+    # because a literal MATCHER and a produced value are different things and each
+    # reading is right for its own node. `Types::Value[5]` matches by `==` and so
+    # describes every numeric spelling of 5 (hence Numeric, not Integer); the value
+    # here is one concrete object, and `Static[10]` really does produce an Integer.
+    def subtype_of?(other)
+      return true if self == other
+      return super if @value.is_a?(Composable)
+
+      other === @value
+    end
+
     def call(result)
       result.valid!(@value)
     end

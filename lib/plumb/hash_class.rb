@@ -290,32 +290,14 @@ module Plumb
       return hashmap_subtype?(other) if other.is_a?(HashMap)
       return false unless other.is_a?(HashClass)
 
-      # Depth/width over `other`'s named (literal) keys, as before.
-      literal_ok = other.literal_fields.all? do |other_key, other_field|
-        mine_key, mine_field = _schema.find { |k, _| k.eql?(other_key) }
-        if mine_field
-          Plumb::Subtyping.subtype?(mine_field, other_field) &&
-            (other_key.optional? || !mine_key.optional?)
-        else
-          other_key.optional?
-        end
-      end
-      return false unless literal_ok
+      # An empty schema is the "any Hash" top, and #call returns the input
+      # UNTOUCHED for it (there are no fields to project through) — so it can carry
+      # any key holding any value. Nothing narrower describes that. The mirror of
+      # the guard in #hashmap_subtype?.
+      return false if _schema.empty?
+      return true if other._schema.empty?
 
-      # Catch-all covariance: if `other` accepts an arbitrary tail `Tᵒ`, every key
-      # `self` may carry that `other` does not name must be a subtype of `Tᵒ` —
-      # `self`'s own catch-all `Tˢ`, and any literal key of `self` not named by
-      # `other`. If `other` is closed, no extra restriction (a closed consumer
-      # drops unknown keys, so width subtyping is unaffected — as before).
-      if (oc = other.catch_all_type)
-        return false if catch_all_type && !Plumb::Subtyping.subtype?(catch_all_type, oc)
-
-        literal_fields.all? do |mk, mf|
-          other._schema.key?(mk) || Plumb::Subtyping.subtype?(mf, oc)
-        end
-      else
-        true
-      end
+      named_keys_ok?(other) && carried_keys_ok?(other)
     end
 
     # As a consumer, this Hash accepts each field relaxed to what *that* field
@@ -361,6 +343,69 @@ module Plumb
     # A catch-all `_: T` carries the Any key matcher, so `Any <= key_type` fails
     # unless the map accepts any key — an open Hash is NOT a subtype of a
     # Symbol-keyed map.
+    # Depth and width over the keys `other` NAMES. `self` must supply each one as a
+    # required key of a subtype; a key `other` makes optional may be missing.
+    #
+    # "Missing" is not the same as "never present", which is why the optional case
+    # still has work to do: a matcher key of `self` (a typed key, or the `_`
+    # catch-all) can carry that name through with a value of its own type, and
+    # `other` then checks it. `Hash[_: Any]` does not satisfy `Hash[name?: String]`
+    # — it happily passes `{name: 1}` along.
+    def named_keys_ok?(other)
+      other.literal_fields.all? do |other_key, other_field|
+        mine_key, mine_field = _schema.find { |k, _| k.eql?(other_key) }
+        if mine_field
+          Plumb::Subtyping.subtype?(mine_field, other_field) &&
+            (other_key.optional? || !mine_key.optional?)
+        else
+          other_key.optional? &&
+            matcher_fields_matching(other_key).all? { |f| Plumb::Subtyping.subtype?(f, other_field) }
+        end
+      end
+    end
+
+    # Every key `self` can carry that `other` does not name has to satisfy whichever
+    # of `other`'s matcher keys claims it — its typed keys and its `_` catch-all.
+    # A key none of them matches is dropped by `other`'s #call (the non-inclusive
+    # default), so it constrains nothing: that is what makes width subtyping work
+    # against a closed record.
+    #
+    # Covers `self`'s matcher keys as well as its literal ones. A typed key like
+    # `String[/^id_/] => String` carries values just as a named key does, and
+    # `other`'s catch-all applies to them the same way.
+    def carried_keys_ok?(other)
+      _schema.all? do |mine_key, mine_field|
+        theirs = other._schema.find { |ok, _| ok.eql?(mine_key) }
+        if theirs
+          # The same key on both sides. Literal keys were already related by
+          # #named_keys_ok?; a matcher key still needs its depth checked.
+          mine_key.literal? || Plumb::Subtyping.subtype?(mine_field, theirs.last)
+        else
+          other.matcher_fields.all? do |other_key, other_field|
+            !keys_may_overlap?(mine_key, other_key) ||
+              Plumb::Subtyping.subtype?(mine_field, other_field)
+          end
+        end
+      end
+    end
+
+    # The value types `self` can carry under the name `key` via its MATCHER keys.
+    def matcher_fields_matching(key)
+      @matcher_fields.filter_map { |mk, field| field if mk.match?(key.to_key) }
+    end
+
+    # Could one Ruby key be claimed by both of these keys? Exact whenever either
+    # side is literal. Two matchers are assumed to overlap: their domains are
+    # arbitrary `#===` matchers and cannot be compared in general, so the caller
+    # demands the depth relation rather than assume they are disjoint.
+    def keys_may_overlap?(mine, theirs)
+      return mine.eql?(theirs) if mine.literal? && theirs.literal?
+      return theirs.match?(mine.to_key) if mine.literal?
+      return mine.match?(theirs.to_key) if theirs.literal?
+
+      true
+    end
+
     def hashmap_subtype?(other)
       return false if _schema.empty?
 

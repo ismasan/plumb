@@ -56,6 +56,12 @@ module Plumb
     end
 
     def call(result)
+      # A value that has no such attribute fails the constraint — it cannot "have
+      # attribute X" — rather than raising NoMethodError. #input_type is Any (this
+      # narrows by value and opts out of #>> checks), so nothing upstream
+      # guarantees the attribute exists: `Types::Any.where(upcase: 'X')` is handed
+      # whatever the caller passes.
+      return result.invalid!(errors: @error) unless result.value.respond_to?(attr_name)
       return result if value === result.value.public_send(attr_name)
 
       result.invalid!(errors: @error)

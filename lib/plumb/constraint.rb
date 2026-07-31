@@ -133,8 +133,34 @@ module Plumb
     # A matcher validates without changing the value, so `Match >> Match` (of the
     # same matcher) is redundant and `#>>` collapses it — and a redundant `#|`
     # branch absorbs.
-    def idempotent? = true
-    def value_preserving? = true
+    def idempotent? = @base.nil? || @base.idempotent?
+
+    # As the consumer of a `left >> self` chain, a matcher over a CONVERTING base
+    # accepts what that base accepts: #call runs `@base` first, so
+    # `String.transform(::Integer, :to_i)[0..150]` consumes a String even though it
+    # matches against the Integer it produces. Without this it would report the
+    # produced type on both sides and read as a plain Integer refinement — letting
+    # `Types::Integer >> that` type-check, though the base rejects an Integer.
+    #
+    # A value-preserving base (the ordinary refinement, `Integer[0..100]`) keeps the
+    # default: the node itself, so the matcher is part of what a consumer must
+    # satisfy.
+    def accepted_type
+      return self unless @base && !Plumb::Subtyping.value_preserving?(@base)
+
+      Plumb::Subtyping.accepted_type(@base)
+    end
+
+    # The matcher itself changes nothing, so this preserves the value exactly when
+    # whatever it REFINES does — #call runs `@base` first.
+    #
+    # A Constraint is not always a pure check: `#[]` on a conversion re-parents into
+    # a Constraint whose base IS that conversion (see Optimizer.reduce_step), so
+    # `String.transform(::Integer, :to_i)[0..150]` converts while wearing a
+    # matcher's clothes. Reporting true for it told Optimizer.reduce_union and
+    # Subtyping.intersect they were free to drop it in favour of a subtype-equal
+    # type, which silently discarded the coercion.
+    def value_preserving? = @base.nil? || Plumb::Subtyping.value_preserving?(@base)
 
     # Structural subtyping. A matcher describes the set `base ∩ {x | matcher === x}`
     # (base = everything when nil). `self <= other` when self's set is contained in
@@ -171,9 +197,27 @@ module Plumb
         (base.is_a?(Constraint) && base.within_matcher?(m))
     end
 
+    # The caller's description of this matcher, used as its identity when the
+    # matcher itself has none (see #==).
+    protected def label = @label
+
     # Two matchers are equal when they match the same thing over the same base.
+    #
+    # A Proc matcher is compared by LABEL rather than by identity. `#check` — and
+    # every policy built on it — closes over a fresh block on each call, so two
+    # structurally identical checks hold different Proc objects and would never
+    # compare equal. The label is the caller's own description of what the check
+    # does, the same role `identity:` plays for Function. Two checks that share a
+    # message while testing different things do compare equal; describing them
+    # differently is what tells them apart.
     def ==(other)
-      other.is_a?(self.class) && other.matcher == matcher && other.base == base
+      return false unless other.instance_of?(self.class) && other.base == base
+
+      if matcher.is_a?(::Proc)
+        other.matcher.is_a?(::Proc) && other.label == label
+      else
+        other.matcher == matcher
+      end
     end
 
     def call(result)

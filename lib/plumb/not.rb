@@ -38,6 +38,24 @@ module Plumb
       self.class.new(step)
     end
 
+    # Negation is CONTRAVARIANT: `Not(A) <= Not(B)` exactly when `B <= A`.
+    #
+    # `Not(A)` accepts everything OUTSIDE A, so the wider the negated type, the
+    # narrower the negation. `Not[Numeric]` excludes every number and so is a
+    # subtype of `Not[Integer]`, which excludes only integers and still accepts
+    # `1.5`. The default covariant-container rule reads the children the other way
+    # round and gets both directions wrong.
+    def subtype_of?(other)
+      return true if self == other
+      return Plumb::Subtyping.subtype?(other.children.first, @step) if other.is_a?(Not)
+
+      super
+    end
+
+    # A negation checks the value and passes it through untouched — #call only
+    # flips validity.
+    def value_preserving? = true
+
     private def _inspect
       %(Not(#{@step.inspect}))
     end

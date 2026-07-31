@@ -25,10 +25,16 @@ module Plumb
       freeze
     end
 
+    # A Policy is identified by its name, its argument AND the step it wraps. The
+    # step is load-bearing: `String.present` and `Integer.present` share a name and
+    # argument while accepting disjoint values, and `subtype?` short-circuits on
+    # `==` before the #identity_wrapper? guard that keeps a wrapper from being
+    # dropped — so without the step, `|` would absorb one into the other.
     def ==(other)
-      other.is_a?(self.class) &&
+      other.instance_of?(self.class) &&
         policy_name == other.policy_name &&
-        arg == other.arg
+        arg == other.arg &&
+        children == other.children
     end
 
     # A Policy is a transparent wrapper: it delegates type-flow to the wrapped

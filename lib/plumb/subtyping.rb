@@ -123,13 +123,21 @@ module Plumb
     # `a` and `b` describe the same values — mutual subtypes.
     def equivalent?(a, b) = subtype?(a, b) && subtype?(b, a)
 
-    # A leaf type whose single child is a raw (non-Composable) Ruby matcher or
-    # value — eg. Constraint, ValueClass, StaticClass. These bottom out in
-    # #atomic_subtype? rather than recursing.
+    # A leaf type whose single child is a raw (non-Composable) Ruby MATCHER — eg.
+    # Constraint, ValueClass. These bottom out in #atomic_subtype? rather than
+    # recursing.
+    #
+    # A StaticClass looks the same shape but is excluded: its child is the value it
+    # PRODUCES, not a matcher it compares against (it accepts any input), so
+    # comparing the two children as matchers relates the wrong things —
+    # `Types::Value[5] <= Types::Static[5]` would hold, and via `Static[5] <=
+    # Types::Integer` that breaks transitivity. Static answers for itself instead
+    # (see StaticClass#subtype_of?).
     def atomic?(type)
       type.respond_to?(:children) &&
         type.children.size == 1 &&
-        !type.children.first.is_a?(Composable)
+        !type.children.first.is_a?(Composable) &&
+        !type.is_a?(StaticClass)
     end
 
     # The subtype relation between two raw matchers (a Class/Module, Range,
@@ -144,9 +152,17 @@ module Plumb
         case lm
         when ::Module then class_le?(lm, rm)        # Integer <= Numeric
         when ::Range then range_in_class?(lm, rm)   # (1..10) <= Integer
-        when ::Regexp then class_le?(::String, rm)  # /x/ matches Strings
+        # `Regexp#===` coerces, so a pattern matches Symbols as well as Strings
+        # (`/x/ === :xyz`). It is a subtype of a class only if BOTH are.
+        when ::Regexp then class_le?(::String, rm) && class_le?(::Symbol, rm)
         when ::Set then lm.all? { |e| rm === e }    # Set[1,2,3] <= Integer
-        else rm === lm                              # value 5 <= Integer
+        # A literal matches by Ruby's `==`, which for numerics crosses their
+        # classes — `Types::Value[5]` accepts `5`, `5.0`, `5r` and `BigDecimal('5')`
+        # alike. So a numeric literal describes Numeric, and is confined to Integer
+        # only if Numeric itself is. (A Static is different: it PRODUCES one
+        # concrete object rather than matching a set — see StaticClass#subtype_of?.)
+        when ::Numeric then class_le?(::Numeric, rm)
+        else rm === lm                              # value 'a' <= String
         end
       when ::Range
         case lm
@@ -159,6 +175,10 @@ module Plumb
         case lm
         when ::Set then lm.subset?(rm)              # Set[2,3] <= Set[1,2,3,4]
         when ::Module, ::Range, ::Regexp then false # infinite domain ⊄ finite set
+        # `Set#===` is `#include?`, which tests `eql?` — so a Set holds ONE numeric
+        # spelling, not every value `== lm`. `Types::Value[5]` accepts `5.0`, which
+        # `Set[1, 5]` rejects.
+        when ::Numeric then false
         else rm === lm                              # value is a member
         end
       when ::Regexp
@@ -177,19 +197,57 @@ module Plumb
       (a <= b) == true
     end
 
+    # Is every value a Range matches an instance of `klass`?
+    #
+    # BOTH endpoints have to be instances: reading only one accepts
+    # `(1..2.5) <= Integer` and `(1.5..3) <= Float`, though the other endpoint
+    # matches values of a different class.
+    #
+    # Note this reads a numeric range as describing its endpoints' class, matching
+    # how a numeric LITERAL is read (see #atomic_subtype?) — `(1..10) === 2.5` is
+    # true, so both are the same open question about numeric `==` crossing classes.
     def range_in_class?(range, klass)
-      e = range.begin || range.end
-      !e.nil? && e.is_a?(klass)
+      ends = [range.begin, range.end].compact
+      return false if ends.empty?
+
+      ends.all? { |e| e.is_a?(klass) }
     end
 
+    # Is `inner` contained in `outer`? Endpoint containment, honouring
+    # `#exclude_end?` on BOTH sides — `cover?` alone would reject `(1...5)` inside
+    # `(0...5)` for an endpoint (`5`) that `inner` does not actually include.
+    # Ruby has no exclusive BEGIN, so the low end stays a plain `cover?`.
+    #
+    # Conservative where containment needs discreteness: `(1...5) <= (0..4)` stays
+    # false, since `4.5` separates them for a non-integer base.
     def range_in_range?(inner, outer)
       lo_ok = outer.begin.nil? || (!inner.begin.nil? && outer.cover?(inner.begin))
-      hi_ok = outer.end.nil? || (!inner.end.nil? && outer.cover?(inner.end))
-      lo_ok && hi_ok
+      lo_ok && range_end_within?(inner, outer)
     end
 
+    def range_end_within?(inner, outer)
+      return true if outer.end.nil?
+      return false if inner.end.nil?
+
+      cmp = inner.end <=> outer.end
+      return false if cmp.nil? # incomparable endpoints prove nothing
+
+      # `inner` reaches its end while `outer` stops short of the same value, so
+      # inner's end must fall strictly inside. Every other combination — both
+      # exclusive, both inclusive, or inner exclusive inside an inclusive outer —
+      # is satisfied by `<=`.
+      if !inner.exclude_end? && outer.exclude_end?
+        cmp.negative?
+      else
+        cmp <= 0
+      end
+    end
+
+    # Regexps are equal when they match the same strings. `#source` alone is not
+    # that: `i`, `m` and `x` change what a pattern accepts (`/a/i` matches `'A'`,
+    # `/a/` does not), and `#options` is where they live.
     def regex_equal?(a, b)
-      a.is_a?(::Regexp) && b.is_a?(::Regexp) && a.source == b.source
+      a.is_a?(::Regexp) && b.is_a?(::Regexp) && a.source == b.source && a.options == b.options
     end
 
     # Validate that two steps can be composed sequentially (`left >> right`).
@@ -400,11 +458,46 @@ module Plumb
     # (opaque matcher ⇒ empty base-type list) is NOT provably disjoint, so the
     # caller keeps a runtime And rather than wrongly collapsing to Never.
     def disjoint_atomic?(a, b)
-      abt = Plumb.resolve_base_types(a)
-      bbt = Plumb.resolve_base_types(b)
-      return false if abt.empty? || bbt.empty?
+      # Only judge two nodes that both return their input unchanged.
+      #
+      # "No value satisfies both" is the right question for a genuine meet, where
+      # each side describes the SAME value. It is the wrong question everywhere
+      # else, and Plumb.resolve_base_types answers about what a node PRODUCES: a
+      # Function reports its output type, a Static the class of the fixed value it
+      # returns whatever its input, a Not the very classes it excludes. Judging
+      # those sinks an inhabited intersection to Never — `Types::Integer &
+      # Types::Integer.transform(::String, &:to_s)` accepts every Integer, and
+      # `Types::String & Types::Not[Types::Integer]` accepts every String.
+      #
+      abt = stable_domain(a)
+      bbt = stable_domain(b)
+      return false if abt.nil? || bbt.nil?
 
       abt.none? { |x| bbt.any? { |y| class_le?(x, y) || class_le?(y, x) } }
+    end
+
+    # The Ruby classes `type` accepts, but ONLY when they are also the classes it
+    # produces — ie. the node NARROWS one domain rather than moving between two.
+    # nil for anything else, including an unknown domain.
+    #
+    # That distinction is what makes #disjoint_atomic? answerable. "No value
+    # satisfies both" is a question about a single domain, so it can only be asked
+    # of a node that has one. A converting node has two, and Plumb.resolve_base_types
+    # reports only the produced side — which is how `Types::Integer &
+    # Types::Integer.transform(::String, &:to_s)` came to look disjoint (Integer vs
+    # String) though its And accepts every Integer. A Static reports the class of
+    # the value it emits regardless of input, and a Not reports the very classes it
+    # excludes; neither has a domain to compare either.
+    #
+    # Declining here costs only precision: the caller keeps a runtime intersection
+    # where it might have proved Never. That matches what `&` already does for a
+    # converting side — Conjunction.build keeps both — while a wrong Never discards
+    # the whole composition.
+    def stable_domain(type)
+      accepted = Plumb.resolve_base_types(accepted_type(type))
+      return nil if accepted.empty?
+
+      accepted == Plumb.resolve_base_types(resolved_output(type)) ? accepted : nil
     end
 
     # Does `type` return its input unchanged on success (a coreflexive

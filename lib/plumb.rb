@@ -64,6 +64,18 @@ module Plumb
   #
   # This is a temporary helper to preserve type-specific policy resolution
   # (see Composable#policy) until proper subtyping checks are implemented.
+  # The base class to report for a matcher that compares VALUES — a literal, a
+  # Range endpoint, a Static's value.
+  #
+  # Numerics compare equal across their classes (`5 == 5.0`) and Ranges of them
+  # match across classes too (`(1..10) === 2.5`), so a numeric value describes
+  # Numeric rather than only its own class. Reporting Integer would let
+  # Subtyping.disjoint_atomic? call `Types::Any[5]` and Types::Float disjoint and
+  # sink their intersection to Never, though `5.0` satisfies both.
+  def self.value_base_class(value)
+    value.is_a?(::Numeric) ? ::Numeric : value.class
+  end
+
   def self.resolve_base_types(node)
     return [node] if node.is_a?(::Class)
     return [] unless node.respond_to?(:node_name)
@@ -104,16 +116,31 @@ module Plumb
       matcher = node.children.first
       case matcher
       when ::Class then [matcher]
-      when ::Regexp then [::String]
-      when ::Range then [(matcher.begin || matcher.end).class]
-      else [matcher.class]
+      # `Regexp#===` coerces, so a pattern matches Symbols as well as Strings
+      # (`/x/ === :xyz` is true). Reporting only String would let callers treat a
+      # pattern as String-only — eg. an Interface check that a Symbol fails.
+      when ::Regexp then [::String, ::Symbol]
+      when ::Range then [value_base_class(matcher.begin || matcher.end)]
+      else [value_base_class(matcher)]
       end
     when :array, :tuple then [::Array]
     when :hash, :hash_map, :tagged_hash, :filtered_hash, :filtered_hash_map then [::Hash]
     when :stream then [::Enumerator]
+    when :range then [::Range]
+    when :not
+      # A negation describes the COMPLEMENT of what it wraps — every value except
+      # those. That is not expressible as a list of base classes (and the wrapped
+      # type's own classes are precisely the ones excluded), so report "unknown"
+      # and let callers stay conservative.
+      []
+    when :value
+      # A literal matched by `==`. Same rule as :static — the value describes its
+      # own class, widened for numerics.
+      value = node.children.first
+      value.equal?(Undefined) ? [] : [value_base_class(value)]
     when :static
       value = node.children.first
-      [value.is_a?(::Class) ? value : value.class]
+      [value.is_a?(::Class) ? value : value_base_class(value)]
     else
       node.respond_to?(:children) ? node.children.flat_map { |child| resolve_base_types(child) } : []
     end

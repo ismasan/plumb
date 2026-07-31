@@ -62,6 +62,17 @@ module Plumb
     def input_type = @type.input_type
     def output_type = @type.output_type
 
+    # Transparency extends to the subtype relation: a Pipeline IS its accumulated
+    # composition, so `subtype?` reduces to that inner type on either side (see
+    # Composable#subtype_identity). Without this a Pipeline would delegate its
+    # type-flow — so `#>>` type-checks against it — while relating to nothing,
+    # which also kept a pipeline-typed field out of container subtyping.
+    def subtype_identity = @type
+
+    # Likewise for the reductions: a Pipeline changes the value exactly when the
+    # composition it wraps does.
+    def value_preserving? = @type.value_preserving?
+
     # Add a step. A pipeline is a sequence of validators/coercions that
     # progressively narrows its data, so steps are **non-strict** by default:
     # `#step` chains with `#/`, skipping the composition type-check (a later step
