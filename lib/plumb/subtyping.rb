@@ -274,6 +274,14 @@ module Plumb
       accepted = accepted_type(right)
       return if accepted.is_a?(AnyClass) || subtype?(produced, accepted)
 
+      # Retry reading a produced record as CLOSED. A Hash schema describes incoming
+      # hashes, which may carry keys it ignores — so it is deliberately NOT a subtype
+      # of a consumer that constrains those keys. What it EMITS is narrower: #call
+      # copies over only the keys it declares. So `Hash[name: String] >>
+      # Hash[name: String, age?: Integer]` composes (no `age` can reach the
+      # consumer) while the schema-level relation stays strict. @see HashClass#closed
+      return if produced.is_a?(HashClass) && subtype?(produced.closed, accepted)
+
       raise Plumb::TypeError,
             "cannot compose #{left.inspect} >> #{right.inspect}: " \
             "#{produced.inspect} (produced) is not a subtype of #{accepted.inspect} (accepted); " \
@@ -336,8 +344,8 @@ module Plumb
       end
 
       # Distribute over unions: (a1 | a2) & b == (a1 & b) | (a2 & b).
-      return intersect_union(a, b) if a.is_a?(Disjunction)
-      return intersect_union(b, a) if b.is_a?(Disjunction)
+      return intersect_union(a, b, union_first: true) if a.is_a?(Disjunction)
+      return intersect_union(b, a, union_first: false) if b.is_a?(Disjunction)
 
       intersect_constraints(a, b) ||
         intersect_literals(a, b) ||
@@ -348,9 +356,15 @@ module Plumb
     # Distribute `&` over a union: intersect each branch with `other`, drop the
     # branches that go Never, and rejoin the survivors with `|`. All-Never ⇒
     # Never. A branch the reducer can't fold becomes a runtime And.
-    def intersect_union(union, other)
+    # `union_first` records which side the union came from, so each branch is
+    # recombined in the ORIGINAL order. It matters whenever a branch cannot be
+    # folded: the fallback is Conjunction.build, which for a converting operand is a
+    # SEQUENTIAL And, and `And(Static[5], String)` is not `And(String, Static[5])` —
+    # the first emits 5 and then checks it, the second checks the input first.
+    def intersect_union(union, other, union_first: true)
       parts = union.children.filter_map do |branch|
-        m = intersect(branch, other) || Conjunction.build(branch, other)
+        left, right = union_first ? [branch, other] : [other, branch]
+        m = intersect(left, right) || Conjunction.build(left, right)
         m unless m.is_a?(NeverClass)
       end
       return Types::Never if parts.empty?
@@ -494,7 +508,16 @@ module Plumb
     # converting side — Conjunction.build keeps both — while a wrong Never discards
     # the whole composition.
     def stable_domain(type)
-      accepted = Plumb.resolve_base_types(accepted_type(type))
+      consumes = accepted_type(type)
+      # A converting node that cannot describe its input falls back to reporting
+      # ITSELF as what it accepts, which then resolves to what it PRODUCES — so the
+      # two look identical while genuinely differing. A Types::Data class is the
+      # case in point: it takes a Hash and returns an instance, but answers `self`
+      # on both sides, which would make it look disjoint from Types::Hash and sink
+      # `Types::Hash & Person` to Never. Unknown, so decline.
+      return nil if consumes.equal?(type) && !value_preserving?(type)
+
+      accepted = Plumb.resolve_base_types(consumes)
       return nil if accepted.empty?
 
       accepted == Plumb.resolve_base_types(resolved_output(type)) ? accepted : nil

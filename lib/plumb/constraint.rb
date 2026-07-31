@@ -151,6 +151,19 @@ module Plumb
       Plumb::Subtyping.accepted_type(@base)
     end
 
+    # A matcher over a CONVERTING base is itself a conversion, and the relation
+    # identifies a conversion by what it PRODUCES (see Composable#subtype_identity).
+    # `String.transform(::Integer, :to_i)[0..150]` produces `Integer[0..150]`: the
+    # base's output, narrowed by this matcher. Without projecting, such a node is
+    # compared as though it accepted Integers, which it does not — it consumes
+    # Strings.
+    def subtype_identity
+      return self if @base.nil? || Plumb::Subtyping.value_preserving?(@base)
+
+      produced = Plumb::Subtyping.resolved_output(@base)
+      produced.equal?(@base) ? self : Constraint.narrow(produced, @matcher)
+    end
+
     # The matcher itself changes nothing, so this preserves the value exactly when
     # whatever it REFINES does — #call runs `@base` first.
     #

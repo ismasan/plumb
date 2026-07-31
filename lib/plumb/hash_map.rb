@@ -25,9 +25,14 @@ module Plumb
     def subtype_of?(other)
       if other.is_a?(HashClass)
         return true if other._schema.empty?
-        return false unless other.only_catch_all?
 
-        return Plumb::Subtyping.subtype?(@value_type, other.catch_all_type)
+        # A map validates EVERY entry (#call iterates the whole hash), so it has no
+        # unconstrained tail: whatever `other` asks of any key, @value_type already
+        # guarantees. What a map does NOT promise is that any particular key is
+        # PRESENT, so a key `other` requires can never be satisfied.
+        return false if other.literal_fields.any? { |k, _| !k.optional? }
+
+        return other._schema.all? { |_k, field| Plumb::Subtyping.subtype?(@value_type, field) }
       end
 
       super

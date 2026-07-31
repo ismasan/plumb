@@ -599,9 +599,28 @@ RSpec.describe 'subtyping: Plumb::Subtyping.subtype? and #<=' do
       # producer is wider (extra keys are fine)
       expect { STypes::Hash[name: STypes::String, age: STypes::Integer] >> STypes::Hash[name: STypes::String] }
         .not_to raise_error
-      # the key the producer lacks is optional for the consumer
+    end
+
+    # The producer's #call emits only its declared keys, so no stray `age` can reach
+    # the consumer — safe, and it composes. The SCHEMA-level relation stays strict
+    # (see the sibling example below): as a description of incoming data the producer
+    # also covers hashes carrying an `age` of any type, which the consumer would
+    # reject. check_composable! is what distinguishes the two, by retrying against
+    # HashClass#closed.
+    it 'allows a producer to omit a key the consumer only accepts optionally' do
       expect { STypes::Hash[name: STypes::String] >> STypes::Hash[name: STypes::String, age?: STypes::Integer] }
         .not_to raise_error
+    end
+
+    it 'still refuses that pair as a SCHEMA subtype relation' do
+      producer = STypes::Hash[name: STypes::String]
+      consumer = STypes::Hash[name: STypes::String, age?: STypes::Integer]
+      expect(Plumb::Subtyping.subtype?(producer, consumer)).to be(false)
+      # the witness: an `age` the producer never constrained
+      expect(producer.resolve(name: 'a', age: 'nope').valid?).to be(true)
+      expect(consumer.resolve(name: 'a', age: 'nope').valid?).to be(false)
+      # but what the producer EMITS is closed, and that does relate
+      expect(Plumb::Subtyping.subtype?(producer.closed, consumer)).to be(true)
     end
 
     it 'does not check value-converting steps (transform/build bypass the check)' do
