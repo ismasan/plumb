@@ -70,9 +70,7 @@ module Plumb
   # numeric types appear disjoint and reduce their intersection to Never.
   # @param value [Object]
   # @return [Class]
-  def self.value_base_class(value)
-    value.is_a?(::Numeric) ? ::Numeric : value.class
-  end
+  def self.value_base_class(value) = SemanticMatcher.value_domain(value)
 
   def self.resolve_base_types(node)
     return [node] if node.is_a?(::Class)
@@ -111,14 +109,7 @@ module Plumb
       # `Integer[1..10]` => [Integer], `User.check {}` => the User's base types).
       return resolve_base_types(node.base) if node.base
 
-      matcher = node.children.first
-      case matcher
-      when ::Class then [matcher]
-      # Regexp#=== coerces both Strings and Symbols.
-      when ::Regexp then [::String, ::Symbol]
-      when ::Range then [value_base_class(matcher.begin || matcher.end)]
-      else [value_base_class(matcher)]
-      end
+      SemanticMatcher.matcher_domain(node.children.first)
     when :array, :tuple then [::Array]
     when :hash, :hash_map, :tagged_hash, :filtered_hash, :filtered_hash_map then [::Hash]
     when :stream then [::Enumerator]
@@ -141,6 +132,8 @@ end
 
 require 'plumb/result'
 require 'plumb/type_registry'
+require 'plumb/relation'
+require 'plumb/semantic_matcher'
 require 'plumb/composable'
 require 'plumb/typed_step'
 require 'plumb/node_mapper'

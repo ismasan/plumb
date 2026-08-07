@@ -153,7 +153,7 @@ module Plumb
         node = node.base
       end
       root = node
-      return nil unless root.is_a?(Constraint) && root.matcher.is_a?(::Module)
+      return nil unless root.is_a?(Constraint) && SemanticMatcher.nominal?(root.matcher)
       return nil unless Subtyping.subtype?(Subtyping.resolved_output(left), root)
 
       # Stack right's refinements onto left; Constraint.narrow intersects Ranges

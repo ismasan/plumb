@@ -134,94 +134,10 @@ module Plumb
         !type.is_a?(StaticClass)
     end
 
-    # The subtype relation between two raw matchers (a Class/Module, Range,
-    # Regexp, or literal value). `atomic_subtype?(lm, rm)` is "does `lm` describe
-    # a subset of what `rm` describes?".
-    def atomic_subtype?(lm, rm)
-      return true if lm == rm
-      return regex_equal?(lm, rm) if lm.is_a?(::Regexp) && rm.is_a?(::Regexp)
-
-      case rm
-      when ::Module
-        case lm
-        when ::Module then class_le?(lm, rm)        # Integer <= Numeric
-        when ::Range then range_in_class?(lm, rm)   # (1..10) <= Integer
-        # Regexp#=== coerces Strings and Symbols, so both must fit.
-        when ::Regexp then class_le?(::String, rm) && class_le?(::Symbol, rm)
-        when ::Set then lm.all? { |e| rm === e }    # Set[1,2,3] <= Integer
-        # Numeric equality crosses concrete classes, so literals describe Numeric.
-        when ::Numeric then class_le?(::Numeric, rm)
-        else rm === lm                              # value 'a' <= String
-        end
-      when ::Range
-        case lm
-        when ::Range then range_in_range?(lm, rm)   # (1..10) <= (0..20)
-        when ::Set then lm.all? { |e| rm === e }    # Set[1,2,3] <= (0..10)
-        when ::Module, ::Regexp then false
-        else rm === lm                              # value within range
-        end
-      when ::Set
-        case lm
-        when ::Set then lm.subset?(rm)              # Set[2,3] <= Set[1,2,3,4]
-        when ::Module, ::Range, ::Regexp then false # infinite domain ⊄ finite set
-        # Set membership uses eql?, unlike numeric literal matching by ==.
-        when ::Numeric then false
-        else rm === lm                              # value is a member
-        end
-      when ::Regexp
-        case lm
-        when ::String, ::Symbol then rm === lm.to_s # literal string matches regex
-        else false
-        end
-      else
-        lm == rm                                    # literal value equality
-      end
-    end
-
-    def class_le?(a, b)
-      return false unless a.is_a?(::Module) && b.is_a?(::Module)
-
-      (a <= b) == true
-    end
-
-    # Tests whether both finite endpoints are instances of klass.
-    # @param range [Range]
-    # @param klass [Module]
-    # @return [Boolean]
-    def range_in_class?(range, klass)
-      ends = [range.begin, range.end].compact
-      return false if ends.empty?
-
-      ends.all? { |e| e.is_a?(klass) }
-    end
-
-    # Tests endpoint containment while respecting exclusive ends.
-    # @param inner [Range]
-    # @param outer [Range]
-    # @return [Boolean]
-    def range_in_range?(inner, outer)
-      lo_ok = outer.begin.nil? || (!inner.begin.nil? && outer.cover?(inner.begin))
-      lo_ok && range_end_within?(inner, outer)
-    end
-
-    def range_end_within?(inner, outer)
-      return true if outer.end.nil?
-      return false if inner.end.nil?
-
-      cmp = inner.end <=> outer.end
-      return false if cmp.nil? # incomparable endpoints prove nothing
-
-      # An inclusive inner end must fall strictly below an exclusive outer end.
-      if !inner.exclude_end? && outer.exclude_end?
-        cmp.negative?
-      else
-        cmp <= 0
-      end
-    end
-
-    # Compares Regexp source and semantic options.
-    def regex_equal?(a, b)
-      a.is_a?(::Regexp) && b.is_a?(::Regexp) && a.source == b.source && a.options == b.options
+    # The public Boolean form of the matcher subtype relation. Unknown relations
+    # conservatively return false: they must not justify removing a runtime check.
+    def atomic_subtype?(left_matcher, right_matcher)
+      SemanticMatcher.wrap(left_matcher).subset_of(SemanticMatcher.wrap(right_matcher)).proven?
     end
 
     # Validate that two steps can be composed sequentially (`left >> right`).
@@ -319,7 +235,7 @@ module Plumb
       intersect_constraints(a, b) ||
         intersect_literals(a, b) ||
         intersect_containers(a, b) ||
-        (disjoint_atomic?(a, b) ? Types::Never : nil)
+        (disjoint_relation(a, b).proven? ? Types::Never : nil)
     end
 
     # Distributes intersection over a union, preserving operand order for runtime
@@ -367,7 +283,7 @@ module Plumb
     # NOT disjoint, because `5 == 5.0`. That is also why literals can't be told
     # apart by base type — declaring `Value[5]`'s base to be Integer would make
     # it disjoint from Float and wrongly sink `Value[5] & Types::Float` — and so
-    # why this reasons over values instead of routing through #disjoint_atomic?.
+    # why this reasons over values instead of nominal-domain disjointness.
     #
     # Runs after #intersect_constraints, so two literals over the same base reach
     # here only once Constraint.merge_matchers has declined them (it merges
@@ -377,7 +293,7 @@ module Plumb
       bv = literal_value(b)
       return nil if Undefined.equal?(av) || Undefined.equal?(bv)
 
-      av == bv ? nil : Types::Never
+      Relation.from(av == bv).disproven? ? Types::Never : nil
     end
 
     # The single value a node matches by equality, or `Undefined` for a node that
@@ -434,17 +350,24 @@ module Plumb
     # @return [Composable] `type` itself, or a rebuilt container
     def map_children(type, &blk) = NodeMapper.map_children(type, &blk)
 
-    # Tests whether two stable, known domains have no related base classes.
-    # @param a [Composable]
-    # @param b [Composable]
-    # @return [Boolean]
-    def disjoint_atomic?(a, b)
+    # Attempts to prove that two stable nominal domains are disjoint. Unknown
+    # domains preserve the runtime intersection.
+    # @return [Relation]
+    def disjoint_relation(a, b)
       abt = stable_domain(a)
       bbt = stable_domain(b)
-      return false if abt.nil? || bbt.nil?
+      return Relation::UNKNOWN if abt.nil? || bbt.nil?
 
-      abt.none? { |x| bbt.any? { |y| class_le?(x, y) || class_le?(y, x) } }
+      overlaps = abt.product(bbt).map do |left_domain, right_domain|
+        SemanticMatcher.wrap(left_domain).overlap(SemanticMatcher.wrap(right_domain))
+      end
+      overlap = Relation.any(overlaps)
+      return Relation::DISPROVEN if overlap.proven?
+      return Relation::PROVEN if overlap.disproven?
+
+      Relation::UNKNOWN
     end
+    private_class_method :disjoint_relation
 
     # Returns the shared accepted/output base classes for a non-converting type.
     # Unknown or converting domains return nil; comparing their output classes as

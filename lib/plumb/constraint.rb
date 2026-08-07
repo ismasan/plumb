@@ -23,13 +23,12 @@ module Plumb
     # many values (and `Set#===` is `#include?` on Ruby >= 3.1).
     LITERAL_MATCHERS = [::String, ::Symbol, ::Numeric, ::TrueClass, ::FalseClass, ::NilClass].freeze
 
-    # The matcher-level form of #literal?, for the one caller that has a matcher
-    # but no instance to ask: #matcher_may_match?, which runs from the constructor
-    # BEFORE `@matcher` is assigned. Prefer #literal? on an existing Constraint.
+    # The matcher-level form of #literal? for normalization callers that do not
+    # yet have a Constraint. Prefer #literal? on an existing Constraint.
     #
     # @param matcher [#===]
     # @return [Boolean] whether `matcher` matches a single value by equality
-    def self.literal_matcher?(matcher) = LITERAL_MATCHERS.any? { |kind| matcher.is_a?(kind) }
+    def self.literal_matcher?(matcher) = SemanticMatcher.singleton?(matcher)
 
     attr_reader :children, :base, :matcher
 
@@ -46,6 +45,7 @@ module Plumb
       raise_if_incompatible!(base, matcher) if base
 
       @matcher = matcher
+      @matcher_node = SemanticMatcher.wrap(matcher)
       @base = base
       @error = error.nil? ? build_error(matcher) : (error % matcher)
       @label = matcher.is_a?(Class) ? matcher.inspect : "Constraint(#{label || @matcher.inspect})"
@@ -77,39 +77,12 @@ module Plumb
     # reuses it (see Subtyping) — an attribute constraint intersects its Range/Set
     # values just like a Constraint.
     def self.merge_matchers(a, b)
-      if a.is_a?(::Range) && b.is_a?(::Range)
-        intersect_ranges(a, b)
-      elsif a.is_a?(::Set) && b.is_a?(::Set)
-        merged = a & b
-        merged.empty? ? EMPTY : merged
-      end
-    end
+      merged = SemanticMatcher.merge(a, b)
+      return EMPTY if merged.empty?
+      return merged.node.raw if merged.merged?
 
-    # Intersection of two Ranges as a Range, `EMPTY` when provably empty (disjoint,
-    # or a single-point exclusive overlap), or `nil` when incomputable (incomparable
-    # endpoints — left to #new's incompatibility check to reject).
-    def self.intersect_ranges(a, b)
-      ab = a.begin
-      bb = b.begin
-      new_begin = ab.nil? ? bb : (bb.nil? ? ab : (ab >= bb ? ab : bb)) # greater begin (nil = -inf)
-      ae = a.end
-      be = b.end
-      new_end, new_exclude = # lesser end (nil = +inf), carrying exclusivity
-        if ae.nil? then [be, b.exclude_end?]
-        elsif be.nil? then [ae, a.exclude_end?]
-        elsif ae < be then [ae, a.exclude_end?]
-        elsif be < ae then [be, b.exclude_end?]
-        else [ae, a.exclude_end? || b.exclude_end?]
-        end
-      unless new_begin.nil? || new_end.nil?
-        return EMPTY if new_begin > new_end
-        return EMPTY if new_begin == new_end && new_exclude
-      end
-      ::Range.new(new_begin, new_end, new_exclude)
-    rescue ::ArgumentError, ::TypeError
       nil
     end
-    private_class_method :intersect_ranges
 
     # As the consumer of a `left >> self` chain:
     #   - a refinement (has a base), a Class/Module gate, or a literal matcher
@@ -121,14 +94,14 @@ module Plumb
     #     arbitrary input over a domain it cannot name, so it reports Any and opts
     #     out of the check.
     def input_type
-      return self if base || @matcher.is_a?(::Module) || literal?
+      return self if base || @matcher_node.nominal? || literal?
 
       Types::Any
     end
 
     # Whether this constraint matches a SINGLE value, by equality — so two
     # distinct ones are provably disjoint (see Subtyping#literal_value).
-    def literal? = Constraint.literal_matcher?(@matcher)
+    def literal? = @matcher_node.singleton?
 
     # @return [Boolean] whether the base and matcher are safe to deduplicate
     def idempotent? = @base.nil? || @base.idempotent?
@@ -233,24 +206,19 @@ module Plumb
     def raise_if_incompatible!(base, matcher)
       base_types = Plumb.resolve_base_types(base)
       return if base_types.empty? # unknown base (eg. a Data schema) — allow
-      return if base_types.any? { |klass| matcher_may_match?(matcher, klass) }
+      overlap = Relation.any(base_types.map { |klass| matcher_may_match_relation(matcher, klass) })
+      return unless overlap.disproven?
 
       raise Plumb::TypeError,
             "cannot refine #{base.inspect} with #{matcher.inspect}: " \
             "no #{base_types.map(&:inspect).join(' / ')} value can match it"
     end
 
-    # Could `matcher` match at least one instance of `klass`?
-    def matcher_may_match?(matcher, klass)
-      return matcher.is_a?(klass) if Constraint.literal_matcher?(matcher)
-
-      case matcher
-      when ::Module then !!((matcher <= klass) || (klass <= matcher))
-      when ::Range then (e = matcher.begin || matcher.end).nil? || e.is_a?(klass)
-      when ::Regexp then klass <= ::String || klass <= ::Symbol
-      else
-        true # proc / opaque `#===` object: domain unknown, allow
-      end
+    # Attempts to prove whether `matcher` overlaps a nominal domain. Unknown is
+    # intentionally accepted by the constructor and retained as a runtime check.
+    # @return [Relation]
+    def matcher_may_match_relation(matcher, klass)
+      SemanticMatcher.wrap(matcher).overlap(SemanticMatcher.wrap(klass))
     end
 
     def _inspect
@@ -260,16 +228,7 @@ module Plumb
     end
 
     def build_error(matcher)
-      case matcher
-      when Class # A class primitive, ex. String, Integer, etc.
-        "Must be a #{matcher}"
-      when ::String, ::Symbol, ::Numeric, ::TrueClass, ::FalseClass, ::NilClass, ::Array, ::Hash
-        "Must be equal to #{matcher}"
-      when ::Range
-        "Must be within #{matcher}"
-      else
-        "Must match #{matcher.inspect}"
-      end
+      SemanticMatcher.error_message(matcher)
     end
   end
 end

@@ -103,7 +103,7 @@ RSpec.describe 'subtype relation vs runtime behaviour' do
     'Nil' => Types::Nil,
     'Boolean' => Types::Boolean,
 
-    # refinements — ranges (inclusive AND exclusive: range_in_range? must respect
+    # refinements — ranges (inclusive AND exclusive: Interval must respect
     # #exclude_end?, and Constraint.intersect_ranges already does)
     'Integer[0..100]' => Types::Integer[0..100],
     'Integer[10..]' => Types::Integer[10..],
