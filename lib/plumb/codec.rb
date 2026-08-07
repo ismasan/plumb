@@ -45,7 +45,7 @@ module Plumb
             raise ArgumentError, "expected an Encoder subclass, got #{enc.inspect}"
           end
 
-          own_encoders << enc
+          encoders << enc
         end
         self
       end
@@ -55,17 +55,28 @@ module Plumb
       # nothing. Real encoders always match first, so a noop never shadows a
       # registered encoder for the same type.
       def noop(*types)
-        types.each { |t| own_noop_types << Composable.wrap(t) }
+        types.each { |t| noop_types << Composable.wrap(t) }
         self
       end
 
-      # All registered encoders, inherited first, own last (later registrations
-      # win ties in matching). Resolved ONCE, on first use: #encoder_for reads it per
-      # visited node, and a codec is declared in one class body.
-      def encoders = @encoders ||= inherited_registry(:encoders, own_encoders).freeze
+      # A subclass starts from a COPY of its parent's registries and appends its own,
+      # so `encoders` reads inherited-first, own-last (later registrations win ties in
+      # matching). Copied at subclass time rather than resolved at read time because
+      # registration happens in a class body: a parent is complete before a subclass
+      # of it exists.
+      def inherited(subclass)
+        super
+        subclass.encoders = encoders.dup
+        subclass.noop_types = noop_types.dup
+      end
 
-      # All registered pass-through types, inherited first.
-      def noop_types = @noop_types ||= inherited_registry(:noop_types, own_noop_types).freeze
+      def encoders = @encoders ||= []
+      def noop_types = @noop_types ||= []
+
+      # Only #inherited seeds a registry; everything else registers through
+      # #encoder / #noop.
+      attr_writer :encoders, :noop_types
+      protected :encoders=, :noop_types=
 
       # Decode direction: rewrite `other` so it accepts the encoders' input form
       # and produces the output values `other` describes. The rewritten type
@@ -177,16 +188,8 @@ module Plumb
 
       private
 
-      # A registry a subclass extends rather than replaces: whatever the
-      # ancestor exposes under `name`, plus this class's own registrations.
-      def inherited_registry(name, own)
-        inherited = superclass.respond_to?(name) ? superclass.public_send(name) : BLANK_ARRAY
-        inherited + own
-      end
-
-      def own_encoders = @own_encoders ||= []
-      def own_noop_types = @own_noop_types ||= []
-
+      # Derived from #noop_types, so resolved once — after boot, when the first
+      # composition asks.
       def noop_union
         return @noop_union if defined?(@noop_union)
 
