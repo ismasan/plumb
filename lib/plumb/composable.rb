@@ -232,8 +232,8 @@ module Plumb
         callable
       elsif callable.respond_to?(:to_composable)
         # The context-free resolution hook for objects that become a type on
-        # demand: an Encoder class resolves to its default (declared)
-        # direction, a Codec class to its instance. Used in schema literals,
+        # demand: an Encoder class resolves to its default (declared) direction; a
+        # Codec raises, having no type to become. Used in schema literals,
         # `Array[Enc]`, `#/`, etc. The composition operators (#>>, #|, #&)
         # consult #to_plumb_type BEFORE wrapping, so a composed operand can
         # resolve against context and never reaches this branch.

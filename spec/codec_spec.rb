@@ -94,9 +94,10 @@ module CodecSpecTypes
           .to raise_error(ArgumentError, /expected an Encoder subclass/)
       end
 
-      it 'supports instance construction with extra encoders' do
-        codec = Plumb::Codec::JSON.new(ISODateEncoder)
+      it 'supports an ad-hoc subclass extending a built-in registry' do
+        codec = Class.new(Plumb::Codec::JSON) { encoder CodecSpecTypes::ISODateEncoder }
         expect((codec >> Types::Date).parse('2024-01-01')).to eq(DATE)
+        expect(codec.inspect).to start_with('Plumb::Codec::JSON[') # anonymous: named after its parent
       end
     end
 
@@ -186,8 +187,8 @@ module CodecSpecTypes
         expect(encoder.parse(PERSON)).to eq(ENCODED_PERSON)
       end
 
-      it 'works on instances and wraps raw types' do
-        decoder, encoder = Plumb::Codec::JSON.instance.for(::Date)
+      it 'wraps raw types' do
+        decoder, encoder = Plumb::Codec::JSON.for(::Date)
         expect(decoder.parse('2024-01-01')).to eq(DATE)
         expect(encoder.parse(DATE)).to eq('2024-01-01')
       end
@@ -511,7 +512,7 @@ module CodecSpecTypes
           def encode(int) = "int:#{int}"
           def decode(str) = str.split(':').last.to_i
         end
-        codec = Plumb::Codec::JSON.new(general, specific)
+        codec = Class.new(Plumb::Codec::JSON) { encoder general, specific }
         expect((Types::Integer >> codec).parse(10)).to eq('int:10')
         expect((Types::Float >> codec).parse(1.5)).to eq('num:1.5')
       end
@@ -533,7 +534,7 @@ module CodecSpecTypes
           def encode(v) = v.to_s
           def decode(v) = v.to_i
         end
-        codec = Plumb::Codec::JSON.new(a, b)
+        codec = Class.new(Plumb::Codec::JSON) { encoder a, b }
         expect { Types::Integer[5..10] >> codec }
           .to raise_error(Plumb::TypeError, /matches multiple incomparable encoders/)
       end
@@ -559,7 +560,7 @@ module CodecSpecTypes
           def encode(v) = { again: v }
           def decode(v) = v[:again]
         end
-        codec = Plumb::Codec.new(looping)
+        codec = Class.new(Plumb::Codec) { encoder looping }
         expect { codec >> loop_type }.to raise_error(Plumb::TypeError, /input-type cycle/)
       end
 
@@ -575,7 +576,9 @@ module CodecSpecTypes
       end
 
       it 'raises when used as a runtime type' do
-        expect { JSONCodec.instance.parse('x') }.to raise_error(Plumb::TypeError, /not a runtime type/)
+        expect { JSONCodec.call(nil) }.to raise_error(Plumb::TypeError, /not a runtime type/)
+        # and it never quietly becomes one: Composable.wrap sees a #call on the class
+        expect { Types::Hash[at: JSONCodec] }.to raise_error(Plumb::TypeError, /is not a type/)
       end
     end
 

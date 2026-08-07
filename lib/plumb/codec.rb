@@ -32,9 +32,8 @@ module Plumb
   # algebra, so parsing, subtyping and visitors work on it unchanged. It works
   # on any type, not just Hash schemas: `JSONCodec >> Types::Date` returns the
   # matched encoder's decode step.
+  #
   class Codec
-    include Composable
-
     class << self
       # Register one or more Encoder subclasses, in matching-priority order.
       # The registry is inheritable: subclassing a codec extends it, and a
@@ -61,22 +60,120 @@ module Plumb
       end
 
       # All registered encoders, inherited first, own last (later registrations
-      # win ties in matching).
-      def encoders = inherited_registry(:encoders, own_encoders)
+      # win ties in matching). Resolved ONCE, on first use: #encoder_for reads it per
+      # visited node, and a codec is declared in one class body.
+      def encoders = @encoders ||= inherited_registry(:encoders, own_encoders).freeze
 
       # All registered pass-through types, inherited first.
-      def noop_types = inherited_registry(:noop_types, own_noop_types)
+      def noop_types = @noop_types ||= inherited_registry(:noop_types, own_noop_types).freeze
 
-      # Class-level composition delegates to a memoized instance, so a Codec
-      # subclass composes directly: `JSONCodec >> Person`.
-      def instance = @instance ||= new
-      def >>(other) = instance >> other
-      def |(other) = instance | other
-      def &(other) = instance & other
-      def for(type) = instance.for(type)
-      def to_plumb_type(op:, left:) = instance.to_plumb_type(op:, left:)
-      def to_composable = instance
-      def call(result) = instance.call(result)
+      # Decode direction: rewrite `other` so it accepts the encoders' input form
+      # and produces the output values `other` describes. The rewritten type
+      # REPLACES the composition — no codec node remains.
+      def >>(other)
+        Rewriter.new(self, :decode).call(Composable.wrap(other))
+      end
+
+      # Both directions for a type, as a [decoding, encoding] pair:
+      #
+      #   decoder, encoder = Plumb::Codec::JSON.for(Person)
+      #   decoder.parse(input_data) # => a Person hash
+      #   encoder.parse(person)     # => output structures
+      #
+      # @param type [Composable, Object]
+      # @return [Array(Composable, Composable)]
+      def for(type)
+        type = Composable.wrap(type)
+        [self >> type, type >> self]
+      end
+
+      # Encode direction, reached when the codec is the RIGHT operand
+      # (`Person >> JSONCodec` — see Composable.resolve_operand): build an encode
+      # rewrite of what `left` produces. Composable#>> then composes
+      # `And(left, rewrite)`: the left validates its input once, the
+      # rewrite encodes. Building from `left`'s OUTPUT (not `left` itself)
+      # avoids re-running its coercions on already-parsed values.
+      def to_plumb_type(op:, left:)
+        unless op == :>>
+          raise Plumb::TypeError, "#{inspect} only composes with #>> (got #{op}); a Codec is not a value type"
+        end
+
+        left = Composable.wrap(left)
+        # A plain-include struct wraps as an opaque Step (output Any), so its
+        # rewrite target is the struct node itself, not its resolved output.
+        target = Plumb::Attributes.struct_class(left) ? left : Plumb::Subtyping.resolved_output(left)
+        Rewriter.new(self, :encode).call(target)
+      end
+
+      def |(_other) = raise Plumb::TypeError, "#{inspect} only composes with #>>; a Codec is not a value type"
+      alias & |
+
+      # A Codec is not a value type, and has no node to stand in for one. Both of
+      # these say so at the point of the mistake — without #to_composable,
+      # Composable.wrap would see a `#call` and build an opaque step out of the class.
+      def to_composable = raise(Plumb::TypeError, "#{inspect} is not a type; compose it with a type via #>>")
+
+      def call(_result)
+        raise Plumb::TypeError, "#{inspect} is not a runtime type; compose it with a type via #>>"
+      end
+
+      # The best matching encoder for `type`, or nil. Matching is against each
+      # encoder's output type — schemas are written in output
+      # terms in both directions. Most-specific wins; equivalent types
+      # tie-break to the last registered; incomparable multi-matches raise.
+      def encoder_for(type, path = BLANK_ARRAY)
+        matches = encoders.select { |e| Plumb::Subtyping.subtype?(type, e.output_type) }
+        return nil if matches.empty?
+        return matches.first if matches.size == 1
+
+        minimal = matches.reject do |e|
+          # e is dominated when another match's output type is strictly narrower.
+          matches.any? do |o|
+            !o.equal?(e) && Plumb::Subtyping.strict_subtype?(o.output_type, e.output_type)
+          end
+        end
+
+        first = minimal.first
+        unless minimal.all? { |e| Plumb::Subtyping.equivalent?(e.output_type, first.output_type) }
+          raise Plumb::TypeError,
+                "#{inspect}: #{at_path(path)} (#{type.inspect}) matches multiple incomparable encoders: " \
+                "#{minimal.map(&:inspect).join(', ')}. Register a more specific encoder or restructure."
+        end
+
+        minimal.last
+      end
+
+      # Is `type` (one side of it, per direction) covered by the registered noop
+      # types? Decode checks what the type ACCEPTS (it will be fed raw input
+      # data); encode checks what it PRODUCES (its output lands in the encoded
+      # document).
+      def noop?(type, direction)
+        return false unless noop_union
+
+        side = direction == :decode ? Plumb::Subtyping.accepted_type(type) : Plumb::Subtyping.resolved_output(type)
+        # A pure filter with an opaque side is judged by the type itself: a
+        # bare-matcher Constraint (a branch of a factored refinement union, eg.
+        # the `String[/\Atrue\z/i] | String['1']` boolean input type) reports Any
+        # as its accepted type, but as a value-preserving refinement it IS its
+        # own honest description.
+        side = type if side.is_a?(AnyClass) && Plumb::Subtyping.value_preserving?(type)
+        Plumb::Subtyping.subtype?(side, noop_union)
+      end
+
+      # Is this concrete VALUE covered by the noop types? Used for Static nodes,
+      # whose fixed value can be validated directly — subtyping over the node
+      # can't relate an atomic Static to a container noop (`Static[[]]` vs
+      # `Types::Array`), but the value itself can just be checked.
+      def noop_value?(value)
+        return false unless noop_union
+
+        noop_union === value
+      end
+
+      def at_path(path) = path.empty? ? 'the root type' : "field `#{path.join('.')}`"
+
+      # Named, so an anonymous `Class.new(Codec)` still says what it carries.
+      def inspect = "#{name || superclass.name}[#{encoders.map(&:inspect).join(', ')}]"
 
       private
 
@@ -89,121 +186,12 @@ module Plumb
 
       def own_encoders = @own_encoders ||= []
       def own_noop_types = @own_noop_types ||= []
-    end
 
-    attr_reader :encoders, :noop_types
+      def noop_union
+        return @noop_union if defined?(@noop_union)
 
-    # @param extra_encoders [Array<Class>] encoders for this instance, appended
-    #   after (and winning ties over) the class-level registry.
-    def initialize(*extra_encoders)
-      @encoders = self.class.encoders + extra_encoders
-      @noop_types = self.class.noop_types
-      @noop_union = @noop_types.reduce(:|)
-      freeze
-    end
-
-    # Decode direction: rewrite `other` so it accepts the encoders' input form
-    # and produces the output values `other` describes. The rewritten type
-    # REPLACES the composition — no codec node remains.
-    def >>(other)
-      Rewriter.new(self, :decode).call(Composable.wrap(other))
-    end
-
-    # Both directions for a type, as a [decoding, encoding] pair:
-    #
-    #   decoder, encoder = Plumb::Codec::JSON.for(Person)
-    #   decoder.parse(input_data) # => a Person hash
-    #   encoder.parse(person)     # => output structures
-    #
-    # @param type [Composable, Object]
-    # @return [Array(Composable, Composable)]
-    def for(type)
-      type = Composable.wrap(type)
-      [self >> type, type >> self]
-    end
-
-    # Encode direction, reached when the codec is the RIGHT operand
-    # (`Person >> JSONCodec` — see Composable#to_plumb_type): build an encode
-    # rewrite of what `left` produces. Composable#>> then composes
-    # `And(left, rewrite)`: the left validates its input once, the
-    # rewrite encodes. Building from `left`'s OUTPUT (not `left` itself)
-    # avoids re-running its coercions on already-parsed values.
-    def to_plumb_type(op:, left:)
-      unless op == :>>
-        raise Plumb::TypeError, "#{inspect} only composes with #>> (got #{op}); a Codec is not a value type"
+        @noop_union = noop_types.reduce(:|)
       end
-
-      left = Composable.wrap(left)
-      # A plain-include struct wraps as an opaque Step (output Any), so its
-      # rewrite target is the struct node itself, not its resolved output.
-      target = Plumb::Attributes.struct_class(left) ? left : Plumb::Subtyping.resolved_output(left)
-      Rewriter.new(self, :encode).call(target)
-    end
-
-    def |(_other) = raise Plumb::TypeError, "#{inspect} only composes with #>>; a Codec is not a value type"
-    alias & |
-
-    def call(_result)
-      raise Plumb::TypeError, "#{inspect} is not a runtime type; compose it with a type via #>>"
-    end
-
-    # The best matching encoder for `type`, or nil. Matching is against each
-    # encoder's output type — schemas are written in output
-    # terms in both directions. Most-specific wins; equivalent types
-    # tie-break to the last registered; incomparable multi-matches raise.
-    def encoder_for(type, path = BLANK_ARRAY)
-      matches = encoders.select { |e| Plumb::Subtyping.subtype?(type, e.output_type) }
-      return nil if matches.empty?
-      return matches.first if matches.size == 1
-
-      minimal = matches.reject do |e|
-        # e is dominated when another match's output type is strictly narrower.
-        matches.any? do |o|
-          !o.equal?(e) && Plumb::Subtyping.strict_subtype?(o.output_type, e.output_type)
-        end
-      end
-
-      first = minimal.first
-      unless minimal.all? { |e| Plumb::Subtyping.equivalent?(e.output_type, first.output_type) }
-        raise Plumb::TypeError,
-              "#{inspect}: #{at_path(path)} (#{type.inspect}) matches multiple incomparable encoders: " \
-              "#{minimal.map(&:inspect).join(', ')}. Register a more specific encoder or restructure."
-      end
-
-      minimal.last
-    end
-
-    # Is `type` (one side of it, per direction) covered by the registered noop
-    # types? Decode checks what the type ACCEPTS (it will be fed raw input
-    # data); encode checks what it PRODUCES (its output lands in the encoded
-    # document).
-    def noop?(type, direction)
-      return false unless @noop_union
-
-      side = direction == :decode ? Plumb::Subtyping.accepted_type(type) : Plumb::Subtyping.resolved_output(type)
-      # A pure filter with an opaque side is judged by the type itself: a
-      # bare-matcher Constraint (a branch of a factored refinement union, eg.
-      # the `String[/\Atrue\z/i] | String['1']` boolean input type) reports Any
-      # as its accepted type, but as a value-preserving refinement it IS its
-      # own honest description.
-      side = type if side.is_a?(AnyClass) && Plumb::Subtyping.value_preserving?(type)
-      Plumb::Subtyping.subtype?(side, @noop_union)
-    end
-
-    # Is this concrete VALUE covered by the noop types? Used for Static nodes,
-    # whose fixed value can be validated directly — subtyping over the node
-    # can't relate an atomic Static to a container noop (`Static[[]]` vs
-    # `Types::Array`), but the value itself can just be checked.
-    def noop_value?(value)
-      return false unless @noop_union
-
-      @noop_union === value
-    end
-
-    def at_path(path) = path.empty? ? 'the root type' : "field `#{path.join('.')}`"
-
-    private def _inspect
-      "#{self.class == Codec ? 'Plumb::Codec' : self.class.name}[#{encoders.map(&:inspect).join(', ')}]"
     end
 
     # The deep rewrite walker. Top-down, per node:
