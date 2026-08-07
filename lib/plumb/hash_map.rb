@@ -25,9 +25,11 @@ module Plumb
     def subtype_of?(other)
       if other.is_a?(HashClass)
         return true if other._schema.empty?
-        return false unless other.only_catch_all?
 
-        return Plumb::Subtyping.subtype?(@value_type, other.catch_all_type)
+        # Maps constrain every value but do not guarantee any named key is present.
+        return false if other.literal_fields.any? { |k, _| !k.optional? }
+
+        return other._schema.all? { |_k, field| Plumb::Subtyping.subtype?(@value_type, field) }
       end
 
       super

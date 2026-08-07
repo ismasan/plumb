@@ -38,6 +38,20 @@ module Plumb
       self.class.new(step)
     end
 
+    # Negation is contravariant: Not(A) <= Not(B) when B <= A, because excluding
+    # a wider set produces a narrower complement.
+    # @param other [Composable]
+    # @return [Boolean]
+    def subtype_of?(other)
+      return true if self == other
+      return Plumb::Subtyping.subtype?(other.children.first, @step) if other.is_a?(Not)
+
+      super
+    end
+
+    # @return [Boolean] true because negation only changes validity
+    def value_preserving? = true
+
     private def _inspect
       %(Not(#{@step.inspect}))
     end

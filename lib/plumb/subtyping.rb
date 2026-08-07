@@ -123,73 +123,21 @@ module Plumb
     # `a` and `b` describe the same values — mutual subtypes.
     def equivalent?(a, b) = subtype?(a, b) && subtype?(b, a)
 
-    # A leaf type whose single child is a raw (non-Composable) Ruby matcher or
-    # value — eg. Constraint, ValueClass, StaticClass. These bottom out in
-    # #atomic_subtype? rather than recursing.
+    # Returns whether a node wraps one raw matcher. StaticClass is excluded because
+    # its child is an emitted value, not a matcher.
+    # @param type [Object]
+    # @return [Boolean]
     def atomic?(type)
       type.respond_to?(:children) &&
         type.children.size == 1 &&
-        !type.children.first.is_a?(Composable)
+        !type.children.first.is_a?(Composable) &&
+        !type.is_a?(StaticClass)
     end
 
-    # The subtype relation between two raw matchers (a Class/Module, Range,
-    # Regexp, or literal value). `atomic_subtype?(lm, rm)` is "does `lm` describe
-    # a subset of what `rm` describes?".
-    def atomic_subtype?(lm, rm)
-      return true if lm == rm
-      return regex_equal?(lm, rm) if lm.is_a?(::Regexp) && rm.is_a?(::Regexp)
-
-      case rm
-      when ::Module
-        case lm
-        when ::Module then class_le?(lm, rm)        # Integer <= Numeric
-        when ::Range then range_in_class?(lm, rm)   # (1..10) <= Integer
-        when ::Regexp then class_le?(::String, rm)  # /x/ matches Strings
-        when ::Set then lm.all? { |e| rm === e }    # Set[1,2,3] <= Integer
-        else rm === lm                              # value 5 <= Integer
-        end
-      when ::Range
-        case lm
-        when ::Range then range_in_range?(lm, rm)   # (1..10) <= (0..20)
-        when ::Set then lm.all? { |e| rm === e }    # Set[1,2,3] <= (0..10)
-        when ::Module, ::Regexp then false
-        else rm === lm                              # value within range
-        end
-      when ::Set
-        case lm
-        when ::Set then lm.subset?(rm)              # Set[2,3] <= Set[1,2,3,4]
-        when ::Module, ::Range, ::Regexp then false # infinite domain ⊄ finite set
-        else rm === lm                              # value is a member
-        end
-      when ::Regexp
-        case lm
-        when ::String, ::Symbol then rm === lm.to_s # literal string matches regex
-        else false
-        end
-      else
-        lm == rm                                    # literal value equality
-      end
-    end
-
-    def class_le?(a, b)
-      return false unless a.is_a?(::Module) && b.is_a?(::Module)
-
-      (a <= b) == true
-    end
-
-    def range_in_class?(range, klass)
-      e = range.begin || range.end
-      !e.nil? && e.is_a?(klass)
-    end
-
-    def range_in_range?(inner, outer)
-      lo_ok = outer.begin.nil? || (!inner.begin.nil? && outer.cover?(inner.begin))
-      hi_ok = outer.end.nil? || (!inner.end.nil? && outer.cover?(inner.end))
-      lo_ok && hi_ok
-    end
-
-    def regex_equal?(a, b)
-      a.is_a?(::Regexp) && b.is_a?(::Regexp) && a.source == b.source
+    # The public Boolean form of the matcher subtype relation. Unknown relations
+    # conservatively return false: they must not justify removing a runtime check.
+    def atomic_subtype?(left_matcher, right_matcher)
+      SemanticMatcher.wrap(left_matcher).subset_of(SemanticMatcher.wrap(right_matcher)).proven?
     end
 
     # Validate that two steps can be composed sequentially (`left >> right`).
@@ -215,6 +163,9 @@ module Plumb
 
       accepted = accepted_type(right)
       return if accepted.is_a?(AnyClass) || subtype?(produced, accepted)
+
+      # Produced literal-key records are closed because #call drops undeclared keys.
+      return if produced.is_a?(HashClass) && subtype?(produced.closed, accepted)
 
       raise Plumb::TypeError,
             "cannot compose #{left.inspect} >> #{right.inspect}: " \
@@ -278,21 +229,26 @@ module Plumb
       end
 
       # Distribute over unions: (a1 | a2) & b == (a1 & b) | (a2 & b).
-      return intersect_union(a, b) if a.is_a?(Disjunction)
-      return intersect_union(b, a) if b.is_a?(Disjunction)
+      return intersect_union(a, b, union_first: true) if a.is_a?(Disjunction)
+      return intersect_union(b, a, union_first: false) if b.is_a?(Disjunction)
 
       intersect_constraints(a, b) ||
         intersect_literals(a, b) ||
         intersect_containers(a, b) ||
-        (disjoint_atomic?(a, b) ? Types::Never : nil)
+        (disjoint_relation(a, b).proven? ? Types::Never : nil)
     end
 
-    # Distribute `&` over a union: intersect each branch with `other`, drop the
-    # branches that go Never, and rejoin the survivors with `|`. All-Never ⇒
-    # Never. A branch the reducer can't fold becomes a runtime And.
-    def intersect_union(union, other)
+    # Distributes intersection over a union, preserving operand order for runtime
+    # compositions and dropping branches that reduce to Never. Order is observable
+    # when a fallback branch converts: `Static[5] >> String` is not `String >> Static[5]`.
+    # @param union [Disjunction]
+    # @param other [Composable]
+    # @param union_first [Boolean] whether the union was the left operand
+    # @return [Composable]
+    def intersect_union(union, other, union_first: true)
       parts = union.children.filter_map do |branch|
-        m = intersect(branch, other) || Conjunction.build(branch, other)
+        left, right = union_first ? [branch, other] : [other, branch]
+        m = intersect(left, right) || Conjunction.build(left, right)
         m unless m.is_a?(NeverClass)
       end
       return Types::Never if parts.empty?
@@ -327,7 +283,7 @@ module Plumb
     # NOT disjoint, because `5 == 5.0`. That is also why literals can't be told
     # apart by base type — declaring `Value[5]`'s base to be Integer would make
     # it disjoint from Float and wrongly sink `Value[5] & Types::Float` — and so
-    # why this reasons over values instead of routing through #disjoint_atomic?.
+    # why this reasons over values instead of nominal-domain disjointness.
     #
     # Runs after #intersect_constraints, so two literals over the same base reach
     # here only once Constraint.merge_matchers has declined them (it merges
@@ -337,7 +293,7 @@ module Plumb
       bv = literal_value(b)
       return nil if Undefined.equal?(av) || Undefined.equal?(bv)
 
-      av == bv ? nil : Types::Never
+      Relation.from(av == bv).disproven? ? Types::Never : nil
     end
 
     # The single value a node matches by equality, or `Undefined` for a node that
@@ -394,17 +350,39 @@ module Plumb
     # @return [Composable] `type` itself, or a rebuilt container
     def map_children(type, &blk) = NodeMapper.map_children(type, &blk)
 
-    # Are two leaf types provably disjoint? True when NO pair of their underlying
-    # Ruby base types is subtype-related — so no value can be an instance of both
-    # (`Types::String & Types::Integer` ⇒ Never). Conservative: an unknown base
-    # (opaque matcher ⇒ empty base-type list) is NOT provably disjoint, so the
-    # caller keeps a runtime And rather than wrongly collapsing to Never.
-    def disjoint_atomic?(a, b)
-      abt = Plumb.resolve_base_types(a)
-      bbt = Plumb.resolve_base_types(b)
-      return false if abt.empty? || bbt.empty?
+    # Attempts to prove that two stable nominal domains are disjoint. Unknown
+    # domains preserve the runtime intersection.
+    # @return [Relation]
+    def disjoint_relation(a, b)
+      abt = stable_domain(a)
+      bbt = stable_domain(b)
+      return Relation::UNKNOWN if abt.nil? || bbt.nil?
 
-      abt.none? { |x| bbt.any? { |y| class_le?(x, y) || class_le?(y, x) } }
+      overlaps = abt.product(bbt).map do |left_domain, right_domain|
+        SemanticMatcher.wrap(left_domain).overlap(SemanticMatcher.wrap(right_domain))
+      end
+      overlap = Relation.any(overlaps)
+      return Relation::DISPROVEN if overlap.proven?
+      return Relation::PROVEN if overlap.disproven?
+
+      Relation::UNKNOWN
+    end
+    private_class_method :disjoint_relation
+
+    # Returns the shared accepted/output base classes for a non-converting type.
+    # Unknown or converting domains return nil; comparing their output classes as
+    # input domains could incorrectly reduce an inhabited intersection to Never.
+    # @param type [Composable]
+    # @return [Array<Class>, nil]
+    def stable_domain(type)
+      consumes = accepted_type(type)
+      # A converting self-fallback does not expose a reliable input domain.
+      return nil if consumes.equal?(type) && !value_preserving?(type)
+
+      accepted = Plumb.resolve_base_types(consumes)
+      return nil if accepted.empty?
+
+      accepted == Plumb.resolve_base_types(resolved_output(type)) ? accepted : nil
     end
 
     # Does `type` return its input unchanged on success (a coreflexive

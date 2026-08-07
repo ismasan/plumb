@@ -12,8 +12,12 @@ module Plumb
       freeze
     end
 
+    # Metadata nodes include their wrapped type in equality; otherwise unrelated
+    # types carrying the same metadata could collapse during subtype reductions.
+    # @param other [Object]
+    # @return [Boolean]
     def ==(other)
-      other.is_a?(self.class) && @metadata == other.metadata
+      other.instance_of?(self.class) && type == other.type && @metadata == other.metadata
     end
 
     def metadata(data = Undefined)

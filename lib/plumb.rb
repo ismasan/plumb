@@ -64,6 +64,14 @@ module Plumb
   #
   # This is a temporary helper to preserve type-specific policy resolution
   # (see Composable#policy) until proper subtyping checks are implemented.
+  # Returns the value's matching domain, widened to Numeric because numeric
+  # equality crosses concrete classes (`5 == 5.0`).
+  # Keeping a concrete numeric class would falsely make compatible literal and
+  # numeric types appear disjoint and reduce their intersection to Never.
+  # @param value [Object]
+  # @return [Class]
+  def self.value_base_class(value) = SemanticMatcher.value_domain(value)
+
   def self.resolve_base_types(node)
     return [node] if node.is_a?(::Class)
     return [] unless node.respond_to?(:node_name)
@@ -101,19 +109,21 @@ module Plumb
       # `Integer[1..10]` => [Integer], `User.check {}` => the User's base types).
       return resolve_base_types(node.base) if node.base
 
-      matcher = node.children.first
-      case matcher
-      when ::Class then [matcher]
-      when ::Regexp then [::String]
-      when ::Range then [(matcher.begin || matcher.end).class]
-      else [matcher.class]
-      end
+      SemanticMatcher.matcher_domain(node.children.first)
     when :array, :tuple then [::Array]
     when :hash, :hash_map, :tagged_hash, :filtered_hash, :filtered_hash_map then [::Hash]
     when :stream then [::Enumerator]
+    when :range then [::Range]
+    when :not
+      # A complement has no finite base-class representation.
+      []
+    when :value
+      # Literals match by ==, including across numeric classes.
+      value = node.children.first
+      value.equal?(Undefined) ? [] : [value_base_class(value)]
     when :static
       value = node.children.first
-      [value.is_a?(::Class) ? value : value.class]
+      [value.is_a?(::Class) ? value : value_base_class(value)]
     else
       node.respond_to?(:children) ? node.children.flat_map { |child| resolve_base_types(child) } : []
     end
@@ -122,6 +132,8 @@ end
 
 require 'plumb/result'
 require 'plumb/type_registry'
+require 'plumb/relation'
+require 'plumb/semantic_matcher'
 require 'plumb/composable'
 require 'plumb/typed_step'
 require 'plumb/node_mapper'

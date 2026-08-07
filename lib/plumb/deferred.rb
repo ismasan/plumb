@@ -13,6 +13,11 @@ module Plumb
       # freeze
     end
 
+    # Deferred nodes use identity equality to avoid materializing recursive types.
+    # @param other [Object]
+    # @return [Boolean]
+    def ==(other) = equal?(other)
+
     def call(result)
       type.call(result)
     end
@@ -32,4 +37,3 @@ module Plumb
     end
   end
 end
-

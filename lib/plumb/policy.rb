@@ -25,10 +25,15 @@ module Plumb
       freeze
     end
 
+    # Policy equality includes the wrapped step; otherwise same-named policies on
+    # disjoint types would compare equal and one could be reduced away.
+    # @param other [Object]
+    # @return [Boolean]
     def ==(other)
-      other.is_a?(self.class) &&
+      other.instance_of?(self.class) &&
         policy_name == other.policy_name &&
-        arg == other.arg
+        arg == other.arg &&
+        children == other.children
     end
 
     # A Policy is a transparent wrapper: it delegates type-flow to the wrapped

@@ -24,19 +24,42 @@ module Plumb
       # types are assumed to have literal values for the index field :key
       @index = @children.each.with_object({}) do |t, memo|
         key_type = t.at_key(@key)
-        raise ParseError, "key type at :#{@key} #{key_type} must be a Constraint" unless key_type.is_a?(Constraint)
+        # Accept either bare or base-constrained single-value tags.
+        tag = Plumb::Subtyping.literal_value(key_type)
+        if Undefined.equal?(tag)
+          raise ParseError, "key type at :#{@key} #{key_type} must match a single literal value"
+        end
 
-        memo[key_type.children[0]] = t
+        memo[tag] = t
       end
 
       freeze
     end
 
-    # As a consumer, relax each variant's fields to what they accept (like
-    # HashClass#accepted_type) — but keep the discriminator field literal, so
-    # the rebuilt TaggedHash still satisfies its "tag key is a Constraint"
-    # invariant. Lets `Type >> Codec` (which builds a rewritten variant with a
-    # converting field) type-check against the output tagged hash.
+    # Equality includes the discriminator and base hash because #children contains
+    # only variants; comparing children alone would conflate distinct tagged hashes.
+    # @param other [Object]
+    # @return [Boolean]
+    def ==(other)
+      other.instance_of?(self.class) &&
+        key.eql?(other.key) &&
+        hash_type == other.hash_type &&
+        children == other.children
+    end
+
+    # A tagged hash is a subtype when every selectable variant is a subtype. The
+    # base hash only narrows those variants, so ignoring it here is conservative;
+    # comparing variants pairwise would be unsound across different discriminators.
+    # @param other [Composable]
+    # @return [Boolean]
+    def subtype_of?(other)
+      return true if self == other
+
+      @children.all? { |variant| Plumb::Subtyping.subtype?(variant, other) }
+    end
+
+    # Relaxes each variant's non-discriminator fields to their accepted types.
+    # @return [TaggedHash]
     def accepted_type
       relaxed = @children.map do |child|
         schema = child._schema.each_with_object({}) do |(k, field), h|

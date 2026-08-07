@@ -62,6 +62,15 @@ module Plumb
     def input_type = @type.input_type
     def output_type = @type.output_type
 
+    # Use the accumulated composition as this pipeline's subtype identity. Merely
+    # delegating input/output flow would let composition checks work while leaving
+    # the Pipeline unrelated to the same type inside containers.
+    # @return [Composable]
+    def subtype_identity = @type
+
+    # @return [Boolean] whether the accumulated composition preserves values
+    def value_preserving? = @type.value_preserving?
+
     # Add a step. A pipeline is a sequence of validators/coercions that
     # progressively narrows its data, so steps are **non-strict** by default:
     # `#step` chains with `#/`, skipping the composition type-check (a later step

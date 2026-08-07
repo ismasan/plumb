@@ -56,6 +56,8 @@ module Plumb
     end
 
     def call(result)
+      # Missing attributes fail the constraint instead of raising.
+      return result.invalid!(errors: @error) unless result.value.respond_to?(attr_name)
       return result if value === result.value.public_send(attr_name)
 
       result.invalid!(errors: @error)

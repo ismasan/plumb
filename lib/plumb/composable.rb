@@ -122,8 +122,14 @@ module Plumb
       end
     end
 
+    # Compares nodes by exact class and children. Use `instance_of?`, not `is_a?`:
+    # a subclass may change behavior without changing #children, making parent/subclass
+    # equality asymmetric. Subtyping and optimization short-circuit on `==`, so that
+    # asymmetry could discard the narrower node before its behavioral guards run.
+    # @param other [Object]
+    # @return [Boolean]
     def ==(other)
-      other.is_a?(self.class) && other.respond_to?(:children) && other.children == children
+      other.instance_of?(self.class) && other.respond_to?(:children) && other.children == children
     end
 
     # Subtype/subset operator. `a <= b` is true when every value described by
@@ -166,6 +172,13 @@ module Plumb
       return true if self == other
 
       if Plumb::Subtyping.atomic?(self) && Plumb::Subtyping.atomic?(other)
+        # #children contains only the matcher, but a refinement also describes its
+        # base. Check both or an unrelated atomic value may pass on matcher overlap
+        # alone (for example, Value[5.0] against Integer[1..5]).
+        if other.respond_to?(:base) && other.base && !Plumb::Subtyping.subtype?(self, other.base)
+          return false
+        end
+
         return Plumb::Subtyping.atomic_subtype?(children.first, other.children.first)
       end
 
@@ -239,6 +252,9 @@ module Plumb
         Types::Array[element_type]
       elsif callable.respond_to?(:call)
         Function.opaque(callable)
+      elsif Constraint.literal_matcher?(callable)
+        # Equality literals use ValueClass; broader matchers use Constraint.
+        ValueClass.new(callable)
       else
         Constraint.new(callable)
       end
@@ -572,7 +588,12 @@ module Plumb
       # matcher), matching the collapsing `AnyClass#>>` provides. Routed through
       # Constraint.narrow so stacked Range refinements intersect
       # (`Integer[0..100][10..]` == `Integer[10..100]`).
-      Constraint.narrow((is_a?(AnyClass) ? nil : self), *args)
+      base = is_a?(AnyClass) ? nil : self
+      # A bare equality literal uses ValueClass so `Any[5]` and `Value[5]` share
+      # one subtype identity. A based literal remains a Constraint.
+      return ValueClass.new(args.first) if base.nil? && args.size == 1 && Constraint.literal_matcher?(args.first)
+
+      Constraint.narrow(base, *args)
     end
 
     # Sugar over #match: a splatted list of values becomes a Set membership

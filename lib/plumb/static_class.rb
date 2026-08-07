@@ -28,6 +28,17 @@ module Plumb
     # at composition time, eg. `Types::Static['foo'] >> Types::Integer` raises.
     def input_type = Types::Any
 
+    # Tests the concrete produced value directly. Atomic matcher logic is unsuitable
+    # here because it models matched values and widens numeric equality domains.
+    # @param other [Composable]
+    # @return [Boolean]
+    def subtype_of?(other)
+      return true if self == other
+      return super if @value.is_a?(Composable)
+
+      other === @value
+    end
+
     def call(result)
       result.valid!(@value)
     end

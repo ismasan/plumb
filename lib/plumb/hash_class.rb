@@ -15,7 +15,10 @@ module Plumb
 
     attr_reader :_schema
 
-    def initialize(schema: BLANK_HASH)
+    # @param schema [Hash] field definitions keyed by literal or matcher keys
+    # @param closed [Boolean] whether values contain only declared keys
+    def initialize(schema: BLANK_HASH, closed: false)
+      @closed = closed
       @_schema = wrap_keys_and_values(schema)
       # Partition once (the instance is frozen): literal keys use exact lookup in
       # #call; matcher keys (typed keys and the `_` catch-all) are matched against
@@ -30,6 +33,20 @@ module Plumb
     # The `_` catch-all value type (what every otherwise-unmatched key must be),
     # or nil when the schema is closed. See #call / #&.
     attr_reader :catch_all_type
+
+    # Input schemas are open because #call ignores extra keys; produced literal-key
+    # records are closed because #call emits only declared keys.
+    # @return [Boolean] whether values contain only declared keys
+    def closed? = @closed
+
+    # Returns the closed form emitted by a literal-key schema.
+    # Matcher-key and empty schemas remain open because they can pass unknown keys.
+    # @return [HashClass]
+    def closed
+      return self if @closed || _schema.empty? || !@matcher_fields.empty?
+
+      self.class.new(schema: _schema, closed: true)
+    end
 
     # The literal (Symbol/String) entries of the schema.
     attr_reader :literal_fields
@@ -77,37 +94,11 @@ module Plumb
       self.class.new(schema: merge_rightmost_keys(_schema, other_schema))
     end
 
-    # Two Hash schemas are treated as maps: the result keeps the keys present in
-    # BOTH, and each shared key's field type is itself intersected (`self`'s field
-    # `&` `other`'s field). So a field may narrow — `Hash[age: Integer[1..20]] &
-    # Hash[age: Integer[0..10]]` == `Hash[age: Integer[1..10]]` — or collapse to
-    # `Never` when the two field types are disjoint (`Hash[age: Integer[1..5]] &
-    # Hash[age: Integer[10..20]]` == `Hash[age: Never]`). Key optionality is taken
-    # from `other`.
-    #
-    # Two non-empty schemas that share NO keys have nothing in common, so the
-    # intersection is empty ⇒ `Types::Never`. (Pragmatic map reading: under strict
-    # width subtyping a value like `{a: 1, b: "x"}` inhabits both `Hash[a: Integer]`
-    # and `Hash[b: String]`, so their value-set meet is non-empty — but for maps we
-    # treat "no common keys" as no intersection.) The empty-schema Hash
-    # (`Types::Hash`) is the "any Hash" top of the family and the IDENTITY of
-    # intersection, NOT an empty overlap: `Hash[] & X == X`.
-    #
-    # A required shared key whose field is `Never` makes the hash effectively
-    # uninhabitable, but is kept structurally as `Hash[key: Never]` rather than
-    # collapsed to a whole-hash `Never` — an optional such key would still admit
-    # hashes that omit it, so a blanket collapse would be unsound.
-    #
-    # A `_` catch-all widens what survives: a key present on ONE side survives the
-    # meet iff the OTHER side permits it — either it names the key too, or it has a
-    # catch-all that admits it. So `Hash[a: String, _: Any] & Hash[a: String, b:
-    # Integer] == Hash[a: String, b: Integer]` (the right's `b` is admitted by the
-    # left's `_`, met with Any). The result carries a catch-all only when BOTH
-    # sides do (`Tₐ & T_b`).
-    #
-    # Against anything that is not a HashClass there is no key intersection: defer
-    # to the generic Composable#& (Subtyping.intersect), which yields Types::Never
-    # for a provably-disjoint type (eg. `Hash & Integer`).
+    # Intersects shared fields and any fields admitted by the other schema's
+    # catch-all. The empty schema is the Hash top; disjoint non-empty schemas
+    # produce Never. Non-Hash operands use the generic intersection.
+    # @param other [Object]
+    # @return [HashClass, Composable]
     def &(other)
       # Route through the intersection hook (not bare Composable.wrap) so a
       # context-resolving operand — eg. an Encoder class — orients against this
@@ -139,7 +130,11 @@ module Plumb
         result[their_key] = their_field & my_catch if my_catch
       end
 
-      result[Key.new(Types::Any)] = my_catch & their_catch if my_catch && their_catch
+      # Preserve every non-Any constraint on unmatched keys. A closed side may drop
+      # extras, but an open side still validates them; dropping its lone catch-all
+      # would admit values that the open side rejects.
+      tail = my_catch && their_catch ? my_catch & their_catch : (my_catch || their_catch)
+      result[Key.new(Types::Any)] = tail if tail && !tail.is_a?(AnyClass)
 
       return Types::Never if result.empty? # two closed schemas that share nothing
 
@@ -290,32 +285,11 @@ module Plumb
       return hashmap_subtype?(other) if other.is_a?(HashMap)
       return false unless other.is_a?(HashClass)
 
-      # Depth/width over `other`'s named (literal) keys, as before.
-      literal_ok = other.literal_fields.all? do |other_key, other_field|
-        mine_key, mine_field = _schema.find { |k, _| k.eql?(other_key) }
-        if mine_field
-          Plumb::Subtyping.subtype?(mine_field, other_field) &&
-            (other_key.optional? || !mine_key.optional?)
-        else
-          other_key.optional?
-        end
-      end
-      return false unless literal_ok
+      # The unconstrained Hash is the top of this family, never a narrower subtype.
+      return false if _schema.empty?
+      return true if other._schema.empty?
 
-      # Catch-all covariance: if `other` accepts an arbitrary tail `Tᵒ`, every key
-      # `self` may carry that `other` does not name must be a subtype of `Tᵒ` —
-      # `self`'s own catch-all `Tˢ`, and any literal key of `self` not named by
-      # `other`. If `other` is closed, no extra restriction (a closed consumer
-      # drops unknown keys, so width subtyping is unaffected — as before).
-      if (oc = other.catch_all_type)
-        return false if catch_all_type && !Plumb::Subtyping.subtype?(catch_all_type, oc)
-
-        literal_fields.all? do |mk, mf|
-          other._schema.key?(mk) || Plumb::Subtyping.subtype?(mf, oc)
-        end
-      else
-        true
-      end
+      named_keys_ok?(other) && carried_keys_ok?(other) && tail_ok?(other)
     end
 
     # As a consumer, this Hash accepts each field relaxed to what *that* field
@@ -355,14 +329,70 @@ module Plumb
 
     private
 
-    # A structured Hash is a subtype of a `key_type => value_type` map when every
-    # entry fits: each key (literal name, or a matcher/catch-all's key matcher) is
-    # a subtype of `key_type`, and each value type is a subtype of `value_type`.
-    # A catch-all `_: T` carries the Any key matcher, so `Any <= key_type` fails
-    # unless the map accepts any key — an open Hash is NOT a subtype of a
-    # Symbol-keyed map.
+    # Checks required keys and the types of optional keys that self may carry.
+    def named_keys_ok?(other)
+      other.literal_fields.all? do |other_key, other_field|
+        mine_key, mine_field = _schema.find { |k, _| k.eql?(other_key) }
+        if mine_field
+          Plumb::Subtyping.subtype?(mine_field, other_field) &&
+            (other_key.optional? || !mine_key.optional?)
+        else
+          # "Optional" does not mean impossible: matcher keys or a catch-all may
+          # still carry this name. Closed records omit it; open records must
+          # constrain any value they can carry there.
+          other_key.optional? && (closed? || promises?(guarantee_for(other_key.to_key), other_field))
+        end
+      end
+    end
+
+    # Returns the first matcher field that claims an undeclared key.
+    def guarantee_for(key_name)
+      @matcher_fields.find { |mk, _| mk.match?(key_name) }&.last
+    end
+
+    # Checks that self's open tail satisfies every matcher field in other.
+    def tail_ok?(other)
+      return true if closed? # no tail for `other`'s matcher keys to constrain
+
+      other.matcher_fields.all? { |_k, f| promises?(catch_all_type, f) }
+    end
+
+    # Tests whether an optional guarantee satisfies a requested field type.
+    def promises?(guaranteed, wanted)
+      return true if wanted.is_a?(AnyClass)
+
+      !guaranteed.nil? && Plumb::Subtyping.subtype?(guaranteed, wanted)
+    end
+
+    # Checks every carried key against overlapping matcher fields in other.
+    def carried_keys_ok?(other)
+      _schema.all? do |mine_key, mine_field|
+        theirs = other._schema.find { |ok, _| ok.eql?(mine_key) }
+        if theirs
+          # named_keys_ok? already checked literal fields.
+          mine_key.literal? || Plumb::Subtyping.subtype?(mine_field, theirs.last)
+        else
+          other.matcher_fields.all? do |other_key, other_field|
+            !keys_may_overlap?(mine_key, other_key) ||
+              Plumb::Subtyping.subtype?(mine_field, other_field)
+          end
+        end
+      end
+    end
+
+    # Tests literal overlap exactly; assumes two arbitrary matchers may overlap.
+    def keys_may_overlap?(mine, theirs)
+      return mine.eql?(theirs) if mine.literal? && theirs.literal?
+      return theirs.match?(mine.to_key) if mine.literal?
+      return mine.match?(theirs.to_key) if theirs.literal?
+
+      true
+    end
+
     def hashmap_subtype?(other)
       return false if _schema.empty?
+      # Open records need a catch-all to constrain every map entry.
+      return false unless closed? || catch_all_type
 
       key_type, value_type = other.children
       _schema.all? do |key, field|

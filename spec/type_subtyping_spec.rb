@@ -71,10 +71,24 @@ RSpec.describe 'subtyping: Plumb::Subtyping.subtype? and #<=' do
       expect(STypes::Integer[0..20] <= STypes::Integer[1..10]).to be(false)
     end
 
+    # A literal matches with Ruby's `==`, so a numeric literal describes every
+    # numeric spelling of its value — `Types::Any[5]` accepts `5`, `5.0`, `5r` and
+    # `BigDecimal('5')`. Its class is therefore Numeric, not Integer, and a type
+    # that admits only Integers is NOT above it.
     it 'places literals within ranges and classes' do
-      expect(STypes::Any[5] <= STypes::Integer[1..10]).to be(true)
-      expect(STypes::Any[5] <= STypes::Integer).to be(true)
-      expect(STypes::Any[50] <= STypes::Integer[1..10]).to be(false)
+      expect(STypes::Any[5] <= STypes::Any[1..10]).to be(true)
+      expect(STypes::Any[5] <= STypes::Numeric).to be(true)
+      expect(STypes::Any[50] <= STypes::Any[1..10]).to be(false)
+
+      # An Integer-based refinement rejects `5.0`, which `Any[5]` accepts.
+      expect(STypes::Any[5] <= STypes::Integer).to be(false)
+      expect(STypes::Any[5] <= STypes::Integer[1..10]).to be(false)
+      expect(STypes::Integer[1..10].resolve(5.0).valid?).to be(false)
+      expect(STypes::Any[5].resolve(5.0).valid?).to be(true)
+
+      # Non-numeric literals have no cross-class equality to account for.
+      expect(STypes::Any['a'] <= STypes::String).to be(true)
+      expect(STypes::Any['a'] <= STypes::String[/a/]).to be(true)
     end
   end
 
@@ -585,9 +599,28 @@ RSpec.describe 'subtyping: Plumb::Subtyping.subtype? and #<=' do
       # producer is wider (extra keys are fine)
       expect { STypes::Hash[name: STypes::String, age: STypes::Integer] >> STypes::Hash[name: STypes::String] }
         .not_to raise_error
-      # the key the producer lacks is optional for the consumer
+    end
+
+    # The producer's #call emits only its declared keys, so no stray `age` can reach
+    # the consumer — safe, and it composes. The SCHEMA-level relation stays strict
+    # (see the sibling example below): as a description of incoming data the producer
+    # also covers hashes carrying an `age` of any type, which the consumer would
+    # reject. check_composable! is what distinguishes the two, by retrying against
+    # HashClass#closed.
+    it 'allows a producer to omit a key the consumer only accepts optionally' do
       expect { STypes::Hash[name: STypes::String] >> STypes::Hash[name: STypes::String, age?: STypes::Integer] }
         .not_to raise_error
+    end
+
+    it 'still refuses that pair as a SCHEMA subtype relation' do
+      producer = STypes::Hash[name: STypes::String]
+      consumer = STypes::Hash[name: STypes::String, age?: STypes::Integer]
+      expect(Plumb::Subtyping.subtype?(producer, consumer)).to be(false)
+      # the witness: an `age` the producer never constrained
+      expect(producer.resolve(name: 'a', age: 'nope').valid?).to be(true)
+      expect(consumer.resolve(name: 'a', age: 'nope').valid?).to be(false)
+      # but what the producer EMITS is closed, and that does relate
+      expect(Plumb::Subtyping.subtype?(producer.closed, consumer)).to be(true)
     end
 
     it 'does not check value-converting steps (transform/build bypass the check)' do
@@ -620,8 +653,12 @@ RSpec.describe 'subtyping: Plumb::Subtyping.subtype? and #<=' do
     it 'normalizes raw classes/values on either side' do
       expect(Plumb::Subtyping.subtype?(STypes::Integer, ::Numeric)).to be(true)
       expect(Plumb::Subtyping.subtype?(::Integer, STypes::Numeric)).to be(true)
-      expect(Plumb::Subtyping.subtype?(5, STypes::Integer)).to be(true)
+      # A raw value normalizes to the same value match as `Types::Value[5]`, which
+      # matches by `==` — so it describes Numeric rather than Integer.
+      expect(Plumb::Subtyping.subtype?(5, STypes::Numeric)).to be(true)
+      expect(Plumb::Subtyping.subtype?(5, STypes::Integer)).to be(false)
       expect(Plumb::Subtyping.subtype?(5, STypes::String)).to be(false)
+      expect(Plumb::Subtyping.subtype?('a', STypes::String)).to be(true)
     end
   end
 

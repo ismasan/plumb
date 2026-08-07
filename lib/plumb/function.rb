@@ -185,25 +185,36 @@ module Plumb
       result.map(@input_type).map(@fn).map(@output_type)
     end
 
-    # Fuse `self >> other` into a single Function running both fns, dropping
-    # the redundant runtime checks at the boundary: `(A -> B) >> (B -> C)`
-    # becomes `(A -> C)` — the intermediate `B` was proven here, at build time.
+    # Wraps this function with its output check for fusion.
+    # @return [Proc]
+    # @see #fuse_with
+    protected def fn_with_output_check
+      fn = @fn
+      out = @output_type
+      ->(result) { result.map(fn).map(out) }
+    end
+
+    # Fuses compatible functions while retaining this function's output check;
+    # declared subtype compatibility does not prove what the callable returns.
     # Returns nil (no fusion) unless:
     #   - both #calls are the standard input->fn->output mapping (see #fusible?);
     #   - what self produces is a DIRECT subtype of what other declares as
     #     input. check_composable! is looser — it relaxes container fields via
     #     accepted_type (the `encode >> decode` case), and there other's input
     #     check does real per-field work and must keep running;
-    #   - the dropped checks are value-preserving: a coercing boundary type
-    #     changes the value, so it must keep running. self's output check needs
-    #     this only when it runs at all (see TypedStep#checks_output?).
+    #   - the dropped check is value-preserving: a coercing input type changes the
+    #     value, so it must keep running.
+    #
+    # @param other [Function]
+    # @return [Function, nil]
     def fuse_with(other)
       return nil unless fusable_step? && other.fusable_step?
       return nil unless Plumb::Subtyping.subtype?(@output_type, other.input_type)
       return nil unless Plumb::Subtyping.value_preserving?(other.input_type)
+      # Converting output checks must remain explicit between nodes.
       return nil unless !checks_output? || Plumb::Subtyping.value_preserving?(@output_type)
 
-      fn1 = @fn
+      fn1 = checks_output? ? fn_with_output_check : @fn
       fn2 = other.fn
       # Rebuild as one of the two standard classes, not `other.class`: a node is
       # fusable because it kept #call, which says nothing about its constructor,

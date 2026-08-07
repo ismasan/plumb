@@ -256,7 +256,14 @@ module Plumb
         return result if result.value.is_a?(self)
         return result.invalid(errors: MUST_BE_HASH) unless result.value.respond_to?(:to_h)
 
-        instance = new(result.value.to_h)
+        # Some #to_h implementations reject malformed contents; treat that as invalid input.
+        begin
+          attributes = result.value.to_h
+        rescue ::TypeError, ::ArgumentError
+          return result.invalid(errors: MUST_BE_HASH)
+        end
+
+        instance = new(attributes)
         instance.valid? ? result.valid(instance) : result.invalid(instance, errors: instance.errors.to_h)
       end
 
