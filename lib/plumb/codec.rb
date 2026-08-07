@@ -293,9 +293,8 @@ module Plumb
           return NodeMapper.map(type) { |t| visit(t, path) }
         end
 
-        # Also before encoder matching, and for the same reason as a Static: a source
-        # IS a subtype of what it declares, so an encoder would match and replace the
-        # code that produces the value.
+        # Before encoder matching, for the Static reason: a source IS a subtype of what
+        # it declares, so an encoder would replace the code that produces the value.
         return visit_source(type, path) if source_step?(type)
 
         enc = encoder_for(type, path)
@@ -316,43 +315,33 @@ module Plumb
         end
       end
 
-      # A leaf: nothing to recurse into structurally. It survives when it is
-      # OPAQUE (declares neither end, so there is nothing to rewrite — see
-      # #opaque_step?), when the format already carries it (the noop check),
-      # or — decoding — when the codec can bridge what it CONSUMES.
+      # A leaf: nothing to recurse into structurally. It survives when it is OPAQUE,
+      # when the format already carries it (the noop check), or — decoding — when the
+      # codec can bridge what it CONSUMES.
       def visit_leaf(type, path)
         return type if opaque_step?(type)
 
         bridge_input(type, path) || noop_or_fail(type, path)
       end
 
-      # An OPAQUE step (`Any -> Any`) is caller-supplied code Plumb declares
-      # nothing about: a `#generate` generator, a bare proc a schema was built
-      # with. It states no type the codec could match an encoder against, and
-      # its `Any` ends accept and produce anything, so there is nothing to
-      # rewrite in it — pass it through, the same treatment #pure_refinement?
-      # gives a filter that carries no encodable type.
-      #
-      # The trade is the one the node itself declares: what a black box emits
-      # lands unencoded in the document, exactly as its `Any` output says.
+      # An OPAQUE step (`Any -> Any`) is a black box — a `#generate` generator, a bare
+      # proc in a schema. It names no type to rewrite, so it passes through, and what
+      # it emits lands unencoded, exactly as its `Any` output says.
       def opaque_step?(type) = type.is_a?(Plumb::TypedStep) && type.opaque?
 
-      # A SOURCE step declares `Any -> T`: it takes whatever it is handed and produces
-      # a T. The `#default { }` generator is one — it ignores its input entirely — and
-      # so is any step built over an untyped input.
+      # A SOURCE step declares `Any -> T`: it produces a T out of whatever it is
+      # handed. The `#default { }` generator is one.
       def source_step?(type)
         type.is_a?(Plumb::TypedStep) && type.input_type.is_a?(AnyClass) && !type.output_type.is_a?(AnyClass)
       end
 
-      # DECODE: leave a source alone. Declaring `Any` as its input, it already accepts
-      # the encoded form — there is nothing to translate for it, and it is the codec's
-      # only evidence of what fills this position (`Types::Date.default { Date.today }`
-      # produces the decoded Date itself, not a wire string).
+      # DECODE: leave it alone. Accepting `Any` it already accepts the encoded form,
+      # and it produces the decoded value itself (`Date.default { Date.today }` yields
+      # a Date, not a wire string).
       #
-      # ENCODE: the source has already run — the rewrite is composed AFTER the type it
-      # encodes (see Codec#to_plumb_type), so what sits at this position is the T it
-      # declared, and that T is what has to reach the document encoded. Rewriting the
-      # node itself would run the generator a second time.
+      # ENCODE: the rewrite is composed AFTER the type it encodes (see
+      # Codec#to_plumb_type), so the source has already run and the T it declared is
+      # what sits here. Rewriting the node would run the generator a second time.
       def visit_source(type, path)
         @direction == :decode ? type : visit(type.output_type, path)
       end
@@ -546,10 +535,9 @@ module Plumb
         NodeMapper.map_children(type) { |variant| visit(variant, path) }
       end
 
-      # Rewriting can collapse two distinct branches onto the SAME node — encoding a
-      # `#default { }`, both the generator branch and the type itself resolve to the
-      # type, and rewrite to one encode step. Keep one: the second is unreachable, and
-      # a failing encode would otherwise report its errors twice.
+      # Rewriting can collapse two branches onto the SAME node — encoding a
+      # `#default { }`, both resolve to the type. Keep one: the second is unreachable,
+      # and a failing encode would otherwise report its errors twice.
       def visit_or(type, path)
         left, right = type.children
         l = visit(left, path)
@@ -605,11 +593,10 @@ module Plumb
       # Rewriting it too decodes twice: #bridge_input splices `b`'s own decode step in
       # front, the already-decoded value hits a step expecting the encoded form, and the
       # pipeline rejects everything. A step only counts as having consumed the wire if
-      # its rewrite actually CHANGED it — or if it is OPAQUE, which is the same
-      # statement made by a black box: what it hands on is unknown, so nothing can be
-      # rewritten to face it. `Types::Integer.generate { 1 }` is `(opaque >> Integer)`,
-      # and the generated value never came off the wire — rewriting the Integer into
-      # the codec's `String -> Integer` step would feed it an Integer and reject
+      # its rewrite actually CHANGED it — or if it is a black box, which says the same
+      # thing: what it hands on is unknown. `Types::Integer.generate { 1 }` is
+      # `(opaque >> Integer)`, and rewriting that Integer into the codec's
+      # `String -> Integer` step would feed it the generated Integer and reject
       # everything.
       def visit_composition(type, path)
         left, right = type.children
@@ -619,9 +606,7 @@ module Plumb
         l.equal?(left) && r.equal?(right) ? type : Conjunction.build(l, r)
       end
 
-      # `right` receives what `left` produced, so it faces the wire only while `left`
-      # has not dealt with it — its rewrite left it unchanged, and it is not a black
-      # box. Encoding, nothing consumes a wire: every step is rewritten in place.
+      # Encoding, nothing consumes a wire: every step is rewritten in place.
       def wire_consumed?(left, rewritten)
         return false unless @direction == :decode
 
@@ -635,14 +620,11 @@ module Plumb
       # `And(Constraint(::Date), AVM)`), and so is a baseless Module gate, which
       # names a type rather than filtering one.
       #
-      # `Any` is the TRIVIAL filter — it admits every value and changes none — so it
-      # qualifies here, ALONGSIDE a sibling that does carry a type. On its own it is
-      # still a leaf, and still an error: an `Any` field says nothing the codec could
-      # encode. It reaches this position from an opaque step's output slot, which is
-      # what `Plumb::Subtyping.resolved_output` leaves behind for a generator
-      # (`Integer.generate { 1 }` resolves to `(Any >> Integer)`) — the value is
-      # unknown until the Integer beside it vouches for it, and that is the type to
-      # encode.
+      # `Any` is the TRIVIAL filter, so it qualifies too — but only ALONGSIDE a sibling
+      # that carries a type; on its own it is still a leaf, and still an error. It gets
+      # here from an opaque step's output slot, which is what `resolved_output` leaves
+      # behind (`Integer.generate { 1 }` resolves to `(Any >> Integer)`): the value is
+      # unknown until the Integer beside it vouches for it, and that is what to encode.
       def pure_refinement?(child)
         case child
         when AttributeValueMatch, ValueClass, Not, AnyClass then true
