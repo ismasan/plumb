@@ -117,12 +117,22 @@ module Plumb
   # Expect a specific exception class, and return an invalid result if it is raised.
   # Usage:
   #   type = Types::String.build(Date, :parse).policy(:rescue, Date::Error)
+  #
+  # The guard returns what `type` returned, so it declares `type`'s OUTPUT. Opaque, it
+  # would erase the type it wraps — the closure is invisible — and resolve to `Any`,
+  # which nothing downstream (subtyping, JSON Schema, a Codec) can work with.
+  # Unchecked, because `type` has already validated what it produced. The INPUT stays
+  # `Any`: declaring it would run `type`'s own input check a second time, outside the
+  # rescue.
   policy :rescue do |type, exception_class|
-    Function.opaque(inspect: 'Rescue', identity: [:rescue, type, exception_class]) do |result|
+    fn = lambda do |result|
       type.call(result)
     rescue exception_class => e
       result.invalid(errors: e.message)
     end
+
+    GuaranteedFunction.new(Types::Any, Plumb::Subtyping.resolved_output(type), fn,
+                           inspect: 'Rescue', identity: [:rescue, type, exception_class])
   end
 
   # Split a string into an array. Default separator is /\s*,\s*/

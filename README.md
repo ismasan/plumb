@@ -856,6 +856,9 @@ type.resolve('2024-02-02') # => Result::Valid with Date object
 type.resolve('2024-') # => Result::Invalid with error message
 ```
 
+The guard keeps the type it wraps: the example above is still a `Date` for subtyping,
+JSON Schema and [Codecs](#encoders-and-codecs).
+
 ### `Types::Interface`
 
 Use this for objects that must respond to one or more methods.

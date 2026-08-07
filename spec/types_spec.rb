@@ -644,6 +644,15 @@ RSpec.describe Plumb::Types do
       expect(result.errors).to be('nope')
     end
 
+    specify ':rescue keeps the type it guards, instead of erasing it to Any' do
+      type = Types::String.build(::Time, :parse).policy(:rescue, ::ArgumentError)
+      expect(Plumb::Subtyping.resolved_output(type)).to eq(Types::Time)
+      expect(Plumb::Subtyping.subtype?(type, Types::Time)).to be(true)
+      # a guarded type wrapping an untyped callable still declares nothing
+      expect(Plumb::Composable.wrap(->(r) { r }).policy(:rescue, ::ArgumentError).output_type)
+        .to eq(Types::Any)
+    end
+
     specify '#policy with #==' do
       t1 = Types::Array.options([1, 2, 3])
       t2 = Types::Array.options([1, 2, 3])

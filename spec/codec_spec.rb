@@ -364,6 +364,18 @@ module CodecSpecTypes
         expect(encoder.parse({ on: ::Date.new(2024, 4, 3) })).to eq({ on: '2024-04-03' })
       end
 
+      it 'supports a :rescue-guarded branch, keeping it as a lenient fallback' do
+        # The guard declares the Time it produces, so the codec can encode it. Decoding,
+        # it is a source: the strict branch becomes the codec's own date-time step, and
+        # the guarded parse stays behind it for what that step rejects.
+        lax = Types::Time | Types::String.build(::Time, :parse).policy(:rescue, ::ArgumentError)
+        decoder, encoder = JSONCodec.for(lax)
+        expect(decoder.parse('2024-01-01T10:00:00Z')).to eq(::Time.parse('2024-01-01T10:00:00Z'))
+        expect(decoder.parse('Jan 3 2024')).to eq(::Time.parse('Jan 3 2024'))
+        expect(decoder.resolve('nonsense').valid?).to be(false)
+        expect(encoder.parse(::Time.parse('2024-01-01T10:00:00Z'))).to eq('2024-01-01T10:00:00Z')
+      end
+
       it 'passes an opaque generator through, and does not rewrite what follows it' do
         # `#generate` is `(opaque >> Integer)`: the generated value never came off the
         # wire, so the Integer must NOT become the codec's `String -> Integer` step.
