@@ -440,6 +440,17 @@ RSpec.describe Plumb::Types do
     assert_result(Types::Any.default(nil).resolve, nil, true)
   end
 
+  specify '#default with a block DECLARES the type it defaults, but trusts the block' do
+    type = Types::Date.default { ::Date.new(2024, 1, 1) }
+    # declared: a defaulted Date is still a Date, as it is with a literal default
+    expect(Plumb::Subtyping.subtype?(type, Types::Date)).to be(true)
+    # trusted: the generated value is not re-validated, and a converting type is not
+    # re-run on it
+    coercing = Types::String.transform(::Integer, &:to_i).default { '10' }
+    assert_result(coercing.resolve(Plumb::Undefined), '10', true)
+    assert_result(coercing.resolve('42'), 42, true)
+  end
+
   specify '#nullable' do
     assert_result(Types::String.nullable.resolve('bye'), 'bye', true)
     assert_result(Types::String.resolve(nil), nil, false)

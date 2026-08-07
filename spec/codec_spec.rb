@@ -338,6 +338,47 @@ module CodecSpecTypes
         expect(encoder.parse({ date: ::Date.new(2024, 6, 1) })).to eq({ date: '2024-06-01' })
       end
 
+      it 'supports #default with a generator block, in both directions' do
+        schema = Types::Hash[
+          id: Types::String.default { 'generated' },
+          date: Types::Date.default { DATE }
+        ]
+        decoder, encoder = JSONCodec.for(schema)
+        # decode: the block produces the DECODED value, so it is left alone
+        expect(decoder.parse({})).to eq({ id: 'generated', date: DATE })
+        expect(decoder.parse({ id: 'given', date: '2024-06-01' }))
+          .to eq({ id: 'given', date: ::Date.new(2024, 6, 1) })
+        # encode: what the block declares (the type it defaults) is encoded
+        expect(encoder.parse({})).to eq({ id: 'generated', date: '2024-01-01' })
+        expect(encoder.parse({ date: ::Date.new(2024, 6, 1) }))
+          .to eq({ id: 'generated', date: '2024-06-01' })
+      end
+
+      it 'leaves a source step (`Any -> T`) in place rather than replacing it' do
+        # It accepts anything, so it already accepts the encoded form — and it is the
+        # only thing that knows how to read it. An encoder matches its output type;
+        # swapping it for the encoder's own step would drop the custom format.
+        step = Types::Any.transform(::Date) { |v| v.is_a?(::Date) ? v : ::Date.strptime(v, '%d/%m/%Y') }
+        decoder, encoder = JSONCodec.for(Types::Hash[on: step])
+        expect(decoder.parse({ on: '03/04/2024' })).to eq({ on: ::Date.new(2024, 4, 3) })
+        expect(encoder.parse({ on: ::Date.new(2024, 4, 3) })).to eq({ on: '2024-04-03' })
+      end
+
+      it 'passes an opaque generator through, and does not rewrite what follows it' do
+        # `#generate` is `(opaque >> Integer)`: the generated value never came off the
+        # wire, so the Integer must NOT become the codec's `String -> Integer` step.
+        type = Types::Integer.generate { 42 }
+        decoder, encoder = Plumb::Codec::Forms.for(type)
+        expect(decoder.parse('anything')).to eq(42)
+        expect(encoder.parse('anything')).to eq('42') # the generated Integer still encodes
+      end
+
+      it 'passes an opaque step through wherever it appears' do
+        schema = Types::Hash[flag: ->(result) { result.valid(result.value) }, date: Types::Date]
+        decoder = JSONCodec >> schema
+        expect(decoder.parse({ flag: 'raw', date: '2024-01-01' })).to eq({ flag: 'raw', date: DATE })
+      end
+
       it 'passes pure refinements through' do
         schema = Types::Hash[name: Types::String.present, age: Types::Integer[18..]]
         codec_schema = JSONCodec >> schema

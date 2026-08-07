@@ -519,6 +519,18 @@ str.parse() # 'nope'
 str.parse('yup') # 'yup'
 ```
 
+A block generates the value on every invocation, instead of returning a fixed one:
+
+```ruby
+id = Types::UUID::V4.default { SecureRandom.uuid }
+id.parse() # a fresh UUID each time
+```
+
+The block is trusted — what it returns is not validated against the type, and a
+converting type is not re-run on it — but the step still _declares_ the type it
+defaults, so a `Types::Date.default { Date.today }` is still a `Date` for subtyping,
+JSON Schema and [Codecs](#encoders-and-codecs).
+
 Note that this is syntax sugar for:
 
 ```ruby
