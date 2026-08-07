@@ -96,17 +96,16 @@ module Plumb
   # Works with a block too:
   #   date = Type::Any[Date].default { Date.today }
   #
-  # A generated default DECLARES `type` as what it produces, the same statement
-  # `Types::Static[value]` makes for a literal one. The block is trusted rather than
-  # checked (a GuaranteedFunction — the generated value is not re-validated, and a
-  # coercing `type` is not re-run on it), but the declaration is what tells the rest
-  # of the library what fills this position: without it the branch resolves to `Any`,
-  # and a Codec encoding the type has nothing to encode. @see Plumb::Codec::Rewriter
+  # A generated default declares, and is checked against, `type`'s OUTPUT — not `type`
+  # itself, which would re-run a conversion on a value the block already produced
+  # (`Types::String.transform(::Integer).default { 10 }` generates the Integer).
+  # Declaring it also tells the rest of the library what fills this position: without
+  # it the branch resolves to `Any`, and a Codec has nothing to encode.
   policy :default, helper: true do |type, value = Undefined, &block|
     val_type = if value == Undefined
                  fn = ->(result) { result.valid(block.call) }
-                 GuaranteedFunction.new(Types::Any, type, fn,
-                                        inspect: 'default proc', identity: [:default, block])
+                 Function.new(Types::Any, Plumb::Subtyping.resolved_output(type), fn,
+                              inspect: 'default proc', identity: [:default, block])
                else
                  Types::Static[value]
                end

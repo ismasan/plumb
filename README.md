@@ -526,10 +526,19 @@ id = Types::UUID::V4.default { SecureRandom.uuid }
 id.parse() # a fresh UUID each time
 ```
 
-The block is trusted — what it returns is not validated against the type, and a
-converting type is not re-run on it — but the step still _declares_ the type it
-defaults, so a `Types::Date.default { Date.today }` is still a `Date` for subtyping,
-JSON Schema and [Codecs](#encoders-and-codecs).
+The step _declares_ the type it defaults — so a `Types::Date.default { Date.today }`
+is still a `Date` for subtyping, JSON Schema and [Codecs](#encoders-and-codecs) — and
+what the block returns is checked against it, failing where it is defaulted rather
+than somewhere downstream.
+
+What is checked is the type's **output**, and the type itself is not re-run on the
+generated value: a converting type expects the block to produce the converted value.
+
+```ruby
+int = Types::String.transform(::Integer, &:to_i)
+int.default { 10 }.parse()    # 10
+int.default { '10' }.parse()  # raises — a String is not what this type produces
+```
 
 Note that this is syntax sugar for:
 

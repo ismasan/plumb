@@ -440,15 +440,22 @@ RSpec.describe Plumb::Types do
     assert_result(Types::Any.default(nil).resolve, nil, true)
   end
 
-  specify '#default with a block DECLARES the type it defaults, but trusts the block' do
+  specify '#default with a block declares, and checks, the type it defaults' do
     type = Types::Date.default { ::Date.new(2024, 1, 1) }
     # declared: a defaulted Date is still a Date, as it is with a literal default
     expect(Plumb::Subtyping.subtype?(type, Types::Date)).to be(true)
-    # trusted: the generated value is not re-validated, and a converting type is not
-    # re-run on it
-    coercing = Types::String.transform(::Integer, &:to_i).default { '10' }
-    assert_result(coercing.resolve(Plumb::Undefined), '10', true)
+    # checked: a block returning the wrong thing fails where it is defaulted
+    expect(Types::Integer.default { 'nope' }.resolve(Plumb::Undefined).valid?).to be(false)
+    expect(Types::Integer.default { 10 }.resolve(Plumb::Undefined).valid?).to be(true)
+  end
+
+  specify '#default with a block checks the OUTPUT of a converting type, without re-running it' do
+    coercing = Types::String.transform(::Integer, &:to_i).default { 10 }
+    assert_result(coercing.resolve(Plumb::Undefined), 10, true) # the block produces the Integer itself
     assert_result(coercing.resolve('42'), 42, true)
+    # the String the type CONSUMES is not a valid default — it is not what the type produces
+    expect(Types::String.transform(::Integer, &:to_i).default { '10' }.resolve(Plumb::Undefined).valid?)
+      .to be(false)
   end
 
   specify '#nullable' do
