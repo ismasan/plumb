@@ -453,11 +453,12 @@ module Plumb
     # A filtered Hash is lenient: it accepts ANY hash and drops invalid/missing/
     # extra fields (it never rejects a Hash), so as a #>> consumer it accepts any
     # hash-like value. (Its #input_type still declares the schema it relaxes.)
-    # Memoized at the class level (instances are frozen; Types isn't loaded yet
-    # when this file is).
-    def self.each_pair_interface = @each_pair_interface ||= Types::Interface[:each_pair]
+    def accepted_type = Types::EachPair
 
-    def accepted_type = FilteredHash.each_pair_interface
+    # Re-derived, NOT rebuilt around the old #fn: the filter closes over the schema it
+    # was built from, so Function#with_children returns a node that inspects as the
+    # new schema and still filters by the old one.
+    def with_children(children) = children.first.filtered
 
     # Neither boundary check runs — the per-field validation in HashClass#filtered
     # subsumes both. Overriding #call is also what excludes this node from fusion,

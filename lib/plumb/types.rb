@@ -118,12 +118,10 @@ module Plumb
   # Usage:
   #   type = Types::String.build(Date, :parse).policy(:rescue, Date::Error)
   #
-  # The guard returns what `type` returned, so it declares `type`'s OUTPUT. Opaque, it
-  # would erase the type it wraps — the closure is invisible — and resolve to `Any`,
-  # which nothing downstream (subtyping, JSON Schema, a Codec) can work with.
-  # Unchecked, because `type` has already validated what it produced. The INPUT stays
-  # `Any`: declaring it would run `type`'s own input check a second time, outside the
-  # rescue.
+  # The guard returns what `type` returned, so it declares `type`'s OUTPUT — opaque,
+  # it would erase the type it wraps (the closure is invisible) and resolve to `Any`.
+  # Unchecked: `type` already validated what it produced. The INPUT stays `Any`, or
+  # `type`'s own input check runs a second time, outside the rescue.
   policy :rescue do |type, exception_class|
     fn = lambda do |result|
       type.call(result)
@@ -183,6 +181,10 @@ module Plumb
     Email = String[URI::MailTo::EMAIL_REGEXP].as_node(:email)
     Date = Any[::Date]
     Time = Any[::Time]
+    # What a lenient container accepts (a Stream, a `.filtered` Array/Hash/HashMap).
+    # Here, not beside those classes, because Types is loaded after all of them.
+    Each = Interface[:each]
+    EachPair = Interface[:each_pair]
 
     # A type that recursively converts string keys to symbols in nested hashes.
     # This is commonly used for normalizing payload data in commands and events.

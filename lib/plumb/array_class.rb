@@ -45,22 +45,17 @@ module Plumb
     def output_type = Plumb::Subtyping.map_children(self) { |c| Plumb::Subtyping.resolved_output(c) }
 
     def concurrent
-      ConcurrentArrayClass.new(element_type:)
+      concurrent_class.new(element_type:)
     end
 
     def stream
       StreamClass.new(element_type:)
     end
 
+    # A lenient version of this Array: it accepts any Array and emits one with only
+    # the valid elements, dropping the rest. @see FilteredArray
     def filtered
-      Constraint.new(::Array) >> Function.opaque(inspect: "Array[#{element_type}].filtered",
-                                                identity: [:filtered_array, element_type]) do |result|
-        arr = result.value.each.with_object([]) do |e, memo|
-          r = element_type.resolve(e)
-          memo << r.value if r.valid?
-        end
-        result.valid!(arr)
-      end
+      filtered_class.new(element_type:)
     end
 
     def call(result)
@@ -77,6 +72,12 @@ module Plumb
     private
 
     attr_reader :element_type
+
+    # Named, not hardcoded, so the two combine in EITHER order: each subclass points
+    # at the variant that keeps what it already is, instead of the second call
+    # dropping the first.
+    def concurrent_class = ConcurrentArrayClass
+    def filtered_class = FilteredArray
 
     def _inspect
       %(Array[#{element_type}])
@@ -135,6 +136,68 @@ module Plumb
         end
 
         [values, errors]
+      end
+
+      def filtered_class = ConcurrentFilteredArray
+    end
+
+    # Same element type as an ArrayClass, but drops invalid elements instead of
+    # rejecting the whole Array. Being an ArrayClass is what keeps it rewritable: a
+    # visitor — or a Codec — that maps the element type rebuilds a FilteredArray, not
+    # a plain one. @see HashMap::FilteredHashMap, the same arrangement for maps.
+    class FilteredArray < self
+      # It drops elements, so it changes the value whatever its element type does.
+      def value_preserving? = false
+
+      # Lenient: it never rejects an Array, so as a #>> consumer it accepts any
+      # enumerable — without this `Types::Array >> Array[String].filtered` is an
+      # illegal narrowing.
+      def accepted_type = Types::Each
+
+      # `Array[T].filtered.stream` IS `Array[T].stream.filtered` — a filtered Stream
+      # drops the same elements, lazily.
+      def stream = super.filtered
+
+      def call(result)
+        return result.invalid!(errors: 'is not an Array') unless ::Array === result.value
+
+        result.valid!(valid_elements(result.value))
+      end
+
+      private
+
+      def concurrent_class = ConcurrentFilteredArray
+
+      # The only thing the concurrent variant replaces. No errors to collect, unlike
+      # #map_array_elements — an invalid element is simply not there.
+      def valid_elements(array)
+        array.each.with_object([]) do |e, memo|
+          r = element_type.resolve(e)
+          memo << r.value if r.valid?
+        end
+      end
+
+      def _inspect = "Array[#{element_type}].filtered"
+    end
+
+    # Both at once, reached from either side (`.filtered.concurrent`,
+    # `.concurrent.filtered`), and itself under both.
+    class ConcurrentFilteredArray < FilteredArray
+      private
+
+      def filtered_class = ConcurrentFilteredArray
+
+      # A rejected future re-raises, as ConcurrentArrayClass does: an element step
+      # that RAISED is a bug to surface, not an element to drop.
+      def valid_elements(array)
+        futures = array.map { |e| Concurrent::Future.execute { element_type.resolve(e) } }
+
+        futures.each_with_object([]) do |future, memo|
+          r = future.value # blocks until settled; nil when rejected
+          raise future.reason if future.rejected?
+
+          memo << r.value if r.valid?
+        end
       end
     end
   end

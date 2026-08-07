@@ -1054,6 +1054,45 @@ RSpec.describe Plumb::Types do
     specify '#filtered' do
       array = Types::Array[String].filtered
       expect(array.parse([1, 'a', 2, 'b', 'c', 3])).to eq(%w[a b c])
+      expect(array.resolve('nope').valid?).to be(false)
+    end
+
+    specify '#filtered is an Array node: it keeps its element type visible' do
+      array = Types::Array[Types::String].filtered
+      expect(array.to_json_schema).to eq('type' => 'array', 'items' => { 'type' => 'string' })
+      # it drops elements, so it never preserves the value...
+      expect(Plumb::Subtyping.value_preserving?(array)).to be(false)
+      # ...and it is lenient, so any Array composes into it
+      expect { Types::Array >> array }.not_to raise_error
+      # mapping the element type rebuilds a FILTERED array, not a strict one
+      remapped = Plumb::Subtyping.map_children(array) { Types::Integer }
+      expect(remapped.parse([1, 'a', 2])).to eq([1, 2])
+    end
+
+    specify '#filtered combines with #concurrent and #stream, in either order' do
+      base = Types::Array[Types::Integer]
+      input = [1, 'a', 2, 'b', 3]
+
+      expect(base.filtered.concurrent.parse(input)).to eq([1, 2, 3])
+      expect(base.concurrent.filtered.parse(input)).to eq([1, 2, 3])
+      expect(base.filtered.concurrent.class).to eq(base.concurrent.filtered.class)
+      # idempotent: neither call downgrades what the other set
+      expect(base.filtered.concurrent.filtered.class).to eq(base.filtered.concurrent.class)
+      expect(base.concurrent.filtered.concurrent.class).to eq(base.filtered.concurrent.class)
+
+      expect(base.filtered.stream.parse(input).to_a).to eq([1, 2, 3])
+      expect(base.stream.filtered.parse(input).to_a).to eq([1, 2, 3])
+
+      # a strict Array is untouched by any of it
+      expect(base.concurrent.resolve(input).valid?).to be(false)
+      expect(base.stream.parse(input).map(&:valid?)).to eq([true, false, true, false, true])
+    end
+
+    specify 'a filtered concurrent Array propagates an exception from an element step' do
+      # an element step that RAISED is a bug to surface, not an element to drop
+      boom = Plumb::Composable.wrap(->(_r) { raise 'kaboom' })
+      expect { Types::Array[boom].filtered.concurrent.resolve([1]) }
+        .to raise_error(RuntimeError, 'kaboom')
     end
   end
 
@@ -1225,6 +1264,13 @@ RSpec.describe Plumb::Types do
       expect(Types::Hash[a: schema.filtered]).to eq(Types::Hash[a: schema.filtered])
       expect(Types::Array[schema.filtered]).to eq(Types::Array[schema.filtered])
       expect(schema.filtered & schema.filtered).to eq(schema.filtered)
+    end
+
+    specify '#filtered rebuilt around a new schema filters by THAT schema' do
+      filtered = Types::Hash[name: Types::String, age: Types::Integer].filtered
+      rebuilt = filtered.with_children([Types::Hash[name: Types::String], nil])
+      # not just relabelled: the block follows the schema it reports
+      expect(rebuilt.parse({ name: 'Joe', age: 30 })).to eq({ name: 'Joe' })
     end
 
     specify '#defer' do

@@ -302,6 +302,7 @@ module Plumb
 
         case type
         when HashClass then visit_hash(type, path)
+        when FilteredHash then visit_filtered_hash(type, path)
         when ArrayClass, StreamClass then visit_array(type, path)
         when TupleClass then visit_tuple(type, path)
         when HashMap then visit_hash_map(type, path)
@@ -506,6 +507,21 @@ module Plumb
         NodeMapper.map_record(type) do |field, key|
           visit(field, path + [key.literal? ? key.to_s : key.inspect])
         end
+      end
+
+      # DECODE rewrites the schema a filter FILTERS and rebuilds the filter around it,
+      # so decoding happens inside it, per field: #bridge_input's spliced step would
+      # decode the whole hash first, making one unreadable field fatal — what
+      # .filtered exists to avoid. (The filtered Array and HashMap need none of this;
+      # being containers they rewrite through #visit_array / #visit_hash_map.)
+      #
+      # ENCODE: `resolved_output` reduces the filter to its relaxed schema before the
+      # rewrite, so this is only reached defensively.
+      def visit_filtered_hash(type, path)
+        return visit(type.output_type, path) unless @direction == :decode
+
+        schema = visit(type.input_type, path)
+        schema.equal?(type.input_type) ? type : schema.filtered
       end
 
       def visit_array(type, path)

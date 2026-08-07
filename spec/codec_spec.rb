@@ -440,6 +440,22 @@ module CodecSpecTypes
         expect(rewritten.parse({ a: '2024-01-01', b: 'nope' })).to eq({ a: DATE })
       end
 
+      it 'rewrites a filtered Array, decoding inside the filter' do
+        decoder, encoder = JSONCodec.for(Types::Array[Types::Date].filtered)
+        # per-element: an unreadable element is dropped, not fatal for the array
+        expect(decoder.parse(%w[2024-01-01 nope])).to eq([DATE])
+        expect(encoder.parse([DATE])).to eq(['2024-01-01'])
+      end
+
+      it 'rewrites a filtered Hash schema, decoding inside the filter' do
+        filtered = Types::Hash[on: Types::Date, name: Types::String].filtered
+        decoder, encoder = JSONCodec.for(filtered)
+        expect(decoder.parse({ on: '2024-01-01', name: 'Joe' })).to eq({ on: DATE, name: 'Joe' })
+        # per-field: an unreadable field is dropped, not fatal for the hash
+        expect(decoder.parse({ on: 'nope', name: 'Joe' })).to eq({ name: 'Joe' })
+        expect(encoder.parse({ on: DATE, name: 'Joe' })).to eq({ on: '2024-01-01', name: 'Joe' })
+      end
+
       it 'rewrites containers inside a value-preserving union (not swallowed by a container-top noop)' do
         union = Types::Array[Types::Date] | Types::String
         rewritten = JSONCodec >> union
