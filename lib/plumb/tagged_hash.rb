@@ -24,10 +24,7 @@ module Plumb
       # types are assumed to have literal values for the index field :key
       @index = @children.each.with_object({}) do |t, memo|
         key_type = t.at_key(@key)
-        # What a discriminator needs is the literal it matches, whichever node
-        # carries it — a bare literal is a ValueClass, one narrowed by a base
-        # (`Types::String['event']`) is a Constraint. Subtyping.literal_value reads
-        # both and returns Undefined for anything matching more than one value.
+        # Accept either bare or base-constrained single-value tags.
         tag = Plumb::Subtyping.literal_value(key_type)
         if Undefined.equal?(tag)
           raise ParseError, "key type at :#{@key} #{key_type} must match a single literal value"
@@ -39,18 +36,10 @@ module Plumb
       freeze
     end
 
-    # As a consumer, relax each variant's fields to what they accept (like
-    # HashClass#accepted_type) — but keep the discriminator field literal, so
-    # the rebuilt TaggedHash still satisfies its "tag key is a Constraint"
-    # invariant. Lets `Type >> Codec` (which builds a rewritten variant with a
-    # converting field) type-check against the output tagged hash.
-    # Identified by the discriminator key and the Hash it narrows as well as by its
-    # variants. #children holds only the variants, so a structural comparison would
-    # find two TaggedHashes equal while they were keyed on different fields, or
-    # narrowing different base Hashes — and `==` is what
-    # Plumb::Subtyping.subtype? consults first, so that would make them mutual
-    # subtypes. `Key#eql?` is the key comparison (Key defines no #==) and
-    # deliberately ignores optionality, which a discriminator never uses.
+    # Equality includes the discriminator and base hash because #children contains
+    # only variants; comparing children alone would conflate distinct tagged hashes.
+    # @param other [Object]
+    # @return [Boolean]
     def ==(other)
       other.instance_of?(self.class) &&
         key.eql?(other.key) &&
@@ -58,22 +47,19 @@ module Plumb
         children == other.children
     end
 
-    # A TaggedHash resolves to ONE of its variants: #call runs @hash_type and then
-    # the variant selected by the discriminator, so the value it returns is
-    # whatever that variant produced. It is therefore a subtype of anything EVERY
-    # variant is a subtype of — which makes it a subtype of the "any Hash" top,
-    # like the rest of the Hash family.
-    #
-    # Deliberately conservative: it ignores that @hash_type also had to pass, which
-    # can only make the real value set narrower, never wider. Without this the
-    # default covariant rule would compare variant lists alone and call two
-    # TaggedHashes over different base Hashes mutual subtypes.
+    # A tagged hash is a subtype when every selectable variant is a subtype. The
+    # base hash only narrows those variants, so ignoring it here is conservative;
+    # comparing variants pairwise would be unsound across different discriminators.
+    # @param other [Composable]
+    # @return [Boolean]
     def subtype_of?(other)
       return true if self == other
 
       @children.all? { |variant| Plumb::Subtyping.subtype?(variant, other) }
     end
 
+    # Relaxes each variant's non-discriminator fields to their accepted types.
+    # @return [TaggedHash]
     def accepted_type
       relaxed = @children.map do |child|
         schema = child._schema.each_with_object({}) do |(k, field), h|

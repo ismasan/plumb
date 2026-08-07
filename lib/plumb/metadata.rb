@@ -12,12 +12,10 @@ module Plumb
       freeze
     end
 
-    # Identified by the wrapped type as well as the merged metadata. Two types can
-    # carry identical metadata and still describe different values — a Constraint
-    # contributes none of its own, so `Integer[1..10]` and `Integer[100..200]`
-    # labelled alike would otherwise compare equal, and `==` is what
-    # Plumb::Subtyping.subtype? and the Optimizer consult before their
-    # #identity_wrapper? guard.
+    # Metadata nodes include their wrapped type in equality; otherwise unrelated
+    # types carrying the same metadata could collapse during subtype reductions.
+    # @param other [Object]
+    # @return [Boolean]
     def ==(other)
       other.instance_of?(self.class) && type == other.type && @metadata == other.metadata
     end

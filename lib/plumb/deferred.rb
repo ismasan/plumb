@@ -13,17 +13,9 @@ module Plumb
       # freeze
     end
 
-    # Identified by object identity. A Deferred stands in for a type it has not
-    # materialized yet, so it exposes no #children — structural equality would
-    # therefore compare two empty child lists and find EVERY Deferred equal to
-    # every other. Forcing #type here to compare what they materialize is not an
-    # option either: on a self-referential type (the reason Deferred exists) that
-    # recurses forever.
-    #
-    # Nothing is lost by being conservative here. Plumb::Subtyping.subtype?
-    # unwraps a Deferred and relates what it materializes, breaking cycles
-    # coinductively — so the relation still sees through two distinct Deferreds
-    # that describe the same type, even though `==` does not.
+    # Deferred nodes use identity equality to avoid materializing recursive types.
+    # @param other [Object]
+    # @return [Boolean]
     def ==(other) = equal?(other)
 
     def call(result)
@@ -45,4 +37,3 @@ module Plumb
     end
   end
 end
-

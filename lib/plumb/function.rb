@@ -185,17 +185,17 @@ module Plumb
       result.map(@input_type).map(@fn).map(@output_type)
     end
 
-    # This node's fn with its own output check applied, as one step — what a fused
-    # node runs in place of `@fn` so the check survives the seam. @see #fuse_with
+    # Wraps this function with its output check for fusion.
+    # @return [Proc]
+    # @see #fuse_with
     protected def fn_with_output_check
       fn = @fn
       out = @output_type
       ->(result) { result.map(fn).map(out) }
     end
 
-    # Fuse `self >> other` into a single Function running both fns: `(A -> B) >>
-    # (B -> C)` becomes `(A -> C)`, with one runtime check dropped at the
-    # boundary — `other`'s input check, which subsumption proves redundant.
+    # Fuses compatible functions while retaining this function's output check;
+    # declared subtype compatibility does not prove what the callable returns.
     # Returns nil (no fusion) unless:
     #   - both #calls are the standard input->fn->output mapping (see #fusible?);
     #   - what self produces is a DIRECT subtype of what other declares as
@@ -205,18 +205,13 @@ module Plumb
     #   - the dropped check is value-preserving: a coercing input type changes the
     #     value, so it must keep running.
     #
-    # What is NOT dropped is self's own output check. Subsumption proves the
-    # DECLARED output sits within what `other` accepts; it says nothing about what
-    # `fn1` actually returns, and #call validates that for exactly this reason (a
-    # wrong return value becomes an invalid Result, not silent corruption). Dropping
-    # it would let a fn that returns the wrong type pass at a seam while failing on
-    # its own — so composing would CHANGE validity.
+    # @param other [Function]
+    # @return [Function, nil]
     def fuse_with(other)
       return nil unless fusable_step? && other.fusable_step?
       return nil unless Plumb::Subtyping.subtype?(@output_type, other.input_type)
       return nil unless Plumb::Subtyping.value_preserving?(other.input_type)
-      # A converting output type stays an unfused And, so the value it produces is
-      # visible between the two nodes rather than buried inside one.
+      # Converting output checks must remain explicit between nodes.
       return nil unless !checks_output? || Plumb::Subtyping.value_preserving?(@output_type)
 
       fn1 = checks_output? ? fn_with_output_check : @fn

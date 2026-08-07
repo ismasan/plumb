@@ -26,10 +26,7 @@ module Plumb
       if other.is_a?(HashClass)
         return true if other._schema.empty?
 
-        # A map validates EVERY entry (#call iterates the whole hash), so it has no
-        # unconstrained tail: whatever `other` asks of any key, @value_type already
-        # guarantees. What a map does NOT promise is that any particular key is
-        # PRESENT, so a key `other` requires can never be satisfied.
+        # Maps constrain every value but do not guarantee any named key is present.
         return false if other.literal_fields.any? { |k, _| !k.optional? }
 
         return other._schema.all? { |_k, field| Plumb::Subtyping.subtype?(@value_type, field) }

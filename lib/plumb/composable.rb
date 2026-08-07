@@ -122,18 +122,12 @@ module Plumb
       end
     end
 
-    # Structural equality: the same node class, around the same children.
-    #
-    # `instance_of?` rather than `is_a?`, because equality has to be SYMMETRIC and
-    # a subclass narrows behaviour without changing #children — a
-    # FilteredHashMap drops entries where its HashMap rejects the Hash, a
-    # ConcurrentArrayClass maps elements in threads. With `is_a?` a parent would
-    # equal its subclass while the subclass did not equal the parent, and since
-    # Plumb::Subtyping.subtype? and the Optimizer both short-circuit on `==`
-    # BEFORE their #value_preserving?/#identity_wrapper? guards, that lopsided
-    # answer is enough to drop the narrower node from a `&` or a `|`.
-    #
-    # A subclass that IS interchangeable with its parent overrides this.
+    # Compares nodes by exact class and children. Use `instance_of?`, not `is_a?`:
+    # a subclass may change behavior without changing #children, making parent/subclass
+    # equality asymmetric. Subtyping and optimization short-circuit on `==`, so that
+    # asymmetry could discard the narrower node before its behavioral guards run.
+    # @param other [Object]
+    # @return [Boolean]
     def ==(other)
       other.instance_of?(self.class) && other.respond_to?(:children) && other.children == children
     end
@@ -178,12 +172,9 @@ module Plumb
       return true if self == other
 
       if Plumb::Subtyping.atomic?(self) && Plumb::Subtyping.atomic?(other)
-        # A refinement describes its BASE as well as its matcher — `Integer[1..5]`
-        # is an Integer that also falls in 1..5 — and #children holds only the
-        # matcher. So the base is checked separately, or an atomic leaf with no base
-        # of its own slips past it: `Types::Value[5.0]` matches the Range 1..5 while
-        # being no Integer at all. Constraint#subtype_of? does this for itself; this
-        # is the path ValueClass and StaticClass take.
+        # #children contains only the matcher, but a refinement also describes its
+        # base. Check both or an unrelated atomic value may pass on matcher overlap
+        # alone (for example, Value[5.0] against Integer[1..5]).
         if other.respond_to?(:base) && other.base && !Plumb::Subtyping.subtype?(self, other.base)
           return false
         end
@@ -262,9 +253,7 @@ module Plumb
       elsif callable.respond_to?(:call)
         Function.opaque(callable)
       elsif Constraint.literal_matcher?(callable)
-        # A raw literal is a value match, the same node `Types::Any[5]` and
-        # `Types::Value[5]` build — so all three spellings are one type. A raw
-        # Class/Range/Regexp/Set is a matcher, not a value, and stays a Constraint.
+        # Equality literals use ValueClass; broader matchers use Constraint.
         ValueClass.new(callable)
       else
         Constraint.new(callable)
@@ -600,11 +589,8 @@ module Plumb
       # Constraint.narrow so stacked Range refinements intersect
       # (`Integer[0..100][10..]` == `Integer[10..100]`).
       base = is_a?(AnyClass) ? nil : self
-      # A BARE literal is a value match, so it gets the node that means that:
-      # `Types::Any[5]` and `Types::Value[5]` describe the same values (for a
-      # literal, `#===` IS `#==`) and now share one representation, instead of two
-      # that the type algebra related asymmetrically. A literal WITH a base stays a
-      # Constraint — `Types::Integer[5]` has an Integer check to run first.
+      # A bare equality literal uses ValueClass so `Any[5]` and `Value[5]` share
+      # one subtype identity. A based literal remains a Constraint.
       return ValueClass.new(args.first) if base.nil? && args.size == 1 && Constraint.literal_matcher?(args.first)
 
       Constraint.narrow(base, *args)

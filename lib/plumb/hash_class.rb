@@ -15,6 +15,8 @@ module Plumb
 
     attr_reader :_schema
 
+    # @param schema [Hash] field definitions keyed by literal or matcher keys
+    # @param closed [Boolean] whether values contain only declared keys
     def initialize(schema: BLANK_HASH, closed: false)
       @closed = closed
       @_schema = wrap_keys_and_values(schema)
@@ -32,22 +34,14 @@ module Plumb
     # or nil when the schema is closed. See #call / #&.
     attr_reader :catch_all_type
 
-    # Does this record carry ONLY the keys it declares?
-    #
-    # False for a schema describing INCOMING data: extra keys are ignored rather
-    # than forbidden, so the hashes it describes may carry an unconstrained tail —
-    # which is what makes #subtype_of? strict. True for the same record read as a
-    # produced VALUE, since #call emits nothing it did not declare. See #closed.
+    # Input schemas are open because #call ignores extra keys; produced literal-key
+    # records are closed because #call emits only declared keys.
+    # @return [Boolean] whether values contain only declared keys
     def closed? = @closed
 
-    # This record read as a produced value. Consulted by
-    # Plumb::Subtyping.check_composable!, which asks what a step EMITS, not what a
-    # schema describes.
-    #
-    # Only meaningful when every key is literal: a matcher key — a typed key or the
-    # `_` catch-all — passes through key names it never declared, so what it emits
-    # still has a tail. Those (and the any-Hash top, which returns its input
-    # untouched) answer for themselves.
+    # Returns the closed form emitted by a literal-key schema.
+    # Matcher-key and empty schemas remain open because they can pass unknown keys.
+    # @return [HashClass]
     def closed
       return self if @closed || _schema.empty? || !@matcher_fields.empty?
 
@@ -100,44 +94,11 @@ module Plumb
       self.class.new(schema: merge_rightmost_keys(_schema, other_schema))
     end
 
-    # Two Hash schemas are treated as maps: the result keeps the keys present in
-    # BOTH, and each shared key's field type is itself intersected (`self`'s field
-    # `&` `other`'s field). So a field may narrow — `Hash[age: Integer[1..20]] &
-    # Hash[age: Integer[0..10]]` == `Hash[age: Integer[1..10]]` — or collapse to
-    # `Never` when the two field types are disjoint (`Hash[age: Integer[1..5]] &
-    # Hash[age: Integer[10..20]]` == `Hash[age: Never]`). Key optionality is taken
-    # from `other`.
-    #
-    # Two non-empty schemas that share NO keys have nothing in common, so the
-    # intersection is empty ⇒ `Types::Never`. (Pragmatic map reading: under strict
-    # width subtyping a value like `{a: 1, b: "x"}` inhabits both `Hash[a: Integer]`
-    # and `Hash[b: String]`, so their value-set meet is non-empty — but for maps we
-    # treat "no common keys" as no intersection.) The empty-schema Hash
-    # (`Types::Hash`) is the "any Hash" top of the family and the IDENTITY of
-    # intersection, NOT an empty overlap: `Hash[] & X == X`.
-    #
-    # A required shared key whose field is `Never` makes the hash effectively
-    # uninhabitable, but is kept structurally as `Hash[key: Never]` rather than
-    # collapsed to a whole-hash `Never` — an optional such key would still admit
-    # hashes that omit it, so a blanket collapse would be unsound.
-    #
-    # A `_` catch-all widens what survives: a key present on ONE side survives the
-    # meet iff the OTHER side permits it — either it names the key too, or it has a
-    # catch-all that admits it. So `Hash[a: String, _: Any] & Hash[a: String, b:
-    # Integer] == Hash[a: String, b: Integer]` (the right's `b` is admitted by the
-    # left's `_`, met with Any).
-    #
-    # The result keeps a catch-all whenever either side CONSTRAINS the tail: both
-    # sides met (`Tₐ & T_b`), or the lone one on its own. A closed side merely drops
-    # the extra keys (see #call) while the open side still validates them, so
-    # `Hash[_: Integer] & Hash[a: Integer]` goes on requiring Integer values
-    # throughout — dropping the catch-all there would admit `{a: 1, b: 'x'}`, which
-    # the left rejects. An `Any` catch-all constrains nothing and is left out, so
-    # the meet of two ordinary schemas stays the shared key set.
-    #
-    # Against anything that is not a HashClass there is no key intersection: defer
-    # to the generic Composable#& (Subtyping.intersect), which yields Types::Never
-    # for a provably-disjoint type (eg. `Hash & Integer`).
+    # Intersects shared fields and any fields admitted by the other schema's
+    # catch-all. The empty schema is the Hash top; disjoint non-empty schemas
+    # produce Never. Non-Hash operands use the generic intersection.
+    # @param other [Object]
+    # @return [HashClass, Composable]
     def &(other)
       # Route through the intersection hook (not bare Composable.wrap) so a
       # context-resolving operand — eg. an Encoder class — orients against this
@@ -169,12 +130,9 @@ module Plumb
         result[their_key] = their_field & my_catch if my_catch
       end
 
-      # An arbitrary tail must satisfy every side that CONSTRAINS it. With one
-      # catch-all its type stands alone: the closed side merely drops the extra keys
-      # (see #call), while this side still validates them — so
-      # `Hash[_: Integer] & Hash[a: Integer]` keeps requiring Integer values
-      # throughout. An `Any` catch-all constrains nothing and is left out, so the
-      # meet of two schemas stays the shared key set.
+      # Preserve every non-Any constraint on unmatched keys. A closed side may drop
+      # extras, but an open side still validates them; dropping its lone catch-all
+      # would admit values that the open side rejects.
       tail = my_catch && their_catch ? my_catch & their_catch : (my_catch || their_catch)
       result[Key.new(Types::Any)] = tail if tail && !tail.is_a?(AnyClass)
 
@@ -327,10 +285,7 @@ module Plumb
       return hashmap_subtype?(other) if other.is_a?(HashMap)
       return false unless other.is_a?(HashClass)
 
-      # An empty schema is the "any Hash" top, and #call returns the input
-      # UNTOUCHED for it (there are no fields to project through) — so it can carry
-      # any key holding any value. Nothing narrower describes that. The mirror of
-      # the guard in #hashmap_subtype?.
+      # The unconstrained Hash is the top of this family, never a narrower subtype.
       return false if _schema.empty?
       return true if other._schema.empty?
 
@@ -374,20 +329,7 @@ module Plumb
 
     private
 
-    # A structured Hash is a subtype of a `key_type => value_type` map when every
-    # entry fits: each key (literal name, or a matcher/catch-all's key matcher) is
-    # a subtype of `key_type`, and each value type is a subtype of `value_type`.
-    # A catch-all `_: T` carries the Any key matcher, so `Any <= key_type` fails
-    # unless the map accepts any key — an open Hash is NOT a subtype of a
-    # Symbol-keyed map.
-    # Depth and width over the keys `other` NAMES. `self` must supply each one as a
-    # required key of a subtype; a key `other` makes optional may be missing.
-    #
-    # "Missing" is not the same as "never present", which is why the optional case
-    # still has work to do: a matcher key of `self` (a typed key, or the `_`
-    # catch-all) can carry that name through with a value of its own type, and
-    # `other` then checks it. `Hash[_: Any]` does not satisfy `Hash[name?: String]`
-    # — it happily passes `{name: 1}` along.
+    # Checks required keys and the types of optional keys that self may carry.
     def named_keys_ok?(other)
       other.literal_fields.all? do |other_key, other_field|
         mine_key, mine_field = _schema.find { |k, _| k.eql?(other_key) }
@@ -395,61 +337,39 @@ module Plumb
           Plumb::Subtyping.subtype?(mine_field, other_field) &&
             (other_key.optional? || !mine_key.optional?)
         else
-          # `self` never names it, so its values may carry that key holding whatever
-          # `self` guarantees for keys it does not name — which is NOTHING unless a
-          # matcher key or the `_` catch-all claims it. `other` would then reject a
-          # value `self` admits, so this is not a subtype.
-          # A closed record simply never carries the key, and `other` allows it to be
-          # missing. An open one may carry it holding anything, so it has to promise.
+          # "Optional" does not mean impossible: matcher keys or a catch-all may
+          # still carry this name. Closed records omit it; open records must
+          # constrain any value they can carry there.
           other_key.optional? && (closed? || promises?(guarantee_for(other_key.to_key), other_field))
         end
       end
     end
 
-    # What `self` promises about a key it does not literally declare: the field of
-    # the first matcher key that claims it (#call is first-match-wins), which
-    # includes the `_` catch-all. nil when nothing claims it — the key is then
-    # unconstrained and may hold anything.
+    # Returns the first matcher field that claims an undeclared key.
     def guarantee_for(key_name)
       @matcher_fields.find { |mk, _| mk.match?(key_name) }&.last
     end
 
-    # `other`'s MATCHER keys — its typed keys and its `_` catch-all — constrain keys
-    # it does not name, which is exactly the open tail `self` may carry. So `self`
-    # has to promise the same thing about that tail, and only a catch-all of its own
-    # can. Without one the tail is unconstrained and `other` would reject values
-    # `self` admits.
+    # Checks that self's open tail satisfies every matcher field in other.
     def tail_ok?(other)
       return true if closed? # no tail for `other`'s matcher keys to constrain
 
       other.matcher_fields.all? { |_k, f| promises?(catch_all_type, f) }
     end
 
-    # Does what `self` promises for an unnamed key — possibly nothing — satisfy what
-    # `other` wants there? A wanted type of `Any` constrains nothing, so an absent
-    # promise still satisfies it: that is what keeps a closed Hash a subtype of the
-    # same Hash opened with `_: Any`.
+    # Tests whether an optional guarantee satisfies a requested field type.
     def promises?(guaranteed, wanted)
       return true if wanted.is_a?(AnyClass)
 
       !guaranteed.nil? && Plumb::Subtyping.subtype?(guaranteed, wanted)
     end
 
-    # Every key `self` can carry that `other` does not name has to satisfy whichever
-    # of `other`'s matcher keys claims it — its typed keys and its `_` catch-all.
-    # A key none of them matches is dropped by `other`'s #call (the non-inclusive
-    # default), so it constrains nothing: that is what makes width subtyping work
-    # against a closed record.
-    #
-    # Covers `self`'s matcher keys as well as its literal ones. A typed key like
-    # `String[/^id_/] => String` carries values just as a named key does, and
-    # `other`'s catch-all applies to them the same way.
+    # Checks every carried key against overlapping matcher fields in other.
     def carried_keys_ok?(other)
       _schema.all? do |mine_key, mine_field|
         theirs = other._schema.find { |ok, _| ok.eql?(mine_key) }
         if theirs
-          # The same key on both sides. Literal keys were already related by
-          # #named_keys_ok?; a matcher key still needs its depth checked.
+          # named_keys_ok? already checked literal fields.
           mine_key.literal? || Plumb::Subtyping.subtype?(mine_field, theirs.last)
         else
           other.matcher_fields.all? do |other_key, other_field|
@@ -460,10 +380,7 @@ module Plumb
       end
     end
 
-    # Could one Ruby key be claimed by both of these keys? Exact whenever either
-    # side is literal. Two matchers are assumed to overlap: their domains are
-    # arbitrary `#===` matchers and cannot be compared in general, so the caller
-    # demands the depth relation rather than assume they are disjoint.
+    # Tests literal overlap exactly; assumes two arbitrary matchers may overlap.
     def keys_may_overlap?(mine, theirs)
       return mine.eql?(theirs) if mine.literal? && theirs.literal?
       return theirs.match?(mine.to_key) if mine.literal?
@@ -474,10 +391,7 @@ module Plumb
 
     def hashmap_subtype?(other)
       return false if _schema.empty?
-      # A map constrains every key and value it carries, so a record sits below one
-      # only when it leaves no unconstrained tail: either it is read as a produced
-      # value (see #closed), or it has a catch-all — and then the loop below still
-      # has to place that catch-all's Any key matcher inside the map's key type.
+      # Open records need a catch-all to constrain every map entry.
       return false unless closed? || catch_all_type
 
       key_type, value_type = other.children
