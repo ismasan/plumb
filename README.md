@@ -2668,7 +2668,7 @@ To install this gem onto your local machine, run `bundle exec rake install`. To 
 
 ## Contributing
 
-Bug reports and pull requests are welcome on GitHub at https://github.com/ismasan/plumb.
+Bug reports and pull requests are welcome on GitHub at [github.com/ismasan/plumb](https://github.com/ismasan/plumb).
 
 ## License
 
