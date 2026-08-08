@@ -2091,6 +2091,34 @@ JSONPerson.to_json_schema
 # "dates" is described as { "type" => "object", "properties" => { "from" => { "type" => "string" }, ... } }
 ```
 
+#### Codec instances: a registry of pre-built pairs
+
+Composing a codec rewrites the whole type tree, so it belongs at boot — not on the path of every message. A codec _instance_ is a registry of `[decoder, encoder]` pairs, each built once by `register` and then looked up by key:
+
+```ruby
+CODECS = JSONCodec.new do |c|
+  c.register('person.created', Person)
+  c.register('company.created', Company)
+  c.register(Types::Date) # the key defaults to the type itself
+end
+
+CODECS.decode('person.created', payload)   # => a Person hash
+CODECS.encode('person.created', person)    # => JSON structures
+CODECS.decode(Types::Date, '2024-01-01')   # => Date
+```
+
+Keys are yours to choose — a message name, a content type, the type itself. `decode` and `encode` only `#parse`, so the rewrite is paid for once.
+
+An instance built with a block is frozen when the block returns. Without one it stays open, and `register` chains:
+
+```ruby
+registry = JSONCodec.new
+registry.register('day', Types::Date).register('person', Person)
+registry.freeze
+```
+
+`key?` asks what is registered; an unknown key raises `Plumb::Codec::NoEntryError` (a `KeyError`). Payloads are still validated by their type — a bad one raises `Plumb::ParseError` as usual.
+
 #### `Codec::Forms`: string-based formats
 
 The second built-in codec targets HTML forms, query strings and other formats where **every value arrives as a string**. Unlike `Codec::JSON` there are almost no native scalars: strings pass through, untyped containers recurse (Rack-style nested params), and everything else maps through an encoder with a strictly-patterned string input type — integers (`/\A-?\d+\z/`), floats, decimals, booleans (`"true"/"1"`, `"false"/"0"`, case-insensitive), ISO 8601 dates and times, scheme-prefixed URIs, and the empty string for `nil` (so `Types::Date | Types::Nil` decodes `''` to `nil`).
