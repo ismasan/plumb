@@ -197,6 +197,39 @@ module Plumb
       end
     end
 
+    Entry = Data.define(:decoder, :encoder)
+    NoEntryError = Class.new(KeyError)
+
+    def initialize(&)
+      @entries = {}
+      return unless block_given?
+
+      yield self
+      freeze
+    end
+
+    def freeze
+      @entries.freeze
+      super
+    end
+
+    # Named, not splatted: both sides are types that #parse, so a swapped pair would
+    # decode where it should encode without anything raising.
+    def register(key, type = key)
+      decoder, encoder = self.class.for(type)
+      @entries[key] = Entry.new(decoder:, encoder:)
+      self
+    end
+
+    def key?(key) = @entries.key?(key)
+
+    def decode(key, payload) = entry(key).decoder.parse(payload)
+    def encode(key, payload) = entry(key).encoder.parse(payload)
+
+    def inspect
+      %(#<#{self.class}:#{object_id} [#{@entries.size} entries]>)
+    end
+
     # The deep rewrite walker. Top-down, per node:
     #
     #   1. Static values, Or/And chains and transparent wrappers recurse into
@@ -463,12 +496,10 @@ module Plumb
         # constant) still rewrite their input once.
         input = enc.input_type_for(type)
         rewritten_input = @input_memo.fetch(type) do
-          begin
-            @input_stack.push(enc)
-            @input_memo[type] = visit(input, path + ["<#{enc.inspect} input>"])
-          ensure
-            @input_stack.pop
-          end
+          @input_stack.push(enc)
+          @input_memo[type] = visit(input, path + ["<#{enc.inspect} input>"])
+        ensure
+          @input_stack.pop
         end
 
         # Splice the input into the step unless it is the encoder's declared
@@ -662,7 +693,6 @@ module Plumb
                 'Register an encoder for it, or declare it with .noop.'
         end
       end
-
     end
 
     # ------------------------------------------------------------------
@@ -844,6 +874,12 @@ module Plumb
       # Format-neutral string encoders, shared with Codec::JSON.
       encoder DateEncoder, TimeEncoder, SymbolEncoder, DecimalEncoder
       encoder URIEncoder, HTTPURIEncoder, FileURIEncoder
+    end
+
+    private
+
+    def entry(key)
+      @entries.fetch(key) { raise NoEntryError, "no encoder/decoder registered for #{key}" }
     end
   end
 end

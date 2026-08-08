@@ -200,6 +200,64 @@ module CodecSpecTypes
       end
     end
 
+    describe 'registry (Codec instances)' do
+      it 'decodes and encodes by key' do
+        registry = JSONCodec.new do |c|
+          c.register('person.created', Person)
+          c.register('day', Types::Date)
+        end
+
+        expect(registry.decode('person.created', ENCODED_PERSON)).to eq(PERSON)
+        expect(registry.encode('person.created', PERSON)).to eq(ENCODED_PERSON)
+        expect(registry.decode('day', '2024-01-01')).to eq(DATE)
+        expect(registry.encode('day', DATE)).to eq('2024-01-01')
+      end
+
+      it 'composes each pair ONCE, at registration' do
+        registry = JSONCodec.new { |c| c.register('person', Person) }
+
+        expect(JSONCodec).not_to receive(:for) # the rewrite already happened
+        3.times { expect(registry.decode('person', ENCODED_PERSON)).to eq(PERSON) }
+      end
+
+      it 'defaults the type to the key itself' do
+        registry = JSONCodec.new { |c| c.register(Company) }
+
+        company = registry.decode(Company, { name: 'ACME', founded: '2024-01-01' })
+        expect(company).to eq(Company.new(name: 'ACME', founded: DATE))
+        expect(registry.encode(Company, company)).to eq({ name: 'ACME', founded: '2024-01-01' })
+      end
+
+      it 'reports what it knows, and raises a KeyError for what it does not' do
+        registry = JSONCodec.new { |c| c.register('day', Types::Date) }
+
+        expect(registry.key?('day')).to be(true)
+        expect(registry.key?('nope')).to be(false)
+        expect { registry.decode('nope', 'x') }
+          .to raise_error(Plumb::Codec::NoEntryError, %r{no encoder/decoder registered for nope})
+        expect { registry.encode('nope', DATE) }.to raise_error(KeyError) # rescuable either way
+      end
+
+      it 'still validates the payload' do
+        registry = JSONCodec.new { |c| c.register('day', Types::Date) }
+
+        expect { registry.decode('day', 'not-a-date') }.to raise_error(Plumb::ParseError)
+        expect(registry.decode('day', '2024-01-01')).to eq(DATE)
+      end
+
+      it 'freezes when built with a block, and stays open without one' do
+        sealed = JSONCodec.new { |c| c.register('day', Types::Date) }
+        expect(sealed).to be_frozen
+        expect { sealed.register('late', Types::String) }.to raise_error(FrozenError)
+
+        open = JSONCodec.new
+        expect(open).not_to be_frozen
+        expect(open.register('day', Types::Date)).to be(open) # chainable
+        expect(open.decode('day', '2024-01-01')).to eq(DATE)
+        expect { open.freeze.register('late', Types::String) }.to raise_error(FrozenError)
+      end
+    end
+
     describe 'composition with any type (scalar roots)' do
       it 'decodes a matched scalar' do
         expect((JSONCodec >> Types::Date).parse('2024-01-01')).to eq(DATE)
