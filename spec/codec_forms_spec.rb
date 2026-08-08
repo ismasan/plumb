@@ -96,7 +96,7 @@ module CodecFormsSpec
         decoder, encoder = Codec.for(Types::Time)
         expect(decoder.parse('2024-08-30T20:15:23Z')).to eq(time)
         expect(decoder.resolve('2024-').valid?).to be(false)
-        expect(encoder.parse(time)).to eq('2024-08-30T20:15:23Z')
+        expect(encoder.parse(time)).to eq('2024-08-30T20:15:23.000000Z')
       end
     end
 

@@ -718,9 +718,10 @@ module Plumb
       def decode(str) = ::Date.parse(str)
     end
 
-    # Time <=> ISO 8601 date-time string ("2024-08-30T20:15:23Z").
+    # Time <=> ISO 8601 date-time string ("2024-08-30T20:15:23.456789Z").
+    #
     class TimeEncoder < Encoder[Types::String[TIME_EXPR].metadata(format: 'date-time') => Types::Time]
-      def encode(time) = time.iso8601
+      def encode(time) = time.iso8601(6)
       def decode(str) = ::Time.parse(str)
     end
 

@@ -119,11 +119,21 @@ module CodecSpecTypes
       it 'encodes and decodes Times and URIs via the shared encoders' do
         time = ::Time.parse('2024-08-30T20:15:23Z')
         expect((Plumb::Codec::JSON >> Types::Time).parse('2024-08-30T20:15:23Z')).to eq(time)
-        expect((Types::Time >> Plumb::Codec::JSON).parse(time)).to eq('2024-08-30T20:15:23Z')
+        expect((Types::Time >> Plumb::Codec::JSON).parse(time)).to eq('2024-08-30T20:15:23.000000Z')
 
         uri = URI.parse('http://example.com')
         expect((Plumb::Codec::JSON >> Types::URI::HTTP).parse('http://example.com')).to eq(uri)
         expect((Types::URI::HTTP >> Plumb::Codec::JSON).parse(uri)).to eq('http://example.com')
+      end
+
+      it 'round-trips a Time at microsecond precision' do
+        decoder, encoder = Plumb::Codec::JSON.for(Types::Time)
+        time = ::Time.utc(2024, 8, 30, 20, 15, 23, 456_789)
+
+        expect(encoder.parse(time)).to eq('2024-08-30T20:15:23.456789Z')
+        expect(decoder.parse(encoder.parse(time))).to eq(time) # nothing lost below the second
+        # a string without a fraction still decodes
+        expect(decoder.parse('2024-08-30T20:15:23Z')).to eq(::Time.utc(2024, 8, 30, 20, 15, 23))
       end
 
       it 'encodes and decodes Symbols as strings, keeping narrowed checks' do
@@ -432,7 +442,7 @@ module CodecSpecTypes
         expect(decoder.parse('2024-01-01T10:00:00Z')).to eq(::Time.parse('2024-01-01T10:00:00Z'))
         expect(decoder.parse('Jan 3 2024')).to eq(::Time.parse('Jan 3 2024'))
         expect(decoder.resolve('nonsense').valid?).to be(false)
-        expect(encoder.parse(::Time.parse('2024-01-01T10:00:00Z'))).to eq('2024-01-01T10:00:00Z')
+        expect(encoder.parse(::Time.parse('2024-01-01T10:00:00Z'))).to eq('2024-01-01T10:00:00.000000Z')
       end
 
       it 'passes an opaque generator through, and does not rewrite what follows it' do
