@@ -200,8 +200,23 @@ module Plumb
     Entry = Data.define(:decoder, :encoder)
     NoEntryError = Class.new(KeyError)
 
+    # An INSTANCE is a registry of composed [decoder, encoder] pairs, so the
+    # per-message path is just #parse. Keys are the app's own — a tag for
+    # self-describing payloads, or the type itself:
+    #
+    #   registry = Plumb::Codec::JSON.new do |c|
+    #     c.register('person.created', Person)  # tag -> type
+    #     c.register(Types::Date)               # key defaults to the type
+    #   end
+    #   registry.decode('person.created', payload)
+    #   registry.encode(Types::Date, Date.today)
+    #
+    # Built with a block it is FROZEN — a closed set, declared at boot. Built
+    # without one it stays open and composes type keys on first use, so an app
+    # need not enumerate them; #freeze seals it later.
     def initialize(&)
       @entries = {}
+      @lock = Mutex.new
       return unless block_given?
 
       yield self
@@ -216,12 +231,14 @@ module Plumb
     # Named, not splatted: both sides are types that #parse, so a swapped pair would
     # decode where it should encode without anything raising.
     def register(key, type = key)
-      decoder, encoder = self.class.for(type)
-      @entries[key] = Entry.new(decoder:, encoder:)
+      raise FrozenError, "#{inspect} is sealed; register before freezing it" if frozen?
+
+      entry = build_entry(type)
+      @lock.synchronize { @entries[key] = entry }
       self
     end
 
-    def key?(key) = @entries.key?(key)
+    def key?(key) = !read(key).nil?
 
     def decode(key, payload) = entry(key).decoder.parse(payload)
     def encode(key, payload) = entry(key).encoder.parse(payload)
@@ -880,7 +897,34 @@ module Plumb
     private
 
     def entry(key)
-      @entries.fetch(key) { raise NoEntryError, "no encoder/decoder registered for #{key}" }
+      read(key) || lazy_entry(key) || raise(NoEntryError, "no encoder/decoder registered for #{key}")
+    end
+
+    # Sealed, @entries can never change again, so reads need no synchronization —
+    # the shared-global case is also the cheapest one.
+    def read(key) = frozen? ? @entries[key] : @lock.synchronize { @entries[key] }
+
+    # Fill in on demand, so an app need not enumerate every type it exchanges.
+    # Only for keys that ARE types: an app-owned tag ('person.created') names
+    # nothing the codec could compile, and still raises. Freezing is how an app
+    # declares its set closed — a sealed registry never fills in.
+    #
+    # Keys match by value, so a type literal built fresh per call adds an entry
+    # per call. Constants and classes are stable; sealing rules it out entirely.
+    def lazy_entry(key)
+      return nil if frozen? || !(key.is_a?(Composable) || key.is_a?(::Module))
+
+      # Composed OUTSIDE the lock, as TypeCache does: holding it across a rewrite
+      # would convoy every other thread's lookups behind one cold type. Racing
+      # threads both compose; the rewrite is a pure function of the type, so the
+      # loser's copy is equivalent and simply dropped.
+      entry = build_entry(key)
+      @lock.synchronize { @entries[key] ||= entry }
+    end
+
+    def build_entry(type)
+      decoder, encoder = self.class.for(type)
+      Entry.new(decoder:, encoder:)
     end
   end
 end
