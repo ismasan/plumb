@@ -266,6 +266,58 @@ module CodecSpecTypes
         expect(open.decode('day', '2024-01-01')).to eq(DATE)
         expect { open.freeze.register('late', Types::String) }.to raise_error(FrozenError)
       end
+
+      it 'composes a type key on first use, then reuses it' do
+        open = JSONCodec.new
+
+        expect(JSONCodec).to receive(:for).once.with(Person).and_call_original
+        3.times { expect(open.decode(Person, ENCODED_PERSON)).to eq(PERSON) }
+        expect(open.encode(Person, PERSON)).to eq(ENCODED_PERSON)
+        expect(open.key?(Person)).to be(true)
+      end
+
+      it 'composes raw and scalar type keys too' do
+        open = JSONCodec.new
+
+        expect(open.decode(::Date, '2024-01-01')).to eq(DATE)
+        expect(open.encode(Types::Date, DATE)).to eq('2024-01-01')
+      end
+
+      it 'never composes a key that is not a type — a tag names nothing to compose' do
+        open = JSONCodec.new
+
+        expect { open.decode('person.created', ENCODED_PERSON) }
+          .to raise_error(Plumb::Codec::NoEntryError, %r{no encoder/decoder registered for person.created})
+        expect(open.key?('person.created')).to be(false)
+      end
+
+      it 'stops composing once sealed, so a frozen registry is a closed set' do
+        sealed = JSONCodec.new { |c| c.register('day', Types::Date) }
+
+        expect(JSONCodec).not_to receive(:for)
+        expect { sealed.decode(Person, ENCODED_PERSON) }
+          .to raise_error(Plumb::Codec::NoEntryError)
+      end
+
+      it 'composes a cold type safely from concurrent threads' do
+        open = JSONCodec.new
+        results = Queue.new
+        gate = Queue.new
+
+        threads = 8.times.map do
+          Thread.new do
+            gate.pop # release them together, onto the same cold key
+            results << open.decode(Person, ENCODED_PERSON)
+          rescue StandardError => e
+            results << e
+          end
+        end
+        8.times { gate << :go }
+        threads.each(&:join)
+
+        expect(Array.new(8) { results.pop }).to all(eq(PERSON))
+        expect(open.key?(Person)).to be(true)
+      end
     end
 
     describe 'composition with any type (scalar roots)' do

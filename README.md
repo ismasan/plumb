@@ -2119,6 +2119,21 @@ registry.freeze
 
 `key?` asks what is registered; an unknown key raises `Plumb::Codec::NoEntryError` (a `KeyError`). Payloads are still validated by their type — a bad one raises `Plumb::ParseError` as usual.
 
+An open registry also composes _type_ keys on first use, so you need not enumerate every type you exchange:
+
+```ruby
+CODECS = JSONCodec.new # no block, so it stays open
+
+CODECS.encode(Person, person)              # composes Person now, reuses it after
+CODECS.decode(Person, payload)
+CODECS.decode(Types::Date, '2024-01-01')
+CODECS.decode(::Date, '2024-01-01')        # raw Ruby classes work too
+```
+
+Only keys that _are_ types compose themselves — an app-owned tag like `'person.created'` names nothing the codec could build, so it still raises `NoEntryError` until you register it. Freezing is how you declare the set closed: a sealed registry never composes anything new, which is what you want at boot when every type is known.
+
+Open registries are safe to share between threads — composition happens outside a lock, and racing threads simply compose the same (pure) rewrite twice. Note that type keys match by value, so a type literal built fresh on each call (`CODECS.decode(Types::Hash[on: Types::Date], payload)`) adds an entry per call: pass constants, or seal the registry.
+
 #### `Codec::Forms`: string-based formats
 
 The second built-in codec targets HTML forms, query strings and other formats where **every value arrives as a string**. Unlike `Codec::JSON` there are almost no native scalars: strings pass through, untyped containers recurse (Rack-style nested params), and everything else maps through an encoder with a strictly-patterned string input type — integers (`/\A-?\d+\z/`), floats, decimals, booleans (`"true"/"1"`, `"false"/"0"`, case-insensitive), ISO 8601 dates and times, scheme-prefixed URIs, and the empty string for `nil` (so `Types::Date | Types::Nil` decodes `''` to `nil`).
