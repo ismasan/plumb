@@ -303,7 +303,7 @@ Types::Never.to_json_schema       # => { "not" => {} }
 
 You rarely write `Types::Never` by hand — it's what an impossible intersection reduces to, which lets the composition algebra prove and discard dead branches (as in `Integer | (String & Integer)` above). It's also useful as a Hash catch-all to forbid undeclared keys — see [`_: Types::Never`](#undeclared-keys-and-the-_-catch-all).
 
-### Built-in types
+## Built-in types
 
 * `Types::Value`
 * `Types::Array`
@@ -338,11 +338,11 @@ For parsing stringy formats (HTML forms, query strings) into these types — wha
 
 TODO: datetime, others.
 
-### Policies
+## Policies
 
 Policies are helpers that encapsulate common compositions. Plumb ships with some handy ones, listed below, and you can also define your own.
 
-#### `#present`
+### `#present`
 
 Checks that the value is not blank (`""` if string, `[]` if array, `{}` if Hash, or `nil`)
 
@@ -351,7 +351,7 @@ Types::String.present.resolve('') # Failure with errors
 Types::Array[Types::String].present.resolve([]) # Failure with errors
 ```
 
-#### `#nullable`
+### `#nullable`
 
 Allow `nil` values.
 
@@ -368,7 +368,7 @@ Note that this just encapsulates the following composition:
 nullable_str = Types::String | Types::Nil
 ```
 
-#### `#not`
+### `#not`
 
 Negates a type. 
 ```ruby
@@ -394,7 +394,7 @@ NotNil.parse('hello') # 'hello'
 NotNil.parse(nil) # error
 ```
 
-#### `#options`
+### `#options`
 
 Sets allowed options for value.
 
@@ -442,7 +442,7 @@ Types::Array.where(size: 10) >> Types::Array.where(size: 8..100) # ok: 10 is wit
 Types::Array.where(size: 10..15) >> Types::Array.where(size: 11..14) # raises: 10..15 isn't within 11..14
 ```
 
-#### `#transform`
+### `#transform`
 
 Transform value. Requires specifying the resulting type of the value after transformation.
 
@@ -472,7 +472,7 @@ Types::Any.transform(:to_i)       # ok — unknown input type, no check
 
 `#transform` builds a [`Plumb::Function`](#plumbfunctioninput--output) — the underlying typed-conversion node — with a block that takes and returns a plain value. To build one standalone from a callable, or to work at the `Result` level, use `Plumb::Function[]` directly.
 
-#### `#invoke`
+### `#invoke`
 
 `#invoke` builds a step that will invoke one or more methods on the value.
 
@@ -509,7 +509,7 @@ type.parse([1, 2]) # raises NoMethodError because Array doesn't respond to #stri
 
 Use with caution.
 
-#### `#default`
+### `#default`
 
 Default value when no value given (ie. when key is missing in Hash payloads. See `Types::Hash` below).
 
@@ -564,7 +564,7 @@ Same if you want to apply a default to several cases.
 str = Types::String | ((Types::Nil | Types::Undefined) >> Types::Static['nope'.freeze])
 ```
 
-#### `#build`
+### `#build`
 
 Build a custom object or class.
 
@@ -597,7 +597,7 @@ Note that this case is identical to `#transform` with a block.
 StringToMoney = Types::String.transform(Money) { |value| Monetize.parse(value) }
 ```
 
-#### `#check`
+### `#check`
 
 Pass the value through an arbitrary validation
 
@@ -607,7 +607,7 @@ type.parse('Role: Manager') # 'Role: Manager'
 type.parse('Manager') # fails
 ```
 
-####  `#value` 
+###  `#value` 
 
 Constrain a type to a specific value. Compares with `#==`
 
@@ -624,7 +624,7 @@ All scalar types support this:
 ten = Types::Integer.value(10)
 ```
 
-#### `#static`
+### `#static`
 
 A type that always returns a valid, static value, regardless of input.
 
@@ -663,7 +663,7 @@ type = Types::Integer[100..].static(150) # ok
 
 So, normally you'd only use this attached to primitive types without further processing (but your use case may vary).
 
-#### `#generate`
+### `#generate`
 
 Passing a proc will evaluate the proc on every invocation. Use this for generated values.
 
@@ -682,7 +682,7 @@ random_number.parse # raises Plumb::ParseError because `rand` is not a String
 
 You can also pass any `#call() => Object` interface as a generator, instead of a proc.
 
-#### `#metadata`
+### `#metadata`
 
 Add metadata to a type
 
@@ -705,7 +705,7 @@ type.metadata[:note] # 'An email address'
 
 TODO: document custom visitors.
 
-#### `#input_type` and `#output_type`
+### `#input_type` and `#output_type`
 
 Every type exposes the type it expects as input and the type it produces as output.
 
@@ -733,7 +733,7 @@ For a plain type, both are the type itself. Unions distribute over both sides:
 
 These power type introspection — for example, the JSON Schema visitor builds its schema from `#input_type`, since a schema describes the values a caller must send.
 
-#### Composition type-checks
+### Composition type-checks
 
 `#>>` is typed by **subsumption**, like function composition in a statically-typed language: everything the left step *produces* must be acceptable to the right step — i.e. the left's output type must be a **subtype** of the right's input type. If not, `#>>` raises `Plumb::TypeError` at build time, so broken data pipelines fail loudly when you define them, not silently at runtime.
 
@@ -784,7 +784,7 @@ Types::Array.where(size: 10) >> Types::Array.where(size: 8..100)     # ok: 10 is
 Types::Array.where(size: 10..15) >> Types::Array.where(size: 11..14) # raises: 10..15 isn't within 11..14
 ```
 
-#### Subtype checks: `#<=` and `Plumb::Subtyping`
+### Subtype checks: `#<=` and `Plumb::Subtyping`
 
 The relation behind the composition check is also available directly. `a <= b` asks "is every value described by `a` also described by `b`?" — i.e. is `a` a subtype/subset of `b`? — with `>=`, `<` and `>` derived from it. `Plumb::Subtyping.subtype?(a, b)` is the same check as a method. Built-in and custom types both participate, and raw Ruby classes/values are accepted on either side (they're normalized):
 
@@ -800,11 +800,11 @@ small = Types::Hash[name: Types::String]
 big <= small                                    # true (width + depth subtyping)
 ```
 
-### Other policies
+## Other policies
 
 There's some other built-in "policies" that can be used via the `#policy` method. Helpers such as `#default` and `#present` are shortcuts for this and can also be used via `#policy(default: 'Hello')` or `#policy(:present)` See [custom policies](#custom-policies) for how to define your own policies.
 
-#### `:respond_to`
+### `:respond_to`
 
 Similar to `Types::Interface`, this is a quick way to assert that a value supports one or more methods.
 
@@ -814,7 +814,7 @@ List = Types::Any.policy(respond_to: :each)
 List = Types::Any.policy(respond_to: [:each, :[], :size)
 ```
 
-#### `:excluded_from`
+### `:excluded_from`
 
 The opposite of `#options`, this policy validates that the value _is not_ included in a list.
 
@@ -822,7 +822,7 @@ The opposite of `#options`, this policy validates that the value _is not_ includ
 Name = Types::String.policy(excluded_from: ['Joe', 'Joan'])
 ```
 
-#### :split` (strings only)
+### :split` (strings only)
 
 Splits string values by a separator (default: `,`).
 
@@ -835,7 +835,7 @@ CSVLine = Types::String.split(/\s*;\s*/)
 CSVLine.parse('a;b;c') # => ['a', 'b', 'c']
 ```
 
-#### `:rescue`
+### `:rescue`
 
 Wraps a step's execution, rescues a specific exception and returns an invalid result.
 
@@ -859,7 +859,7 @@ type.resolve('2024-') # => Result::Invalid with error message
 The guard keeps the type it wraps: the example above is still a `Date` for subtyping,
 JSON Schema and [Codecs](#encoders-and-codecs).
 
-### `Types::Interface`
+## `Types::Interface`
 
 Use this for objects that must respond to one or more methods.
 
@@ -894,7 +894,7 @@ case args
 end
 ```
 
-#### Merging interfaces
+### Merging interfaces
 
 Use the `+` operator to merge two interfaces into a new one that must support both sets of method names.
 
@@ -905,7 +905,7 @@ Countable = Types::Interface[:size]
 CountableIterable = Iterable + Countable
 ```
 
-#### Intersecting interfaces
+### Intersecting interfaces
 
 Use the `&` operator to produce a new interface with the intersection of method names
 
@@ -919,7 +919,7 @@ I3 = Types::Interface[:b, :c]
 
 TODO: make this a bit more advanced. Check for method arity.
 
-### `Types::Hash`
+## `Types::Hash`
 
 ```ruby
 Employee = Types::Hash[
@@ -988,7 +988,7 @@ User = Types::Hash[name: Types::Static['Joe'], age: Integer]
 User.parse(name: 'Rufus', age: 34) # Valid {name: 'Joe', age: 34}
 ```
 
-#### Optional keys
+### Optional keys
 
 Keys suffixed with `?` are marked as optional and its values will only be validated and coerced if the key is present in the input hash.
 
@@ -1012,7 +1012,7 @@ Types::Hash[
 ]
 ```
 
-#### Merging hash definitions
+### Merging hash definitions
 
 Use `Types::Hash#+` to merge two definitions. Keys in the second hash override the first one's.
 
@@ -1022,7 +1022,7 @@ Employee = Types::Hash[name: Types::String, company: Types::String]
 StaffMember = User + Employee # Hash[:name, :age, :company]
 ```
 
-#### Hash intersections
+### Hash intersections
 
 Use `Types::Hash#&` to intersect two hash definitions as maps. It keeps the keys present in **both**, and intersects each shared key's value type:
 
@@ -1047,7 +1047,7 @@ Types::Hash[a: Types::String, _: Types::Any] & Types::Hash[a: Types::String, b: 
 # => Hash[a: String, b: Integer]  (:b admitted via the left's catch-all)
 ```
 
-#### `Types::Hash#tagged_by`
+### `Types::Hash#tagged_by`
 
 Use `#tagged_by` to resolve what definition to use based on the value of a common key.
 
@@ -1064,7 +1064,7 @@ Events = Types::Hash.tagged_by(
 Events.parse(type: 'name_updated', name: 'Joe') # Uses NameUpdatedEvent definition
 ```
 
-#### Undeclared keys and the `_` catch-all
+### Undeclared keys and the `_` catch-all
 
 By default, keys present in the input but **not** declared in the schema are dropped:
 
@@ -1119,7 +1119,7 @@ InputHandler.parse(price: 100_000, name: 'iPhone 15', category: 'smartphones')
 
 The catch-all also shows up in generated JSON Schema as `additionalProperties`: `_: Any` → `{}` (anything), `_: Integer` → `{ "type": "integer" }`, and `_: Never` → `{ "not": {} }` (nothing allowed).
 
-#### Typed keys
+### Typed keys
 
 Keys are not limited to symbols. A key can be any type or matcher, and it matches an input key via `key === other`. So you can key by String, or by a pattern, and mix them with a catch-all:
 
@@ -1131,7 +1131,7 @@ Types::Hash[Types::String[/^id_/] => Types::Integer, # keys matching /^id_/ hold
 
 A typed key is **lenient**: input keys that don't match any declared or typed key follow the catch-all rule above (dropped by default). This is different from a homogeneous map (`Types::Hash[Types::Symbol, Types::Integer]`, a `HashMap` — note the comma, not `=>`), which is **strict** (a non-conforming key is an error) and coerces keys through the key type. Use a `HashMap` for "every key/value has this type"; use typed keys for "keys shaped like this map to that".
 
-#### `Types::Hash#filtered`
+### `Types::Hash#filtered`
 
 The `#filtered` modifier returns a valid Hash with the subset of values that were valid, instead of failing the entire result if one or more values are invalid.
 
@@ -1141,7 +1141,7 @@ User.parse(name: 'Joe', age: 40) # => { name: 'Joe', age: 40 }
 User.parse(name: 'Joe', age: 'nope') # => { name: 'Joe' }
 ```
 
-### `Types::Range`
+## `Types::Range`
 
 `Types::Range` validates that a value is a Ruby `Range`. On its own it accepts any range:
 
@@ -1169,7 +1169,7 @@ Percent.resolve(10..20)   # valid
 Percent.resolve(10..200)  # invalid (200 is outside 1..100)
 ```
 
-#### Open-ended ranges with `#where`
+### Open-ended ranges with `#where`
 
 Use `#where` with the `begin`/`end` attributes to constrain the range's own endpoints. Passing `end: nil` matches only endless ranges, and `begin: nil` only beginless ranges:
 
@@ -1194,7 +1194,7 @@ NonNegativeStart.resolve(5..10)   # valid
 NonNegativeStart.resolve(-5..10)  # invalid
 ```
 
-#### Composition
+### Composition
 
 `Types::Range` is covariant in its member type and preserves its input value (it validates endpoints without coercing them), so it composes like the other containers. A union absorbs a narrower member into a wider one:
 
@@ -1205,7 +1205,7 @@ Types::Range[1..10] <= Types::Range[Integer]  # true (covariant)
 Types::Range[Integer] | Types::Range[1..10]   # => Range[Integer]
 ```
 
-#### JSON Schema
+### JSON Schema
 
 A `Types::Range` whose member pins numeric bounds maps to JSON Schema's native keywords, preserving an exclusive end as `exclusiveMaximum`:
 
@@ -1214,7 +1214,7 @@ Plumb::JSONSchemaVisitor.call(Types::Range[0...100], root: false)
 # => { "type" => "integer", "minimum" => 0, "exclusiveMaximum" => 100 }
 ```
 
-### `Types::SymbolizedHash`
+## `Types::SymbolizedHash`
 
 This type turns a hash's keys into symbols by calling `#to_sym` on them, and returning a new Hash.
 
@@ -1233,7 +1233,7 @@ type = Types::Hash[name: String, age: Integer].symbolized
 type.parse('name' => 'Joe', 'age' => 20) # {name: 'Joe', age: 20}
 ```
 
-###  maps
+##  maps
 
 You can also use Hash syntax to define a hash map with specific types for all keys and values:
 
@@ -1264,7 +1264,7 @@ Use `Types::Value` to validate specific values (using `#==`)
 names_and_ones = Types::Hash[String, Types::Integer.value(1)]
 ```
 
-#### `#filtered`
+### `#filtered`
 
 Calling the `#filtered` modifier on a Hash Map makes it return a sub set of the keys and values that are valid as per the key and value type definitions.
 
@@ -1277,7 +1277,7 @@ S3Config.parse(ENV.to_h) # { 'S3_BUCKET' => 'foo', 'S3_REGION' => 'us-east-1' }
 
 
 
-### `Types::Array`
+## `Types::Array`
 
 ```ruby
 names = Types::Array[Types::String.present]
@@ -1295,7 +1295,7 @@ emails = Types::Array[Types::String[/@/]]
 
 Prefer the latter (`Types::Array[Types::String[/@/]]`), as that first validates that each element is a `String` before matching against the regular expression.
 
-#### Chained array maps fuse into a single pass
+### Chained array maps fuse into a single pass
 
 `Types::Array` is covariant in its element type, so mapping `f` over an array and then mapping `g` is the same as mapping `f >> g` once. Composing two arrays applies that, and the collection is traversed once instead of twice:
 
@@ -1336,7 +1336,7 @@ Types::Array[Trim] / Types::Stream[Symbolize]
 
 That guard is what keeps errors identical: two passes report stage by stage, so if the right map could reject what the left produced, one pass could surface errors two passes never reach. Records (`Types::Hash[name: ...]`) don't fuse either, since a record can drop, add and make keys optional.
 
-#### Concurrent arrays
+### Concurrent arrays
 
 Use `Types::Array#concurrent` to process array elements concurrently (using Concurrent Ruby for now).
 
@@ -1359,13 +1359,13 @@ See the [concurrent downloads example](https://github.com/ismasan/plumb/blob/mai
 
 TODO: pluggable concurrency engines (Async?)
 
-#### `#stream`
+### `#stream`
 
 Turn an Array definition into an enumerator that yields each element wrapped in `Result::Valid` or `Result::Invalid`.
 
 See [`Types::Stream`](#typesstream) below for more.
 
-#### `#filtered`
+### `#filtered`
 
 The `#filtered` modifier makes an array definition return a subset of the input array where the values are valid, as per the array's element type.
 
@@ -1376,7 +1376,7 @@ j_names.parse(%w[james ismael joe toby joan isabel]) # ["james", "joe", "joan"]
 
 
 
-### `Types::Tuple`
+## `Types::Tuple`
 
 ```ruby
 Status = Types::Symbol.options(%i[ok error])
@@ -1408,7 +1408,7 @@ NameAndRegex = Types::Tuple[String, Types::Value[/@/]]
 
 
 
-### `Types::Stream`
+## `Types::Stream`
 
 `Types::Stream` defines an enumerator that validates/coerces each element as it iterates.
 
@@ -1434,7 +1434,7 @@ end
 
 See a more complete the [CSV Stream example](https://github.com/ismasan/plumb/blob/main/examples/csv_stream.rb)
 
-#### `Types::Stream#filtered`
+### `Types::Stream#filtered`
 
 Use `#filtered` to turn a `Types::Stream` into a stream that only yields valid elements.
 
@@ -1445,7 +1445,7 @@ ValidElements.parse(data).each do |valid_row|
 end
 ```
 
-#### `Types::Array#stream`
+### `Types::Array#stream`
 
 A `Types::Array` definition can be turned into a stream.
 
@@ -1460,11 +1460,11 @@ Str.parse(data).each do |row|
 end
 ```
 
-### Types::Data
+## Types::Data
 
 `Types::Data` provides a superclass to define **immutable** structs or value objects with typed / coercible attributes.
 
-#### `[]` Syntax
+### `[]` Syntax
 
 The `[]` syntax is a short-hand for struct definition.
 Like `Plumb::Types::Hash`, suffixing a key with `?` makes it optional.
@@ -1497,7 +1497,7 @@ PersonHash = Types::Hash[name: String, age?: Integer]
 PersonStruct = Types::Data[PersonHash]
 ```
 
-#### `#with`
+### `#with`
 
 Note that these instances cannot be mutated (there's no attribute setters), but they can be copied with partial attributes with `#with`
 
@@ -1505,7 +1505,7 @@ Note that these instances cannot be mutated (there's no attribute setters), but 
 another_person = person.with(age: 20)
 ```
 
-#### `.attribute` syntax
+### `.attribute` syntax
 
 This syntax allows defining struct classes with typed attributes, including nested structs.
 
@@ -1588,7 +1588,7 @@ Note that this does NOT work with union'd or piped structs.
 attribute :company, Company | Person do
 ```
 
-#### Shorthand array syntax
+### Shorthand array syntax
 
 ```ruby
 attribute :things, [] # Same as attribute :things, Types::Array
@@ -1605,7 +1605,7 @@ Note that, if you want to match an attribute value against a literal array, you 
 attribute :one_two_three, Types::Array.value[[1, 2, 3]])
 ```
 
-#### Optional Attributes
+### Optional Attributes
 
 Using `attribute?` allows for optional attributes. If the attribute is not present, these attribute values will be `nil`
 
@@ -1613,7 +1613,7 @@ Using `attribute?` allows for optional attributes. If the attribute is not prese
 attribute? :company, Company
 ```
 
-#### Before steps, symbolizing keys
+### Before steps, symbolizing keys
 
 The optional `.step` helper adds arbitrary Plumb steps to a Data constructor's internal pipeline.
 
@@ -1656,7 +1656,7 @@ person.last_name # => 'BLOGGS'
 
 A Data class steps are inherited to its child classes.
 
-#### Inheritance
+### Inheritance
 
 Data structs can inherit from other structs. This is useful for defining a base struct with common attributes.
 
@@ -1670,7 +1670,7 @@ class Person < BasePerson
 end
 ```
 
-#### Equality with `#==`
+### Equality with `#==`
 
 `#==` is implemented to compare attributes, recursively.
 
@@ -1680,7 +1680,7 @@ person2 = Person.new(name: 'Joe', age: 20)
 person1 == person2 # true
 ```
 
-#### Struct composition
+### Struct composition
 
 `Types::Data` supports all the composition operators and helpers.
 
@@ -1702,7 +1702,7 @@ Payload = Types::Hash[
 ]
 ```
 
-#### Attribute writers
+### Attribute writers
 
 By default `Types::Data` classes are inmutable, but you can define attribute writers to allow for mutation using the `writer: true` option.
 
@@ -1726,7 +1726,7 @@ config.valid? # true
 config.errors # {}
 ```
 
-#### Recursive struct definitions
+### Recursive struct definitions
 
 You can use `#defer`. See [recursive types](#recursive-types).
 
@@ -1741,11 +1741,11 @@ person.friend.name # 'joan'
 person.friend.friend # nil
 ```
 
-### Plumb::Pipeline
+## Plumb::Pipeline
 
 `Plumb::Pipeline` offers a sequential, step-by-step syntax for composing processing steps, as well as a simple middleware API to wrap steps for metrics, logging, debugging, caching and more. See the [command objects](https://github.com/ismasan/plumb/blob/main/examples/command_objects.rb) example for a worked use case.
 
-#### `#pipeline` helper
+### `#pipeline` helper
 
 All plumb steps have a `#pipeline` helper.
 
@@ -1777,7 +1777,7 @@ result = CreateUser.resolve(name: 'Joe', age: 40)
 # result.value => User
 ```
 
-##### `#step` (non-strict) and `#step!` (strict)
+#### `#step` (non-strict) and `#step!` (strict)
 
 A pipeline is a sequence of validators/coercions that progressively narrows its data, so **`#step` is non-strict**: it chains with [`#/`](#composition-type-checks), skipping the composition check (a later step may legitimately narrow what an earlier one produced). Use **`#step!`** for the strict [`#>>` check](#composition-type-checks) — a build-time `Plumb::TypeError` if a step could never accept the previous step's output.
 
@@ -1811,7 +1811,7 @@ IsJoe = User.check('must be named joe') { |user|
 CreateIfJoe = IsJoe >> CreateUser
 ```
 
-##### `#around`
+#### `#around`
 
 Use `#around` in a pipeline definition to add a middleware step that wraps all other steps registered.
 
@@ -1865,7 +1865,7 @@ pl.around do |step, result|
 end
 ```
 
-#### As stand-alone `Plumb::Pipeline` class
+### As stand-alone `Plumb::Pipeline` class
 
 `Plumb::Pipeline` can also be used on its own, sub-classed, and it can take class-level `around` middleware.
 
@@ -1910,7 +1910,7 @@ pipe = DebuggablePipeline.new do |pl|
 end
 ```
 
-#### Pipelines all the way down :turtle:
+### Pipelines all the way down :turtle:
 
 Pipelines are full Plumb steps, so they can themselves be used as steps.
 
@@ -1926,7 +1926,7 @@ Pipe2 = DebuggablePipeline.new do |pl|
 end
 ```
 
-### Recursive types
+## Recursive types
 
 You can use a proc to defer evaluation of recursive definitions.
 
@@ -1959,11 +1959,11 @@ LinkedList = Types::Hash[
 
 
 
-### Encoders and Codecs
+## Encoders and Codecs
 
 A one-way coercion can parse an external representation (a date string) into a parsed value (a `Date`), but not back. **Encoders** generalize that into pluggable, two-way serialization, and **Codecs** group encoders and apply them to whole schemas — Ruby data structures to JSON-ready structures and back, for example.
 
-#### Defining encoders
+### Defining encoders
 
 An encoder is a class declaring an input and an output type, with `#decode` (input ⇒ output) and `#encode` (output ⇒ input) methods:
 
@@ -2003,7 +2003,7 @@ JSONDateRangeEncoder.encode(Date.new(2024, 1, 1)..Date.new(2024, 2, 1))         
 
 Encoders also express lenient unions — `Types::Date | SomeDateEncoder` accepts a `Date` or decodes a string into one.
 
-#### Codecs
+### Codecs
 
 A codec groups encoders and applies them to whole types at composition time. Codecs know nothing about any particular format — only their encoders. Types that are already valid in the target format are declared with `.noop`:
 
@@ -2091,7 +2091,7 @@ JSONPerson.to_json_schema
 # "dates" is described as { "type" => "object", "properties" => { "from" => { "type" => "string" }, ... } }
 ```
 
-#### Codec instances: a registry of pre-built pairs
+### Codec instances: a registry of pre-built pairs
 
 Composing a codec rewrites the whole type tree, so it belongs at boot — not on the path of every message. A codec _instance_ is a registry of `[decoder, encoder]` pairs, each built once by `register` and then looked up by key:
 
@@ -2134,7 +2134,7 @@ Only keys that _are_ types compose themselves — an app-owned tag like `'person
 
 Open registries are safe to share between threads — composition happens outside a lock, and racing threads simply compose the same (pure) rewrite twice. Note that type keys match by value, so a type literal built fresh on each call (`CODECS.decode(Types::Hash[on: Types::Date], payload)`) adds an entry per call: pass constants, or seal the registry.
 
-#### `Codec::Forms`: string-based formats
+### `Codec::Forms`: string-based formats
 
 The second built-in codec targets HTML forms, query strings and other formats where **every value arrives as a string**. Unlike `Codec::JSON` there are almost no native scalars: strings pass through, untyped containers recurse (Rack-style nested params), and everything else maps through an encoder with a strictly-patterned string input type — integers (`/\A-?\d+\z/`), floats, decimals, booleans (`"true"/"1"`, `"false"/"0"`, case-insensitive), ISO 8601 dates and times, scheme-prefixed URIs, and the empty string for `nil` (so `Types::Date | Types::Nil` decodes `''` to `nil`).
 
@@ -2165,7 +2165,7 @@ Things to know:
 * Registering `noop Types::Hash` / `Types::Array` only covers *untyped* containers — structured schemas (and struct classes) are always recursed into, so a generic noop can't accidentally skip encoding of nested fields.
 * Decoding a struct runs the rewritten schema and then the struct's own validation — correct, but a struct attribute with a non-idempotent transform would apply it twice. Struct attributes should be validators/coercions, as they already must be for `#with`.
 
-### Custom types
+## Custom types
 
 Every Plumb type exposes the following one-method interface:
 
@@ -2177,7 +2177,7 @@ As long as an object implements this interface, it can be composed into Plumb wo
 
 The `Result::Valid` class has helper methods `#valid(value) => Result::Valid` and `#invalid(errors:) => Result::Invalid` to facilitate returning valid or invalid values from your own steps.
 
-#### Compose procs or lambdas directly
+### Compose procs or lambdas directly
 
 Piping any `#call` object onto Plumb types wraps your object in a composable step, with all methods necessary for further composition.
 
@@ -2185,7 +2185,7 @@ Piping any `#call` object onto Plumb types wraps your object in a composable ste
 Greeting = Types::String >> ->(result) { result.valid("Hello #{result.value}") }
 ```
 
-#### `Plumb::Function[input => output]`
+### `Plumb::Function[input => output]`
 
 To build a standalone, typed function from a callable — one not already piped onto a type — use `Plumb::Function[]`. Declaring both ends gives you a typed function: the input is validated before your callable runs, and the value it produces is validated against the output type.
 
@@ -2241,7 +2241,7 @@ Either way, `Greeting` is a full Plumb step, which comes with all the Plumb meth
 LoudGreeting = Greeting.default('no greeting').invoke(:upcase)
 ```
 
-#### A custom `#call` class
+### A custom `#call` class
 
 Or write a custom class that responds to `#call(Result::Valid) => Result::Valid | Result::Invalid`
 
@@ -2264,7 +2264,7 @@ MyType = Types::String >> Greeting.new('Hola')
 
 This is useful when you want to parameterize your custom steps, for example by initialising them with arguments like the example above.
 
-#### Include `Plumb::Composable` to make instance of a class full "steps"
+### Include `Plumb::Composable` to make instance of a class full "steps"
 
 The class above will be wrapped in a composable step when piped into other steps, but it doesn't support Plumb methods on its own.
 
@@ -2296,7 +2296,7 @@ Now you can use your class as a composition starting point directly.
 LoudGreeting = Greeting.new('Hola').default('no greeting').invoke(:upcase)
 ```
 
-#### Extend a class with `Plumb::Composable` to make the class itself a composable step.
+### Extend a class with `Plumb::Composable` to make the class itself a composable step.
 
 ```ruby
 class User
@@ -2311,7 +2311,7 @@ end
 
 This is how [Plumb::Types::Data](#typesdata) is implemented.
 
-#### Include `Plumb::Implementation[input => output]` to declare a class' types
+### Include `Plumb::Implementation[input => output]` to declare a class' types
 
 `Plumb::Composable` makes your instances composable, but Plumb knows nothing about what they accept or produce — they're opaque, so they opt out of [composition type-checks](#composition-type-checks) and subtype checks.
 
@@ -2373,7 +2373,7 @@ class AdminFinder < UserFinder
 end
 ```
 
-#### Extend `Plumb::Implementation[input => output]` to make the class itself a typed step
+### Extend `Plumb::Implementation[input => output]` to make the class itself a typed step
 
 Just as with [`Plumb::Composable`](#extend-a-class-with-plumbcomposable-to-make-the-class-itself-a-composable-step), `extend` instead of `include` puts the whole interface on the class: no instantiation, the class implements `self._call(result)` and answers `.input_type` / `.output_type`.
 
@@ -2396,7 +2396,7 @@ The two forms are alternatives — pick one per class. The extended form deliber
 Plumb::Subtyping.subtype?(ParseUUID, Types::String) # => true
 ```
 
-#### Participating in subtype & composition checks
+### Participating in subtype & composition checks
 
 The subtype (`#<=`) and [`#>>` composition](#composition-type-checks) checks are built on a single hook that every `Plumb::Composable` already implements with a sensible default — `#>>` is just `subtype?(produced, accepted)`, so there's nothing extra to implement for composition. A custom type participates **without changing any core library code**: it either relies on the default or overrides the hook. `Plumb::Subtyping` itself only knows the composition algebra (the top type `Types::Any`, the bottom type `Types::Never`, union `#|`, intersection `#&`, refinement/sequencing `#>>`, and conversion `#transform`); everything else is delegated to the type.
 
@@ -2405,7 +2405,7 @@ The default leans on two methods your type already has:
 - `#children` — the sub-types this type is built from, as an array. A type whose single child is a **raw Ruby matcher** (a Class, Range, Regexp or literal — as `Plumb::Constraint` wraps) is treated as *atomic* and compared with Ruby semantics. A type whose children are themselves Plumb types (like `Array`, `Tuple`, `HashMap`) is treated as a **covariant container** — so exposing `#children` is all a custom container needs to compare covariantly.
 - `#==` — structural equality (provided by `Plumb::Composable`).
 
-##### The hook
+#### The hook
 
 | Hook | Returns | Used by | Default |
 | --- | --- | --- | --- |
@@ -2436,7 +2436,7 @@ even <= Types::Numeric   # => true
 even <= Types::String    # => false
 ```
 
-##### Type flow: `#input_type` / `#output_type`
+#### Type flow: `#input_type` / `#output_type`
 
 The `#>>` check (and the [JSON Schema visitor](#json-schema)) ask what a type accepts and produces; both [default to `self`](#input_type-and-output_type). Override them when your type changes the value or is opaque about it:
 
@@ -2445,7 +2445,7 @@ The `#>>` check (and the [JSON Schema visitor](#json-schema)) ask what a type ac
 
 Custom types are **values/leaves** in the algebra — you compose them with the built-in combinators (`#>>`, `#|`, `#transform`, `Types::Any`) rather than re-implementing those.
 
-### Custom policies
+## Custom policies
 
 `Plumb.policy` can be used to encapsulate common type compositions, or compositions that can be configurable by parameters.
 
@@ -2471,7 +2471,7 @@ The `#policy` helper supports applying multiply policies.
 Types::String.policy(default_if_nil: 'nothing here', size: (10..20))
 ```
 
-#### Policies as helper methods
+### Policies as helper methods
 
 Use the `helper: true` option to register the policy as a method you can call on types directly.
 
@@ -2498,7 +2498,7 @@ AccountName = Types::String.admin
 AccountName.metadata # => { admin: true }
 ```
 
-#### Type-specific policies
+### Type-specific policies
 
 You can use the `for_type:` option to define policies that only apply to steps that output certain types. This example is only applicable for types that return `Integer` values.
 
@@ -2514,7 +2514,7 @@ Doubled.parse(2) # 4
 DoubledString = Types::String.multiply_by(2) # raises error
 ```
 
-#### Interface-specific policies
+### Interface-specific policies
 
 `for_type`also supports a Symbol for a method name, so that the policy can be applied to any types that support that method.
 
@@ -2530,7 +2530,7 @@ DoubledNumeric = Types::Numeric.multiply_by(2)
 DoubledMoney = Types::Any[Money].multiply_by(2)
 ```
 
-#### Self-contained policy modules
+### Self-contained policy modules
 
 You can register a module, class or object with a three-method interface as a policy. This is so that policies can have their own namespace if they need local constants or private methods. For example, this is how the `:split` policy for strings is defined.
 
@@ -2549,7 +2549,7 @@ end
 Plumb.policy :split, SplitPolicy
 ```
 
-### JSON Schema
+## JSON Schema
 
 Plumb ships with a JSON schema visitor that compiles a type composition into a JSON Schema Hash. All Plumb types support a `#to_json_schema` method.
 
@@ -2619,7 +2619,7 @@ Types::DateTime.to_json_schema
 # {"type"=>"string", "format"=>"date-time"}
 ```
 
-##### Node names for compositions
+#### Node names for compositions
 
 Two-sided compositions report one of four `#node_name`s, depending on whether the node is a *computation* (some side changes the value) or a *type* (no side does):
 
@@ -2632,7 +2632,7 @@ Two-sided compositions report one of four `#node_name`s, depending on whether th
 
 For a visitor this matters because an `:intersection` describes one value (merge both sides' specs) while an `:and` may describe a conversion (build from the input side). Visitors that don't need the distinction can register just `on(:and)` / `on(:or)`: `:intersection` and `:union` fall back to those when no specific handler is defined.
 
-### Mermaid diagrams
+## Mermaid diagrams
 
 Because a composition is just a tree of `>>` (sequence) and `|` (choice) nodes, it can also be rendered as a [Mermaid](https://mermaid.js.org) `flowchart`. Every Plumb type supports `#to_mermaid`. `>>` becomes sequential arrows; `|` becomes a fork, where the preceding step fans out to each alternative (and a following step joins them back).
 
