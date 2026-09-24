@@ -96,7 +96,7 @@ StringToInt.parse('100lol') # fails
 
 ### `#resolve(value) => Result`
 
-`#resolve` takes an input value and returns a `Result::Valid` or `Result::Invalid`
+`#resolve` takes an input value and returns a `Plumb::Result`, which is either valid or invalid (check with `#valid?` / `#invalid?`).
 
 ```ruby
 result = Types::Integer.resolve(10)
@@ -846,14 +846,14 @@ Example: parsing strings with `Date.parse` and turning `Date::Error` exceptions 
 ```ruby
 # Accept a string that can be parsed into a Date
 # via Date.parse
-# If Date.parse raises a Date::Error, return a Result::Invalid with
+# If Date.parse raises a Date::Error, return an invalid Result with
 # the exception's message as error message.
 type = Types::String
 	.build(::Date, :parse)
 	.policy(:rescue, ::Date::Error)
 
-type.resolve('2024-02-02') # => Result::Valid with Date object
-type.resolve('2024-') # => Result::Invalid with error message
+type.resolve('2024-02-02') # => valid Result with Date object
+type.resolve('2024-') # => invalid Result with error message
 ```
 
 The guard keeps the type it wraps: the example above is still a `Date` for subtyping,
@@ -1361,7 +1361,7 @@ TODO: pluggable concurrency engines (Async?)
 
 ### `#stream`
 
-Turn an Array definition into an enumerator that yields each element wrapped in `Result::Valid` or `Result::Invalid`.
+Turn an Array definition into an enumerator that yields each element wrapped in a valid or invalid `Result`.
 
 See [`Types::Stream`](#typesstream) below for more.
 
@@ -1421,7 +1421,7 @@ Row = Types::Tuple[Types::String.present, Types:Lax::Integer]
 Stream = Types::Stream[Row]
 
 data = CSV.new(File.new('./big-file.csv')).each # An Enumerator
-# stream is an Enumerator that yields rows wrapped in[Result::Valid] or [Result::Invalid]
+# stream is an Enumerator that yields rows wrapped in a valid or invalid Result
 stream = Stream.parse(data)
 stream.each.with_index(1) do |result, line|
   if result.valid?
@@ -1816,7 +1816,7 @@ CreateIfJoe = IsJoe >> CreateUser
 Use `#around` in a pipeline definition to add a middleware step that wraps all other steps registered.
 
 ```ruby
-# The #around interface is #call(Step, Result::Valid) => Result::Valid | Result::Invalid
+# The #around interface is #call(Step, Result) => Result
 StepLogger = proc do |step, result|
   Logger.info "Processing step #{step}"
   step.call(result)
@@ -2170,12 +2170,14 @@ Things to know:
 Every Plumb type exposes the following one-method interface:
 
 ```
-#call(Result::Valid) => Result::Valid | Result::Invalid
+#call(Result) => Result
 ```
+
+The incoming result is always valid (invalid results halt a pipeline before reaching later steps). Return a valid result to pass a value on, or an invalid one to halt.
 
 As long as an object implements this interface, it can be composed into Plumb workflows.
 
-The `Result::Valid` class has helper methods `#valid(value) => Result::Valid` and `#invalid(errors:) => Result::Invalid` to facilitate returning valid or invalid values from your own steps.
+`Plumb::Result` has helper methods `#valid(value) => Result` and `#invalid(value, errors:) => Result` to facilitate returning valid or invalid results from your own steps. Both return a new `Result` and leave the receiver untouched.
 
 ### Compose procs or lambdas directly
 
@@ -2243,7 +2245,7 @@ LoudGreeting = Greeting.default('no greeting').invoke(:upcase)
 
 ### A custom `#call` class
 
-Or write a custom class that responds to `#call(Result::Valid) => Result::Valid | Result::Invalid`
+Or write a custom class that responds to `#call(Result) => Result`
 
 ```ruby
 class Greeting
@@ -2252,8 +2254,8 @@ class Greeting
   end
 
   # The Plumb step interface
-  # @param result [Plumb::Result::Valid]
-  # @return [Plumb::Result::Valid, Plumb::Result::Invalid]
+  # @param result [Plumb::Result] a valid result
+  # @return [Plumb::Result]
   def call(result)
     result.valid("#{@gr} #{result.value}")
   end
