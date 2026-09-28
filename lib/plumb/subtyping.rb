@@ -72,8 +72,7 @@ module Plumb
       ub = unwrap_transparent(b)
       return subtype?(ua, ub) unless ua.equal?(a) && ub.equal?(b)
 
-      return true if b.is_a?(AnyClass)  # X <= Top
-      return false if a.is_a?(AnyClass) # Top <= X only when X is Top (handled above)
+      return true if b.is_a?(AnyClass) # X <= Top
 
       # A value-converting type (Function, or any custom type that opts in) is
       # identified for subtyping by what it *produces*, not what it consumes, so we
@@ -107,6 +106,10 @@ module Plumb
       # type, and so a subtype of two disjoint types at once.
       return b.children.all? { |bb| subtype?(a, bb) } if b.is_a?(Intersection) # a <= (b1 ∧ b2)
       return a.children.any? { |aa| subtype?(aa, b) } if a.is_a?(Intersection) # (a1 ∧ a2) <= b
+
+      # Top <= X only when X is Top-equivalent. Checked after the join/meet rules
+      # so a union with a Top branch (`X | Any`) still admits Top.
+      return false if a.is_a?(AnyClass)
 
       # `a` decides via its #subtype_of? leaf; if it can't (it doesn't know about
       # `b`), `b` may claim `a` via #supertype_of? — the mirror hook for

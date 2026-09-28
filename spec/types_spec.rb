@@ -1102,6 +1102,21 @@ RSpec.describe Plumb::Types do
     assert_result(Types::SymbolizedHash.resolve(input), output, true)
   end
 
+  specify 'composing a string-keyed HashMap into Types::SymbolizedHash' do
+    type = Types::Hash[String, Types::Any] >> Types::SymbolizedHash
+    assert_result(type.resolve('a' => { 'b' => 1 }), { a: { b: 1 } }, true)
+  end
+
+  specify 'Types::SymbolizedHash passes non-String keys through' do
+    assert_result(Types::SymbolizedHash.resolve(1 => { 'a' => 2 }, 'b' => 3), { 1 => { a: 2 }, b: 3 }, true)
+  end
+
+  specify 'composing an untyped Hash transform into Types::SymbolizedHash' do
+    downcased = Types::Hash[String, Types::Any].transform(::Hash) { |h| h.transform_keys(&:downcase) }
+    type = downcased >> Types::SymbolizedHash
+    assert_result(type.resolve('A' => 1), { a: 1 }, true)
+  end
+
   describe Types::Range do
     specify 'any member_type' do
       assert_result(Types::Range.resolve(1..10), 1..10, true)
@@ -1241,6 +1256,19 @@ RSpec.describe Plumb::Types do
       expect(Types::Hash[user: Types::Hash[name: Types::String]].symbolized.parse('user' => { 'name' => 'Jane' }))
         .to eq(user: { name: 'Jane' })
       assert_result(sym.resolve('name' => 'Joe', 'age' => 'nope'), { name: 'Joe', age: 'nope' }, false)
+    end
+
+    specify 'HashMap#symbolized symbolizes keys, then validates against the map' do
+      map = Types::Hash[Types::Symbol, Types::Integer]
+      sym = map.symbolized
+      expect(sym.input_type).to eq(Types::SymbolizedHash)
+      expect(sym.parse('a' => 1, b: 2)).to eq(a: 1, b: 2)
+      assert_result(sym.resolve('a' => 'nope'), { a: 'nope' }, false)
+      expect(Types::Hash[Types::Any, Types::Integer].symbolized.parse('a' => 1)).to eq(a: 1)
+    end
+
+    specify 'HashMap#symbolized raises when the key type does not accept Symbols' do
+      expect { Types::Hash[Types::String, Types::Any].symbolized }.to raise_error(Plumb::TypeError)
     end
 
     specify '#filtered is typed: input is the schema, output is it relaxed to optional' do

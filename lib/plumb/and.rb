@@ -29,11 +29,20 @@ module Plumb
       #
       # Conjunction.build, not Intersection.new — `left.output_type` need not preserve
       # values (a record drops undeclared keys, a Static replaces it), and only the
-      # classifier may decide. The `lo.equal?(left)` guard is the fixpoint: a left that
-      # IS its own output type would otherwise recurse forever.
+      # classifier may decide.
+      #
+      # A left that IS its own output type (eg. a recursive type) can't be met without
+      # recursing forever, so fall back to the right alone: every output passed it
+      # unchanged, so it's a sound over-approximation. Unless the right is the Any top,
+      # which would opt the chain out of #>> checks; then stay opaque (self).
       @output_type = if Plumb::Subtyping.value_preserving?(right)
                        lo = left.output_type
-                       lo.equal?(left) ? self : Conjunction.build(lo, right)
+                       if lo.equal?(left)
+                         ro = right.output_type
+                         ro.is_a?(AnyClass) ? self : ro
+                       else
+                         Conjunction.build(lo, right)
+                       end
                      else
                        right.output_type
                      end

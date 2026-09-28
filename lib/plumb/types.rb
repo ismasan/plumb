@@ -196,8 +196,8 @@ module Plumb
     # @example Mixed types preserved
     #   SymbolizedHash.parse({ 'count' => 1, 'active' => true })  # => { count: 1, active: true }
     SymbolizedHash = Hash[
-      # String keys are converted to symbols, existing symbols are preserved
-      (Symbol | String.transform(::Symbol, :to_sym)),
+      # String keys are converted to symbols; any other key passes through unchanged
+      (Symbol | String.transform(::Symbol, :to_sym) | Any),
       # Hash values are recursively symbolized, other types pass through unchanged
       Any.defer { SymbolizedHash } | Any
     ]

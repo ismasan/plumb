@@ -1216,9 +1216,9 @@ Plumb::JSONSchemaVisitor.call(Types::Range[0...100], root: false)
 
 ## `Types::SymbolizedHash`
 
-This type turns a hash's keys into symbols by calling `#to_sym` on them, and returning a new Hash.
+This type recursively turns a hash's String keys into symbols, returning a new Hash. Symbol keys and any other keys pass through unchanged, so it accepts any Hash.
 
-`SymbolizedHash` is a `Symbol => Any` map. You can use it as a _transform_.
+You can use it as a _transform_.
 
 ```ruby
 UserHash = Types::Hash[name: String]
@@ -1231,6 +1231,13 @@ You can also use the shortcut `#symbolized`
 # Symbolize keys, then coerce into a typed Hash.
 type = Types::Hash[name: String, age: Integer].symbolized
 type.parse('name' => 'Joe', 'age' => 20) # {name: 'Joe', age: 20}
+```
+
+Hash maps support `#symbolized` too. It raises `Plumb::TypeError` if the map's key type can't accept Symbols, since every symbolized key would be rejected.
+
+```ruby
+Types::Hash[Symbol, Integer].symbolized.parse('a' => 1) # {a: 1}
+Types::Hash[String, Integer].symbolized # raises Plumb::TypeError
 ```
 
 ##  maps

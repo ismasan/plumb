@@ -35,6 +35,15 @@ module Plumb
       super
     end
 
+    # A map whose key and value types both admit Any is the "any Hash" type, so it
+    # claims anything whose base types are all Hashes (eg. `transform(::Hash)`).
+    def supertype_of?(other)
+      return false unless children.all? { |c| Plumb::Subtyping.subtype?(Types::Any, c) }
+
+      bases = Plumb.resolve_base_types(other)
+      bases.any? && bases.all? { |k| k.is_a?(::Class) && k <= ::Hash }
+    end
+
     # A HashMap re-maps each key and value through its key/value types, so it
     # preserves the value only when both do (a coercing key or value would change
     # the hash).
@@ -72,6 +81,19 @@ module Plumb
 
     def filtered
       FilteredHashMap.new(@key_type, @value_type)
+    end
+
+    # Symbolize keys (via Types::SymbolizedHash), then validate against this map.
+    # Only the key type is checked up front: a map whose keys can't be Symbols
+    # (eg. `Hash[String, X]`) would reject every symbolized key.
+    # @see HashClass#symbolized
+    # @raise [Plumb::TypeError] when the key type doesn't accept Symbols.
+    def symbolized
+      unless Plumb::Subtyping.subtype?(Types::Symbol, Plumb::Subtyping.accepted_type(@key_type))
+        raise Plumb::TypeError, "cannot symbolize #{inspect}: its key type doesn't accept Symbols"
+      end
+
+      Types::SymbolizedHash / self
     end
 
     private def _inspect = "HashMap[#{@key_type.inspect}, #{@value_type.inspect}]"

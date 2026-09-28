@@ -46,6 +46,11 @@ RSpec.describe 'subtyping: Plumb::Subtyping.subtype? and #<=' do
       expect(STypes::Any <= STypes::Any).to be(true)
     end
 
+    it 'admits Any into a union with a Top branch' do
+      expect(STypes::Any <= (STypes::Integer | STypes::Any)).to be(true)
+      expect(STypes::Any <= (STypes::Any.defer { STypes::Integer } | STypes::Any)).to be(true)
+    end
+
     it 'compares against raw Ruby classes (both are types)' do
       expect(STypes::String <= ::String).to be(true)
       expect(STypes::Integer <= ::Integer).to be(true)
@@ -137,6 +142,14 @@ RSpec.describe 'subtyping: Plumb::Subtyping.subtype? and #<=' do
     it 'treats Types::Hash (empty schema) as any-Hash within the family' do
       expect(STypes::Hash[name: STypes::String] <= STypes::Hash).to be(true)
       expect(STypes::Hash <= STypes::Hash[name: STypes::String]).to be(false)
+    end
+
+    it 'treats HashMap[Any, Any] as any-Hash' do
+      any_map = STypes::Hash[STypes::Any, STypes::Any]
+      expect(STypes::Hash <= any_map).to be(true)
+      expect(STypes::Any[::Hash] <= any_map).to be(true)
+      expect(STypes::String <= any_map).to be(false)
+      expect(STypes::Hash <= STypes::Hash[STypes::Symbol, STypes::Any]).to be(false)
     end
   end
 
@@ -362,6 +375,23 @@ RSpec.describe 'subtyping: Plumb::Subtyping.subtype? and #<=' do
       # ...while a CONVERTING right replaces the value, so its output stands
       chain = STypes::String.transform(::Integer, &:to_i) >> STypes::Integer.transform(::Integer) { |i| i * 2 }
       expect(chain.output_type).to eq(STypes::Integer)
+    end
+
+    it 'falls back to the refinement when the step before it is its own output (eg. recursive)' do
+      map = STypes::Hash[STypes::Symbol, STypes::Integer]
+      expect(Plumb::Subtyping.resolved_output(map.symbolized)).to eq(map)
+      expect { map.symbolized >> map }.not_to raise_error
+      expect { map.symbolized >> STypes::String }.to raise_error(Plumb::TypeError)
+
+      records = STypes::Array[STypes::Hash[a: STypes::String.transform(::Integer, &:to_i)]].where(size: 1..)
+      expect { records >> STypes::Array[STypes::Hash[a: STypes::Integer]] }.not_to raise_error
+      expect { records >> STypes::Array[STypes::String] }.to raise_error(Plumb::TypeError)
+    end
+
+    it 'stays opaque rather than fall back to the Any top' do
+      chain = Plumb::And.new(STypes::SymbolizedHash, STypes::Any)
+      expect(Plumb::Subtyping.resolved_output(chain)).to be_a(Plumb::And)
+      expect { chain >> STypes::String }.to raise_error(Plumb::TypeError)
     end
   end
 
