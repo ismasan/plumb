@@ -1102,6 +1102,11 @@ RSpec.describe Plumb::Types do
     assert_result(Types::SymbolizedHash.resolve(input), output, true)
   end
 
+  specify 'composing a string-keyed HashMap into Types::SymbolizedHash' do
+    type = Types::Hash[String, Types::Any] >> Types::SymbolizedHash
+    assert_result(type.resolve('a' => { 'b' => 1 }), { a: { b: 1 } }, true)
+  end
+
   describe Types::Range do
     specify 'any member_type' do
       assert_result(Types::Range.resolve(1..10), 1..10, true)

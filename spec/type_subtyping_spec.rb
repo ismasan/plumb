@@ -46,6 +46,11 @@ RSpec.describe 'subtyping: Plumb::Subtyping.subtype? and #<=' do
       expect(STypes::Any <= STypes::Any).to be(true)
     end
 
+    it 'admits Any into a union with a Top branch' do
+      expect(STypes::Any <= (STypes::Integer | STypes::Any)).to be(true)
+      expect(STypes::Any <= (STypes::Any.defer { STypes::Integer } | STypes::Any)).to be(true)
+    end
+
     it 'compares against raw Ruby classes (both are types)' do
       expect(STypes::String <= ::String).to be(true)
       expect(STypes::Integer <= ::Integer).to be(true)
