@@ -143,6 +143,14 @@ RSpec.describe 'subtyping: Plumb::Subtyping.subtype? and #<=' do
       expect(STypes::Hash[name: STypes::String] <= STypes::Hash).to be(true)
       expect(STypes::Hash <= STypes::Hash[name: STypes::String]).to be(false)
     end
+
+    it 'treats HashMap[Any, Any] as any-Hash' do
+      any_map = STypes::Hash[STypes::Any, STypes::Any]
+      expect(STypes::Hash <= any_map).to be(true)
+      expect(STypes::Any[::Hash] <= any_map).to be(true)
+      expect(STypes::String <= any_map).to be(false)
+      expect(STypes::Hash <= STypes::Hash[STypes::Symbol, STypes::Any]).to be(false)
+    end
   end
 
   describe '#<= over conversions (Function)' do

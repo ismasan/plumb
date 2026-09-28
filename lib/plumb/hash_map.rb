@@ -35,6 +35,15 @@ module Plumb
       super
     end
 
+    # A map whose key and value types both admit Any is the "any Hash" type, so it
+    # claims anything whose base types are all Hashes (eg. `transform(::Hash)`).
+    def supertype_of?(other)
+      return false unless children.all? { |c| Plumb::Subtyping.subtype?(Types::Any, c) }
+
+      bases = Plumb.resolve_base_types(other)
+      bases.any? && bases.all? { |k| k.is_a?(::Class) && k <= ::Hash }
+    end
+
     # A HashMap re-maps each key and value through its key/value types, so it
     # preserves the value only when both do (a coercing key or value would change
     # the hash).

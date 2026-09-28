@@ -1111,6 +1111,12 @@ RSpec.describe Plumb::Types do
     assert_result(Types::SymbolizedHash.resolve(1 => { 'a' => 2 }, 'b' => 3), { 1 => { a: 2 }, b: 3 }, true)
   end
 
+  specify 'composing an untyped Hash transform into Types::SymbolizedHash' do
+    downcased = Types::Hash[String, Types::Any].transform(::Hash) { |h| h.transform_keys(&:downcase) }
+    type = downcased >> Types::SymbolizedHash
+    assert_result(type.resolve('A' => 1), { a: 1 }, true)
+  end
+
   describe Types::Range do
     specify 'any member_type' do
       assert_result(Types::Range.resolve(1..10), 1..10, true)
