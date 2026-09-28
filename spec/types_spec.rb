@@ -1107,6 +1107,10 @@ RSpec.describe Plumb::Types do
     assert_result(type.resolve('a' => { 'b' => 1 }), { a: { b: 1 } }, true)
   end
 
+  specify 'Types::SymbolizedHash passes non-String keys through' do
+    assert_result(Types::SymbolizedHash.resolve(1 => { 'a' => 2 }, 'b' => 3), { 1 => { a: 2 }, b: 3 }, true)
+  end
+
   describe Types::Range do
     specify 'any member_type' do
       assert_result(Types::Range.resolve(1..10), 1..10, true)
