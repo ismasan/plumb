@@ -376,6 +376,23 @@ RSpec.describe 'subtyping: Plumb::Subtyping.subtype? and #<=' do
       chain = STypes::String.transform(::Integer, &:to_i) >> STypes::Integer.transform(::Integer) { |i| i * 2 }
       expect(chain.output_type).to eq(STypes::Integer)
     end
+
+    it 'falls back to the refinement when the step before it is its own output (eg. recursive)' do
+      map = STypes::Hash[STypes::Symbol, STypes::Integer]
+      expect(Plumb::Subtyping.resolved_output(map.symbolized)).to eq(map)
+      expect { map.symbolized >> map }.not_to raise_error
+      expect { map.symbolized >> STypes::String }.to raise_error(Plumb::TypeError)
+
+      records = STypes::Array[STypes::Hash[a: STypes::String.transform(::Integer, &:to_i)]].where(size: 1..)
+      expect { records >> STypes::Array[STypes::Hash[a: STypes::Integer]] }.not_to raise_error
+      expect { records >> STypes::Array[STypes::String] }.to raise_error(Plumb::TypeError)
+    end
+
+    it 'stays opaque rather than fall back to the Any top' do
+      chain = Plumb::And.new(STypes::SymbolizedHash, STypes::Any)
+      expect(Plumb::Subtyping.resolved_output(chain)).to be_a(Plumb::And)
+      expect { chain >> STypes::String }.to raise_error(Plumb::TypeError)
+    end
   end
 
   describe 'composition type-checking (#>>)' do
