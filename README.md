@@ -1233,6 +1233,13 @@ type = Types::Hash[name: String, age: Integer].symbolized
 type.parse('name' => 'Joe', 'age' => 20) # {name: 'Joe', age: 20}
 ```
 
+Hash maps support `#symbolized` too. It raises `Plumb::TypeError` if the map's key type can't accept Symbols, since every symbolized key would be rejected.
+
+```ruby
+Types::Hash[Symbol, Integer].symbolized.parse('a' => 1) # {a: 1}
+Types::Hash[String, Integer].symbolized # raises Plumb::TypeError
+```
+
 ##  maps
 
 You can also use Hash syntax to define a hash map with specific types for all keys and values:

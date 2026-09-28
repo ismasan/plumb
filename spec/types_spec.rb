@@ -1248,6 +1248,19 @@ RSpec.describe Plumb::Types do
       assert_result(sym.resolve('name' => 'Joe', 'age' => 'nope'), { name: 'Joe', age: 'nope' }, false)
     end
 
+    specify 'HashMap#symbolized symbolizes keys, then validates against the map' do
+      map = Types::Hash[Types::Symbol, Types::Integer]
+      sym = map.symbolized
+      expect(sym.input_type).to eq(Types::SymbolizedHash)
+      expect(sym.parse('a' => 1, b: 2)).to eq(a: 1, b: 2)
+      assert_result(sym.resolve('a' => 'nope'), { a: 'nope' }, false)
+      expect(Types::Hash[Types::Any, Types::Integer].symbolized.parse('a' => 1)).to eq(a: 1)
+    end
+
+    specify 'HashMap#symbolized raises when the key type does not accept Symbols' do
+      expect { Types::Hash[Types::String, Types::Any].symbolized }.to raise_error(Plumb::TypeError)
+    end
+
     specify '#filtered is typed: input is the schema, output is it relaxed to optional' do
       schema = Types::Hash[name: Types::String, age: Types::Integer]
       filtered = schema.filtered

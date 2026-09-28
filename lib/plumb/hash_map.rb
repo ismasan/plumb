@@ -74,6 +74,19 @@ module Plumb
       FilteredHashMap.new(@key_type, @value_type)
     end
 
+    # Symbolize keys (via Types::SymbolizedHash), then validate against this map.
+    # Only the key type is checked up front: a map whose keys can't be Symbols
+    # (eg. `Hash[String, X]`) would reject every symbolized key.
+    # @see HashClass#symbolized
+    # @raise [Plumb::TypeError] when the key type doesn't accept Symbols.
+    def symbolized
+      unless Plumb::Subtyping.subtype?(Types::Symbol, Plumb::Subtyping.accepted_type(@key_type))
+        raise Plumb::TypeError, "cannot symbolize #{inspect}: its key type doesn't accept Symbols"
+      end
+
+      Types::SymbolizedHash / self
+    end
+
     private def _inspect = "HashMap[#{@key_type.inspect}, #{@value_type.inspect}]"
 
     # Same key/value types as a HashMap (so it inherits #initialize, #children
