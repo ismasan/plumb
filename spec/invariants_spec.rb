@@ -357,7 +357,7 @@ RSpec.describe 'internal representation invariants' do
                 [{ name: 'a', age: '3' }, true, Person.new(name: 'a', age: 3)]
               ]),
     Entry.new(label: 'Person -> form (encode)', type: PersonForm, cases: [
-                [Person.new(name: 'a', age: 3), true, { name: 'a', age: '3' }]
+                [Person.new(name: 'a', age: 3), true, { 'name' => 'a', 'age' => '3' }]
               ]),
     Entry.new(label: 'Pipeline', type: Types::Integer.pipeline { |pl| pl.step(Types::Integer[0..10]) }, cases: [
                 [5, true, 5], [50, false, 50, :any]

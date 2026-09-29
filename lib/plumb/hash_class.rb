@@ -25,6 +25,8 @@ module Plumb
       # leftover input keys. `_schema` stays the source of truth for ==/subtyping.
       @literal_fields = @_schema.select { |k, _| k.literal? }
       @matcher_fields = @_schema.reject { |k, _| k.literal? }
+      # [from, to] names of aliased keys (see Key#aliased?), renamed by #unalias.
+      @aliases = @literal_fields.each_key.filter_map { |k| [k.from_key, k.to_key] if k.aliased? }.freeze
       # The `_` catch-all's value type, if present (there is at most one).
       @catch_all_type = @_schema.find { |k, _| k.catch_all? }&.last
       freeze
@@ -161,7 +163,7 @@ module Plumb
         return result.invalid!(errors: 'must be a Hash') unless result.value.is_a?(::Hash)
         return result unless _schema.any?
 
-        input = result.value
+        input = @aliases.empty? ? result.value : unalias(result.value)
         # Reuse the incoming cursor as the per-field scratch (see #call): `input`
         # is captured above and `result` is only flipped at the end, so fields
         # reset it in place with no scratch allocation.
@@ -208,7 +210,7 @@ module Plumb
       return result.invalid!(errors: NOT_A_HASH) unless result.value.is_a?(::Hash)
       return result unless _schema.any?
 
-      input = result.value
+      input = @aliases.empty? ? result.value : unalias(result.value)
       errors = nil # Do not allocate errors unless needed
       output = {}
 
@@ -270,7 +272,8 @@ module Plumb
       # a key's optionality are different types, so compare that too.
       _schema.all? do |key, value|
         other_key, other_value = other._schema.find { |k, _| k.eql?(key) }
-        other_key && key.optional? == other_key.optional? && value == other_value
+        other_key && key.optional? == other_key.optional? && key.from_key == other_key.from_key &&
+          value == other_value
       end
     end
 
@@ -300,7 +303,7 @@ module Plumb
     # type-check (the front-end/back-end coercion pattern).
     def accepted_type
       relaxed = _schema.each_with_object({}) do |(key, field), h|
-        h[key] = Plumb::Subtyping.accepted_type(field)
+        h[key.accepted] = Plumb::Subtyping.accepted_type(field)
       end
       self.class.new(schema: relaxed)
     end
@@ -407,10 +410,18 @@ module Plumb
     # catch-all) are already optional, so they pass through unchanged.
     def relaxed_to_optional
       relaxed = _schema.each_with_object({}) do |(key, type), h|
-        new_key = key.literal? ? Key.new(key.to_key, optional: true) : key
+        new_key = key.literal? ? key.with_optional(true) : key
         h[new_key] = type
       end
       self.class.new(schema: relaxed)
+    end
+
+    # A copy of `input` with aliased keys under their own names. The alias wins
+    # when both are present; either way the key's own name is still accepted.
+    def unalias(input)
+      input = input.dup
+      @aliases.each { |from, to| input[to] = input.delete(from) if input.key?(from) }
+      input
     end
 
     def _inspect

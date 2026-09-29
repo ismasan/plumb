@@ -10,6 +10,10 @@ module Plumb
       @lock = Mutex.new
       @definition = definition
       @cached_type = nil
+      # Separate from @lock: materializing the accepted type reaches back here while
+      # its own #type holds @lock.
+      @accepted_lock = Mutex.new
+      @accepted_type = nil
       # freeze
     end
 
@@ -20,6 +24,16 @@ module Plumb
 
     def call(result)
       type.call(result)
+    end
+
+    # What the materialized type accepts, as another Deferred, so a forward reference
+    # isn't resolved early. Memoized, so a self-reference in the body maps back to it
+    # and the recursion closes. Without it a Deferred accepts ITSELF, so a codec's
+    # recursive encode rewrite is checked against its own encoded form, and rejected.
+    def accepted_type
+      @accepted_lock.synchronize do
+        @accepted_type ||= Deferred.new(-> { Plumb::Subtyping.accepted_type(type) }).tap { |d| d.accepts_itself! }
+      end
     end
 
     def type
@@ -34,6 +48,13 @@ module Plumb
         end
         @cached_type
       end
+    end
+
+    protected
+
+    # What an accepted type accepts is itself.
+    def accepts_itself!
+      @accepted_type = self
     end
   end
 end

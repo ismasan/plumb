@@ -63,18 +63,21 @@ module Plumb
     def accepted_type
       relaxed = @children.map do |child|
         schema = child._schema.each_with_object({}) do |(k, field), h|
-          h[k] = k.eql?(@key) ? field : Plumb::Subtyping.accepted_type(field)
+          h[k.accepted] = k.eql?(@key) ? field : Plumb::Subtyping.accepted_type(field)
         end
         child.class.new(schema:)
       end
-      self.class.new(@hash_type, @key, relaxed)
+      self.class.new(Plumb::Subtyping.accepted_type(@hash_type), @key.accepted, relaxed)
     end
 
     def call(result)
       result = @hash_type.call(result)
       return result unless result.valid?
 
-      child = @index[result.value[@key.to_sym]]
+      input = result.value
+      # An aliased key (a codec's wire name) falls back to its own name.
+      tag_key = @key.aliased? && input.key?(@key.from_key) ? @key.from_key : @key.to_sym
+      child = @index[input[tag_key]]
       return result.invalid!(errors: "expected :#{@key.to_sym} to be one of #{@index.keys.join(', ')}") unless child
 
       child.call(result)

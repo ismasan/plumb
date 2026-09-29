@@ -22,9 +22,11 @@ module Plumb
       key.is_a?(Key) ? key : new(key, symbolize:)
     end
 
-    attr_reader :to_key, :to_sym, :node_name, :matcher
+    attr_reader :to_key, :to_sym, :node_name, :matcher, :from_key
 
-    def initialize(key, optional: false, symbolize: false)
+    # @param from [Symbol, String, nil] a literal key's INPUT name, when it differs
+    #   from the name it is emitted under (see #aliased?).
+    def initialize(key, optional: false, symbolize: false, from: nil)
       @node_name = :key
       if key.is_a?(::Symbol) || key.is_a?(::String)
         key_type = symbolize ? Symbol : key.class
@@ -35,6 +37,8 @@ module Plumb
         @optional = !match[:qmark].nil? ? true : optional
         @matcher = @to_key
         @literal = true
+        @from_key = from.nil? ? @to_key : from
+        @aliased = @from_key != @to_key
       else
         # A type/matcher key. It matches other keys structurally, so it has no
         # concrete #to_key and never imposes a required key.
@@ -43,12 +47,27 @@ module Plumb
         @to_sym = nil
         @optional = true
         @literal = false
+        @from_key = nil
+        @aliased = false
       end
       freeze
     end
 
     # A concrete Symbol/String key (exact lookup) vs a type/matcher key.
     def literal? = @literal
+
+    # Read from the input under a different name than it is emitted under — how a
+    # Codec maps a wire key (`'name'`) to a schema key (`:name`) and back. An aliased
+    # key still accepts its own name as a fallback.
+    def aliased? = @aliased
+
+    # This key as a consumer sees it: named by what it reads.
+    def accepted = aliased? ? Key.new(@from_key, optional: @optional) : self
+
+    # This key with a different optionality, keeping its alias.
+    def with_optional(optional)
+      optional == @optional ? self : Key.new(@to_key, optional:, from: @from_key)
+    end
 
     # The `_` catch-all: a matcher key over the Any top, so it matches every key.
     def catch_all? = !@literal && @matcher.is_a?(AnyClass)
@@ -82,7 +101,7 @@ module Plumb
 
     def inspect
       if @literal
-        "#{@to_key}#{'?' if @optional}"
+        "#{"#{@from_key.inspect}->" if aliased?}#{@to_key}#{'?' if @optional}"
       elsif catch_all?
         '_'
       else

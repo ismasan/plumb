@@ -276,6 +276,7 @@ module Plumb
         @match_memo = {}.compare_by_identity
         @noop_memo = {}.compare_by_identity
         @bridge_memo = {}.compare_by_identity
+        @key_memo = {}
         @input_stack = []
         @root = nil
       end
@@ -428,8 +429,9 @@ module Plumb
 
       # A struct (Types::Data / Plumb::Attributes) is a Hash schema plus a
       # constructor. Decoding, the rewritten schema turns input fields into
-      # output values and the class itself builds the instance (Function's
-      # output stage CALLS it). Encoding, the class validates/constructs the
+      # output values and the step builds the instance from them without
+      # validating again (the output stage then passes the instance through).
+      # Encoding, the class validates/constructs the
       # instance, `#attributes` exposes the output values (shallow — nested
       # structs stay instances and are handled by their own rewritten nodes,
       # unlike the deep #to_h), and the encode-rewritten schema turns them
@@ -442,7 +444,13 @@ module Plumb
           # constructs by itself.
           return original if schema.equal?(struct._schema)
 
-          Function.new(schema, struct, Plumb::NOOP)
+          # The rewritten schema has validated and converted every field, so the
+          # instance is built without running the struct's own schema again.
+          build = lambda do |result|
+            instance = struct._build_validated(result.value)
+            instance.valid? ? result.valid(instance) : result.invalid(instance, errors: instance.errors.to_h)
+          end
+          Function.new(schema, struct, build, identity: [:struct_decode, struct])
         else
           # The lambda is fresh per call, so name what the step IS as its identity —
           # otherwise `(Person >> Codec) == (Person >> Codec)` is false while the
@@ -543,9 +551,31 @@ module Plumb
       def visit_hash(type, path)
         return noop_or_fail(type, path) if type._schema.empty? # the bare "any Hash" — a leaf
 
-        NodeMapper.map_record(type) do |field, key|
-          visit(field, path + [key.literal? ? key.to_s : key.inspect])
+        changed = false
+        schema = type._schema.each_with_object({}) do |(key, field), acc|
+          mapped = visit(field, path + [key.literal? ? key.to_s : key.inspect])
+          wkey = wire_key(key)
+          changed ||= !mapped.equal?(field) || !wkey.equal?(key)
+          acc[wkey] = mapped
         end
+        changed ? type.class.new(schema:) : type
+      end
+
+      # A Symbol key is a value like any other, so its wire name is what the codec
+      # encodes a Symbol to — fixed, so computed here. The key is ALIASED: decoding
+      # reads the wire name and emits the Symbol, encoding the reverse (see
+      # Key#aliased?). A codec with no Symbol encoder leaves keys alone.
+      def wire_key(key)
+        name = key.to_key
+        wire = wire_name(name) if key.literal? && name.is_a?(::Symbol)
+        return key if wire.nil? || wire == name
+
+        to, from = @direction == :decode ? [name, wire] : [wire, name]
+        Key.new(to, optional: key.optional?, from:)
+      end
+
+      def wire_name(sym)
+        @key_memo.fetch(sym) { @key_memo[sym] = encoder_for(Types::Symbol, BLANK_ARRAY)&.encode(sym) }
       end
 
       # DECODE rewrites the schema a filter FILTERS and rebuilds the filter around it,
@@ -574,20 +604,39 @@ module Plumb
         members.zip(type.children).all? { |v, m| v.equal?(m) } ? type : type.of(*members)
       end
 
-      # Keys are left untouched — key normalization (eg. string keys from the
-      # input) is a separate concern (see Types::SymbolizedHash / #symbolized).
       def visit_hash_map(type, path)
         key_type, value_type = type.children
+        k = visit_map_key(key_type, path)
         v = visit(value_type, path + ['{}'])
         # type.class (not HashMap) to preserve FilteredHashMap's leniency.
-        v.equal?(value_type) ? type : type.class.new(key_type, v)
+        k.equal?(key_type) && v.equal?(value_type) ? type : type.class.new(k, v)
+      end
+
+      # Keys rewrite like values, with two differences. A key type the codec
+      # can't rewrite stays as it is: maps were keyed by raw input before codecs
+      # rewrote keys at all. And decoding still accepts the decoded form, as
+      # an aliased literal key does (see #wire_key).
+      def visit_map_key(key_type, path)
+        k = visit(key_type, path + ['<key>'])
+        return k if k.equal?(key_type) || @direction == :encode
+
+        Disjunction.build(k, key_type)
+      rescue Plumb::TypeError
+        key_type
       end
 
       # A tagged union of Hash variants discriminated by a key: rewrite each
       # variant schema (all HashClasses); the tag key's literal value is a
       # native pass-through, so the discriminator survives.
       def visit_tagged_hash(type, path)
-        NodeMapper.map_children(type) { |variant| visit(variant, path) }
+        base = type.hash_type
+        # The bare Hash base is a leaf this codec may not cover; it rewrites to itself anyway.
+        base = visit(base, path) unless base._schema.empty?
+        variants = type.children.map { |variant| visit(variant, path) }
+        key = wire_key(type.key)
+        unchanged = base.equal?(type.hash_type) && key.equal?(type.key) &&
+                    variants.each_with_index.all? { |v, i| v.equal?(type.children[i]) }
+        unchanged ? type : type.class.new(base, key, variants)
       end
 
       # Rewriting can collapse two branches onto the SAME node — encoding a
