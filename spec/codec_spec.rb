@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'spec_helper'
+require 'json'
 
 module CodecSpecTypes
   DateRange = Types::Range[Types::Date]
@@ -588,6 +589,27 @@ module CodecSpecTypes
         codec_tree = JSONCodec >> Tree
         decoded = codec_tree.parse({ value: '2024-01-01', children: [{ value: '2024-02-01', children: [] }] })
         expect(decoded).to eq({ value: DATE, children: [{ value: ::Date.new(2024, 2, 1), children: [] }] })
+      end
+
+      it 'encodes recursive (Deferred) schemas' do
+        decoder, encoder = JSONCodec.for(Tree)
+        tree = { value: DATE, children: [{ value: ::Date.new(2024, 2, 1), children: [] }] }
+        encoded = encoder.parse(tree)
+        expect(encoded).to eq({ 'value' => '2024-01-01', 'children' => [{ 'value' => '2024-02-01', 'children' => [] }] })
+        expect(decoder.parse(encoded)).to eq(tree)
+      end
+
+      it 'round-trips a recursive JSON value type with Symbol-keyed maps at every depth' do
+        value = Types::Any.defer do
+          Types::String | Types::Numeric | Types::Boolean | Types::Nil |
+            Types::Array[value] | Types::Hash[Types::Symbol, value]
+        end
+        doc = Types::Hash[Types::Symbol, value]
+        decoder, encoder = JSONCodec.for(doc)
+        data = { n: 1, list: [true, { a: 'b' }], deep: { k: [nil] } }
+        encoded = encoder.parse(data)
+        expect(encoded).to eq({ 'n' => 1, 'list' => [true, { 'a' => 'b' }], 'deep' => { 'k' => [nil] } })
+        expect(decoder.parse(::JSON.parse(::JSON.generate(encoded)))).to eq(data)
       end
 
       it 'encodes unions with a container branch' do
