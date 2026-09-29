@@ -23,12 +23,28 @@ module Plumb
 
     attr_reader :children
 
+    # Leaf branches under this node, counting through nested disjunctions:
+    # `a | b | c` is `(a | b) | c`, with 3.
+    attr_reader :branch_count
+
     # Identical for both nodes, which differ only in how types flow.
     def initialize(left, right)
       @left = Composable.wrap(left)
       @right = Composable.wrap(right)
       @children = [@left, @right].freeze
+      @branch_count = [@left, @right].sum { |c| c.is_a?(Disjunction) ? c.branch_count : 1 }
+      if @branch_count >= ClassDispatch::MIN_BRANCHES
+        @dispatch = ClassDispatch.new(self)
+        # Per instance, so a short union keeps the plain #call.
+        extend Dispatched
+      end
       freeze
+    end
+
+    # #dup keeps ivars but not singleton modules (TypeRegistry dups types to rename them).
+    def initialize_copy(source)
+      super
+      extend Dispatched if @dispatch
     end
 
     # (A | B).input_type == A.input_type | B.input_type — shared by both nodes.
@@ -124,6 +140,89 @@ module Plumb
       merged = left.is_a?(::Array) ? left.dup : [left]
       right.is_a?(::Array) ? merged.concat(right) : merged.push(right)
       merged
+    end
+
+    # #call for a union of ClassDispatch::MIN_BRANCHES or more. It first tries only the
+    # branches that could accept the value's class: same result, as the skipped ones
+    # would have failed. If those fail too, the plain #call runs to collect every
+    # branch's errors, as without dispatch.
+    module Dispatched
+      def call(result)
+        candidates = @dispatch.candidates(result.value.class)
+        return super unless candidates
+
+        original = result.value
+        i = 0
+        while i < candidates.size
+          r = candidates[i].call(i.zero? ? result : result.reset(original))
+          return r if r.valid?
+
+          i += 1
+        end
+        super(result.reset(original))
+      end
+    end
+
+    # Per input class, the leaf branches that could accept a value of that class, in
+    # order. A branch's classes are its Subtyping.stable_domain: known only when what it
+    # accepts and what it produces share base types, so a converting branch (a
+    # Function, a struct, a codec's rewrite) is always a candidate.
+    #
+    # Only Class domains are used, not Modules: an object can gain a module through
+    # #extend, which its #class doesn't show.
+    #
+    # Built lazily, on first use: resolving branch domains when the union is built would
+    # materialize `defer`red forward references.
+    class ClassDispatch
+      MIN_BRANCHES = 3
+      # Beyond this many distinct classes, candidates are recomputed instead of cached.
+      MAX_CLASSES = 64
+      # Cached for a class whose candidates are all the branches: nothing to skip.
+      ALL = :all
+
+      def initialize(node)
+        @node = node
+        @lock = Mutex.new
+        # Replaced, never mutated, so reads need no lock.
+        @table = {}.freeze
+        @branches = nil
+      end
+
+      # @param klass [Class] the input value's class
+      # @return [Array<Composable>, nil] candidate branches in order, or nil when none
+      #   can be skipped
+      def candidates(klass)
+        found = @table[klass] || store(klass, compute(klass))
+        found.equal?(ALL) ? nil : found
+      end
+
+      private
+
+      def compute(klass)
+        list = branches.filter_map { |branch, domain| branch if domain.nil? || domain.any? { |d| klass <= d } }
+        list.size == branches.size ? ALL : list.freeze
+      end
+
+      def store(klass, list)
+        @lock.synchronize { @table = @table.merge(klass => list).freeze if @table.size < MAX_CLASSES }
+        list
+      end
+
+      # [[branch, classes or nil], ...]
+      def branches
+        @branches || @lock.synchronize do
+          @branches ||= leaves(@node).map { |branch| [branch, domain(branch)] }.freeze
+        end
+      end
+
+      def leaves(node)
+        node.children.flat_map { |c| c.is_a?(Disjunction) ? leaves(c) : [c] }
+      end
+
+      def domain(branch)
+        classes = Plumb::Subtyping.stable_domain(branch)
+        classes if classes&.all? { |c| c.is_a?(::Class) }
+      end
     end
   end
 end
