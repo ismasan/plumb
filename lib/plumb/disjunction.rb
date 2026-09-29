@@ -52,6 +52,23 @@ module Plumb
       l.equal?(@left) && r.equal?(@right) ? self : Disjunction.build(l, r)
     end
 
+    # What either branch accepts. Not #input_type: that leaves a container branch as
+    # is, so `Array[Date] | Nil` composed with its encode rewrite checks an
+    # `Array[Date]` against the rewrite's String output, and rejects.
+    def accepted_type
+      l = branch_accepted(@left)
+      r = branch_accepted(@right)
+      l.equal?(@left) && r.equal?(@right) ? self : Disjunction.build(l, r)
+    end
+
+    # A branch whose input is unknown (a bare pattern matcher) opts out of the
+    # composition check, as it does on its own (see Subtyping.check_composable!).
+    private def branch_accepted(branch)
+      return Types::Any if Plumb::Subtyping.resolved_input(branch).is_a?(AnyClass)
+
+      Plumb::Subtyping.accepted_type(branch)
+    end
+
     # Rebuild around new branches, RECLASSIFYING by what they are.
     # @see Conjunction#with_children for why this must not preserve the class.
     def with_children(children) = Disjunction.build(children[0], children[1])

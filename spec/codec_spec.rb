@@ -590,6 +590,15 @@ module CodecSpecTypes
         expect(decoded).to eq({ value: DATE, children: [{ value: ::Date.new(2024, 2, 1), children: [] }] })
       end
 
+      it 'encodes unions with a container branch' do
+        _, encoder = JSONCodec.for(Types::Array[Types::Date] | Types::Nil)
+        expect(encoder.parse([DATE])).to eq(['2024-01-01'])
+        expect(encoder.parse(nil)).to be_nil
+
+        _, encoder = JSONCodec.for(Types::String | Types::Hash[on: Types::Date])
+        expect(encoder.parse({ on: DATE })).to eq({ 'on' => '2024-01-01' })
+      end
+
       it 'preserves optional keys and the catch-all' do
         schema = Types::Hash[name?: Types::String, date: Types::Date, _: Types::String]
         codec_schema = JSONCodec >> schema
