@@ -123,6 +123,88 @@ module CodecFormsSpec
       end
     end
 
+    describe 'hash keys' do
+      it 'decodes wire (String) keys to the Symbol keys a schema declares' do
+        decoder = Codec >> Types::Hash[name: Types::String, age?: Types::Integer]
+        expect(decoder.parse({ 'name' => 'Joe', 'age' => '40' })).to eq({ name: 'Joe', age: 40 })
+        expect(decoder.parse({ 'name' => 'Joe' })).to eq({ name: 'Joe' })
+        expect(decoder.resolve({}).errors).to eq({ name: 'Must be a String' })
+      end
+
+      it 'still accepts already-Symbol keys, preferring the wire key when both are present' do
+        decoder = Codec >> Types::Hash[name: Types::String]
+        expect(decoder.parse({ name: 'Joe' })).to eq({ name: 'Joe' })
+        expect(decoder.parse({ 'name' => 'wire', name: 'sym' })).to eq({ name: 'wire' })
+      end
+
+      it 'encodes Symbol keys to their wire form' do
+        encoder = Types::Hash[name: Types::String, age: Types::Integer] >> Codec
+        expect(encoder.parse({ name: 'Joe', age: 40 })).to eq({ 'name' => 'Joe', 'age' => '40' })
+      end
+
+      it 'leaves String keys alone' do
+        schema = Types::Hash['name' => Types::String]
+        expect(Codec >> schema).to equal(schema)
+      end
+
+      it 'does not re-match an aliased key against matcher keys' do
+        decoder = Codec >> Types::Hash[name: Types::String, _: Types::String]
+        expect(decoder.parse({ 'name' => 'Joe', 'other' => 'x' })).to eq({ name: 'Joe', 'other' => 'x' })
+      end
+
+      it 'decodes nested schemas, filtered schemas and structs' do
+        nested = Codec >> Types::Hash[user: Types::Hash[age: Types::Integer]]
+        expect(nested.parse({ 'user' => { 'age' => '1' } })).to eq({ user: { age: 1 } })
+
+        filtered = Codec >> Types::Hash[age: Types::Integer].filtered
+        expect(filtered.parse({ 'age' => '1', 'extra' => 'x' })).to eq({ age: 1 })
+
+        struct = Types::Data[name: Types::String, age: Types::Integer]
+        decoder, encoder = Codec.for(struct)
+        instance = decoder.parse({ 'name' => 'Joe', 'age' => '40' })
+        expect(instance).to eq(struct.new(name: 'Joe', age: 40))
+        expect(encoder.parse(instance)).to eq({ 'name' => 'Joe', 'age' => '40' })
+      end
+
+      it 'dispatches tagged hashes on the wire key' do
+        tagged = Types::Hash.tagged_by(
+          :kind,
+          Types::Hash[kind: 'a', n: Types::Integer],
+          Types::Hash[kind: 'b']
+        )
+        decoder, encoder = Codec.for(tagged)
+        expect(decoder.parse({ 'kind' => 'a', 'n' => '2' })).to eq({ kind: 'a', n: 2 })
+        expect(decoder.parse({ kind: 'b' })).to eq({ kind: 'b' })
+        expect(encoder.parse({ kind: 'a', n: 2 })).to eq({ 'kind' => 'a', 'n' => '2' })
+      end
+
+      it 'rewrites HashMap key types, still accepting the decoded form' do
+        decoder, encoder = Codec.for(Types::Hash[Types::Symbol, Types::Integer])
+        expect(decoder.parse({ 'a' => '1', b: '2' })).to eq({ a: 1, b: 2 })
+        expect(encoder.parse({ a: 1 })).to eq({ 'a' => '1' })
+
+        decoder = Codec >> Types::Hash[Types::Integer, Types::String]
+        expect(decoder.parse({ '1' => 'a', 2 => 'b' })).to eq({ 1 => 'a', 2 => 'b' })
+      end
+
+      it 'leaves HashMap key types it cannot rewrite alone' do
+        decoder = Codec >> Types::Hash[Types::Any, Types::Integer]
+        expect(decoder.parse({ 'a' => '1', b: '2' })).to eq({ 'a' => 1, b: 2 })
+      end
+
+      it 'round-trips: the encoder composes into the decoder' do
+        decoder, encoder = Codec.for(Types::Hash[on: Types::Date])
+        date = ::Date.new(2024, 1, 30)
+        expect((encoder >> decoder).parse({ on: date })).to eq({ on: date })
+      end
+
+      it 'leaves keys alone in a codec without a Symbol encoder' do
+        plain = Class.new(Plumb::Codec) { noop Types::String }
+        schema = Types::Hash[name: Types::String]
+        expect(plain >> schema).to equal(schema)
+      end
+    end
+
     describe 'whole schemas' do
       specify 'decodes and re-encodes form params against an output schema' do
         config = Types::Hash[
@@ -132,15 +214,14 @@ module CodecFormsSpec
           starts_on: Types::Date | Types::Nil,
           tags: Types::Array[Types::String]
         ]
-        params = { host: 'http://example.com', port: '80', active: '1', starts_on: '', tags: %w[a b] }
+        # String keys, as Rack parses them.
+        params = { 'host' => 'http://example.com', 'port' => '80', 'active' => '1', 'starts_on' => '', 'tags' => %w[a b] }
         decoder, encoder = Codec.for(config)
         decoded = decoder.parse(params)
         expect(decoded).to eq(
           host: URI.parse('http://example.com'), port: 80, active: true, starts_on: nil, tags: %w[a b]
         )
-        expect(encoder.parse(decoded)).to eq(
-          host: 'http://example.com', port: '80', active: 'true', starts_on: '', tags: %w[a b]
-        )
+        expect(encoder.parse(decoded)).to eq(params.merge('active' => 'true'))
       end
 
       specify 'JSON Schema describes the stringly input format' do

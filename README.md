@@ -2031,13 +2031,15 @@ Composing a codec with a type rewrites the type deeply, in either direction:
 Person = Types::Hash[name: Types::String, dates: DateRange]
 
 JSONPerson = JSONCodec >> Person # decode: JSON structures -> Person
-JSONPerson.parse({ name: 'Joe', dates: { from: '2024-01-01', to: '2024-02-01' } })
+JSONPerson.parse({ 'name' => 'Joe', 'dates' => { 'from' => '2024-01-01', 'to' => '2024-02-01' } })
 # => { name: 'Joe', dates: Date(2024-01-01)..Date(2024-02-01) }
 
 EncodedPerson = Person >> JSONCodec # encode: Person -> JSON structures
 EncodedPerson.parse({ name: 'Joe', dates: Date.new(2024, 1, 1)..Date.new(2024, 2, 1) })
-# => { name: 'Joe', dates: { from: '2024-01-01', to: '2024-02-01' } }
+# => { 'name' => 'Joe', 'dates' => { 'from' => '2024-01-01', 'to' => '2024-02-01' } }
 ```
+
+Hash keys are rewritten like values: a Symbol key travels as whatever the codec encodes a Symbol to (a String, for both built-in codecs). Decoding reads `'name'` and emits `:name` — still accepting `:name` itself, with the wire key winning if both are present — and encoding emits `'name'`. `Types::Hash[Types::Symbol, V]` map keys rewrite the same way. A codec with no Symbol encoder leaves keys alone.
 
 `Codec.for(type)` returns both directions as a `[decoding, encoding]` pair:
 
@@ -2154,10 +2156,10 @@ Config = Types::Hash[
 ]
 
 decoder, encoder = Plumb::Codec::Forms.for(Config)
-decoder.parse({ host: 'http://example.com', port: '80', active: '1', starts_on: '' })
+decoder.parse({ 'host' => 'http://example.com', 'port' => '80', 'active' => '1', 'starts_on' => '' })
 # => { host: URI(...), port: 80, active: true, starts_on: nil }
 encoder.parse({ host: URI.parse('http://example.com'), port: 80, active: true, starts_on: nil })
-# => { host: 'http://example.com', port: '80', active: 'true', starts_on: '' }
+# => { 'host' => 'http://example.com', 'port' => '80', 'active' => 'true', 'starts_on' => '' }
 ```
 
 `Codec::Forms` replaces the old one-way `Types::Forms` namespace. The input types are strict — actual integers or booleans are *not* accepted on decode, since form data is always strings; apply the codec at the boundary and write schemas in output types.

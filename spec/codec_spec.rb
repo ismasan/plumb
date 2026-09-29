@@ -76,7 +76,7 @@ module CodecSpecTypes
 
   DATE = ::Date.new(2024, 1, 1).freeze
   RANGE = ::Date.new(2024, 1, 1)..::Date.new(2024, 2, 1)
-  ENCODED_PERSON = { name: 'Joe', dates: { from: '2024-01-01', to: '2024-02-01' } }.freeze
+  ENCODED_PERSON = { 'name' => 'Joe', 'dates' => { 'from' => '2024-01-01', 'to' => '2024-02-01' } }.freeze
   PERSON = { name: 'Joe', dates: RANGE }.freeze
 
   RSpec.describe Plumb::Codec do
@@ -155,14 +155,14 @@ module CodecSpecTypes
       it 'encodes and decodes Ranges as objects, generic over the member type' do
         # Range[Date]: endpoints rewrite to ISO strings via the Date encoder.
         dec, enc = Plumb::Codec::JSON.for(Types::Range[Types::Date])
-        encoded = { from: '2024-01-01', to: '2024-02-01', exclusive: false }
+        encoded = { 'from' => '2024-01-01', 'to' => '2024-02-01', 'exclusive' => false }
         expect(enc.parse(RANGE)).to eq(encoded)
         expect(dec.parse(encoded)).to eq(RANGE)
 
         # Range[Integer]: JSON-native endpoints pass through; `exclusive` tracks
         # exclusive ranges, and beginless/endless ranges keep a nil endpoint.
         dec, enc = Plumb::Codec::JSON.for(Types::Range[Types::Integer])
-        expect(enc.parse(1...5)).to eq({ from: 1, to: 5, exclusive: true })
+        expect(enc.parse(1...5)).to eq({ 'from' => 1, 'to' => 5, 'exclusive' => true })
         expect(dec.parse(enc.parse(1...5))).to eq(1...5)
         expect(dec.parse(enc.parse(1..))).to eq(1..)
         expect(dec.parse(enc.parse(..5))).to eq(..5)
@@ -235,7 +235,7 @@ module CodecSpecTypes
 
         company = registry.decode(Company, { name: 'ACME', founded: '2024-01-01' })
         expect(company).to eq(Company.new(name: 'ACME', founded: DATE))
-        expect(registry.encode(Company, company)).to eq({ name: 'ACME', founded: '2024-01-01' })
+        expect(registry.encode(Company, company)).to eq({ 'name' => 'ACME', 'founded' => '2024-01-01' })
       end
 
       it 'reports what it knows, and raises a KeyError for what it does not' do
@@ -367,7 +367,7 @@ module CodecSpecTypes
       it 'does not re-run field coercions on already-parsed values' do
         succ_type = Types::Integer.transform(::Integer, &:succ)
         schema = Types::Hash[n: succ_type]
-        expect((schema >> JSONCodec).parse({ n: 5 })).to eq({ n: 6 }) # succ once, not twice
+        expect((schema >> JSONCodec).parse({ n: 5 })).to eq({ 'n' => 6 }) # succ once, not twice
       end
 
       it 'round-trips' do
@@ -387,7 +387,7 @@ module CodecSpecTypes
         schema = Types::Hash[dates: Types::Array[Types::Date]]
         expect((JSONCodec >> schema).parse({ dates: %w[2024-01-01 2024-02-01] }))
           .to eq({ dates: [DATE, ::Date.new(2024, 2, 1)] })
-        expect((schema >> JSONCodec).parse({ dates: [DATE] })).to eq({ dates: ['2024-01-01'] })
+        expect((schema >> JSONCodec).parse({ dates: [DATE] })).to eq({ 'dates' => ['2024-01-01'] })
       end
 
       it 'recurses into Tuples' do
@@ -433,7 +433,7 @@ module CodecSpecTypes
         encoded_type = Types::Date.metadata(desc: 'when').present
         decoder, encoder = JSONCodec.for(Types::Hash[on: encoded_type])
         expect(decoder.parse({ on: '2024-01-01' })).to eq({ on: DATE })
-        expect(encoder.parse({ on: DATE })).to eq({ on: '2024-01-01' })
+        expect(encoder.parse({ on: DATE })).to eq({ 'on' => '2024-01-01' })
       end
 
       it 'preserves policies (eg. #default)' do
@@ -455,8 +455,8 @@ module CodecSpecTypes
         decoder, encoder = JSONCodec.for(schema)
         expect(decoder.parse({})).to eq({ date: DATE })
         expect(decoder.parse({ date: '2024-06-01' })).to eq({ date: ::Date.new(2024, 6, 1) })
-        expect(encoder.parse({})).to eq({ date: '2024-01-01' })
-        expect(encoder.parse({ date: ::Date.new(2024, 6, 1) })).to eq({ date: '2024-06-01' })
+        expect(encoder.parse({})).to eq({ 'date' => '2024-01-01' })
+        expect(encoder.parse({ date: ::Date.new(2024, 6, 1) })).to eq({ 'date' => '2024-06-01' })
       end
 
       it 'supports #default with a generator block, in both directions' do
@@ -470,9 +470,9 @@ module CodecSpecTypes
         expect(decoder.parse({ id: 'given', date: '2024-06-01' }))
           .to eq({ id: 'given', date: ::Date.new(2024, 6, 1) })
         # encode: what the block declares (the type it defaults) is encoded
-        expect(encoder.parse({})).to eq({ id: 'generated', date: '2024-01-01' })
+        expect(encoder.parse({})).to eq({ 'id' => 'generated', 'date' => '2024-01-01' })
         expect(encoder.parse({ date: ::Date.new(2024, 6, 1) }))
-          .to eq({ id: 'generated', date: '2024-06-01' })
+          .to eq({ 'id' => 'generated', 'date' => '2024-06-01' })
       end
 
       it 'leaves a source step (`Any -> T`) in place rather than replacing it' do
@@ -482,7 +482,7 @@ module CodecSpecTypes
         step = Types::Any.transform(::Date) { |v| v.is_a?(::Date) ? v : ::Date.strptime(v, '%d/%m/%Y') }
         decoder, encoder = JSONCodec.for(Types::Hash[on: step])
         expect(decoder.parse({ on: '03/04/2024' })).to eq({ on: ::Date.new(2024, 4, 3) })
-        expect(encoder.parse({ on: ::Date.new(2024, 4, 3) })).to eq({ on: '2024-04-03' })
+        expect(encoder.parse({ on: ::Date.new(2024, 4, 3) })).to eq({ 'on' => '2024-04-03' })
       end
 
       it 'supports a :rescue-guarded branch, keeping it as a lenient fallback' do
@@ -532,14 +532,14 @@ module CodecSpecTypes
         decoder, encoder = JSONCodec.for(schema)
         expect(decoder.parse({ birthday: '2024-01-30' })).to eq({ birthday: ::Date.new(2024, 1, 30) })
         expect(decoder.resolve({ birthday: '1800-01-30' }).valid?).to be(false) # year check runs on the decoded Date
-        expect(encoder.parse({ birthday: ::Date.new(2024, 1, 30) })).to eq({ birthday: '2024-01-30' })
+        expect(encoder.parse({ birthday: ::Date.new(2024, 1, 30) })).to eq({ 'birthday' => '2024-01-30' })
       end
 
       it 'encodes an encoder-matched static default (does not pass it raw via a broad noop)' do
         schema = Types::Hash[amount: Types::Decimal.default(BigDecimal('1.5'))]
         encoder = schema >> JSONCodec
-        expect(encoder.parse({ amount: BigDecimal('1.5') })).to eq({ amount: '1.5' }) # default value encoded
-        expect(encoder.parse({ amount: BigDecimal('9.9') })).to eq({ amount: '9.9' })
+        expect(encoder.parse({ amount: BigDecimal('1.5') })).to eq({ 'amount' => '1.5' }) # default value encoded
+        expect(encoder.parse({ amount: BigDecimal('9.9') })).to eq({ 'amount' => '9.9' })
       end
 
       it 'rewrites tagged unions of encodable schemas' do
@@ -550,7 +550,7 @@ module CodecSpecTypes
         )
         decoder, encoder = JSONCodec.for(tagged)
         expect(decoder.parse({ kind: 'event', on: '2024-01-01' })).to eq({ kind: 'event', on: DATE })
-        expect(encoder.parse({ kind: 'event', on: DATE })).to eq({ kind: 'event', on: '2024-01-01' })
+        expect(encoder.parse({ kind: 'event', on: DATE })).to eq({ 'kind' => 'event', 'on' => '2024-01-01' })
         expect(decoder.parse({ kind: 'note', body: 'hi' })).to eq({ kind: 'note', body: 'hi' })
       end
 
@@ -574,7 +574,7 @@ module CodecSpecTypes
         expect(decoder.parse({ on: '2024-01-01', name: 'Joe' })).to eq({ on: DATE, name: 'Joe' })
         # per-field: an unreadable field is dropped, not fatal for the hash
         expect(decoder.parse({ on: 'nope', name: 'Joe' })).to eq({ name: 'Joe' })
-        expect(encoder.parse({ on: DATE, name: 'Joe' })).to eq({ on: '2024-01-01', name: 'Joe' })
+        expect(encoder.parse({ on: DATE, name: 'Joe' })).to eq({ 'on' => '2024-01-01', 'name' => 'Joe' })
       end
 
       it 'rewrites containers inside a value-preserving union (not swallowed by a container-top noop)' do
@@ -600,7 +600,8 @@ module CodecSpecTypes
 
     describe 'noop pass-through' do
       it 'keeps noop-covered fields identical (no extra nodes)' do
-        schema = Types::Hash[name: Types::String]
+        # String keys: a Symbol key is aliased to its wire name, a new node.
+        schema = Types::Hash['name' => Types::String]
         expect(JSONCodec >> schema).to equal(schema)
       end
 
@@ -612,7 +613,7 @@ module CodecSpecTypes
       end
 
       it 'passes a bare Hash/Array field via the noop' do
-        schema = Types::Hash[data: Types::Hash, list: Types::Array]
+        schema = Types::Hash['data' => Types::Hash, 'list' => Types::Array]
         expect(JSONCodec >> schema).to equal(schema)
       end
 
@@ -711,13 +712,13 @@ module CodecSpecTypes
 
       it 'encodes struct instances into encoded structures' do
         company = Company.new(name: 'ACME', founded: DATE)
-        expect((Company >> JSONCodec).parse(company)).to eq({ name: 'ACME', founded: '2024-01-01' })
+        expect((Company >> JSONCodec).parse(company)).to eq({ 'name' => 'ACME', 'founded' => '2024-01-01' })
       end
 
       it 'round-trips via .for' do
         decoder, encoder = JSONCodec.for(Company)
         company = decoder.parse({ name: 'ACME', founded: '2024-01-01' })
-        expect(encoder.parse(company)).to eq({ name: 'ACME', founded: '2024-01-01' })
+        expect(encoder.parse(company)).to eq({ 'name' => 'ACME', 'founded' => '2024-01-01' })
       end
 
       it 'supports plain include Plumb::Attributes classes' do
@@ -725,15 +726,15 @@ module CodecSpecTypes
         employee = decoder.parse({ name: 'Joe', joined: '2024-01-01' })
         expect(employee).to be_a(PlainEmployee)
         expect(employee.joined).to eq(DATE)
-        expect(encoder.parse(employee)).to eq({ name: 'Joe', joined: '2024-01-01' })
+        expect(encoder.parse(employee)).to eq({ 'name' => 'Joe', 'joined' => '2024-01-01' })
       end
 
       it 'recurses into nested structs, arrays of structs, defaults and encoder-matched attributes' do
         encoded = {
-          title: 'Core',
-          company: { name: 'ACME', founded: '2024-01-01' },
-          members: [{ name: 'Joe', joined: '2024-02-01' }],
-          dates: { from: '2024-01-01', to: '2024-02-01' }
+          'title' => 'Core',
+          'company' => { 'name' => 'ACME', 'founded' => '2024-01-01' },
+          'members' => [{ 'name' => 'Joe', 'joined' => '2024-02-01' }],
+          'dates' => { 'from' => '2024-01-01', 'to' => '2024-02-01' }
         }
         decoder, encoder = JSONCodec.for(Team)
         team = decoder.parse(encoded)
@@ -817,15 +818,15 @@ module CodecSpecTypes
 
       it 'leaves the encode direction alone (it rewrites what the step produces)' do
         encoder = Types::Hash[on: DateToString] >> JSONCodec
-        expect(encoder.parse({ on: DATE })).to eq({ on: '2024-01-01' })
+        expect(encoder.parse({ on: DATE })).to eq({ 'on' => '2024-01-01' })
       end
 
       it 'leaves a step whose accepted type is already native untouched' do
         step = Types::Integer.transform(::String, &:to_s)
-        schema = Types::Hash[n: step]
+        schema = Types::Hash['n' => step]
         rewritten = JSONCodec >> schema
         expect(rewritten).to be(schema) # identical node, nothing spliced in
-        expect(rewritten.parse({ n: 3 })).to eq({ n: '3' })
+        expect(rewritten.parse({ 'n' => 3 })).to eq({ 'n' => '3' })
       end
 
       it 'raises for an accepted type the codec cannot decode, naming the step' do
