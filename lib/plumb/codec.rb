@@ -429,8 +429,9 @@ module Plumb
 
       # A struct (Types::Data / Plumb::Attributes) is a Hash schema plus a
       # constructor. Decoding, the rewritten schema turns input fields into
-      # output values and the class itself builds the instance (Function's
-      # output stage CALLS it). Encoding, the class validates/constructs the
+      # output values and the step builds the instance from them without
+      # validating again (the output stage then passes the instance through).
+      # Encoding, the class validates/constructs the
       # instance, `#attributes` exposes the output values (shallow — nested
       # structs stay instances and are handled by their own rewritten nodes,
       # unlike the deep #to_h), and the encode-rewritten schema turns them
@@ -443,7 +444,13 @@ module Plumb
           # constructs by itself.
           return original if schema.equal?(struct._schema)
 
-          Function.new(schema, struct, Plumb::NOOP)
+          # The rewritten schema has validated and converted every field, so the
+          # instance is built without running the struct's own schema again.
+          build = lambda do |result|
+            instance = struct._build_validated(result.value)
+            instance.valid? ? result.valid(instance) : result.invalid(instance, errors: instance.errors.to_h)
+          end
+          Function.new(schema, struct, build, identity: [:struct_decode, struct])
         else
           # The lambda is fresh per call, so name what the step IS as its identity —
           # otherwise `(Person >> Codec) == (Person >> Codec)` is false while the

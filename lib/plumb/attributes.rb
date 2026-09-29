@@ -193,6 +193,13 @@ module Plumb
 
     def prepare_attributes(attrs) = attrs
 
+    # @see ._build_validated
+    def _assign_validated(attrs)
+      @errors = {}
+      @attributes = prepare_attributes(attrs)
+      freeze
+    end
+
     module ClassMethods
       def _set_pipeline(pl)
         @_pipeline = pl
@@ -248,6 +255,19 @@ module Plumb
       end
 
       MUST_BE_HASH = ['Must be a Hash of attributes'].freeze
+
+      # An instance from attributes already validated against this struct's schema —
+      # a codec decoder's output — without validating again, which would re-run
+      # converting fields on converted values. Skips #initialize; #prepare_attributes
+      # still runs. Override it when building needs more. A struct with pipeline
+      # steps (see .step) is built by #new, as the steps expect.
+      # @param attrs [Hash] validated, and owned by the new instance
+      # @return [Plumb::Attributes]
+      def _build_validated(attrs)
+        return new(attrs) unless _pipeline.is_a?(AnyClass)
+
+        allocate.tap { |instance| instance.send(:_assign_validated, attrs) }
+      end
 
       # The Plumb::Callable interface
       # @param result [Plumb::Result]

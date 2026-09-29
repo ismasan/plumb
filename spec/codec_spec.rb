@@ -760,6 +760,45 @@ module CodecSpecTypes
         expect(encoder.parse(employee)).to eq({ 'name' => 'Joe', 'joined' => '2024-01-01' })
       end
 
+      it 'decodes without validating the struct twice, so a converting attribute runs once' do
+        counter = Types::Data[n: Types::Integer.transform(::Integer, &:succ), on: Types::Date]
+        decoded = (JSONCodec >> counter).parse({ 'n' => 1, 'on' => '2024-01-01' })
+        expect(decoded.n).to eq(2)
+        expect(decoded.on).to eq(DATE)
+      end
+
+      it 'decodes through #prepare_attributes, not #initialize' do
+        stamped = Class.new(Types::Data) do
+          attribute :on, Types::Date
+
+          def initialize(attrs = {}) = super(attrs.merge(on: 'not a date'))
+
+          private def prepare_attributes(attrs) = attrs.merge(prepared: true)
+        end
+        decoded = (JSONCodec >> stamped).parse({ 'on' => '2024-01-01' })
+        expect(decoded.on).to eq(DATE)
+        expect(decoded.attributes[:prepared]).to be(true)
+        expect(decoded).to be_frozen
+      end
+
+      it 'builds through an overridden ._build_validated' do
+        custom = Class.new(Types::Data) do
+          attribute :on, Types::Date
+
+          def self._build_validated(attrs) = super(attrs.merge(on: attrs[:on].next_day))
+        end
+        expect((JSONCodec >> custom).parse({ 'on' => '2024-01-01' }).on).to eq(::Date.new(2024, 1, 2))
+      end
+
+      it 'builds a struct with pipeline steps through #new, which runs them' do
+        stepped = Class.new(Types::Data) do
+          step { |result| result.valid(result.value.merge(note: 'stepped')) }
+          attribute :on, Types::Date
+          attribute? :note, Types::String
+        end
+        expect((JSONCodec >> stepped).parse({ 'on' => '2024-01-01' }).note).to eq('stepped')
+      end
+
       it 'recurses into nested structs, arrays of structs, defaults and encoder-matched attributes' do
         encoded = {
           'title' => 'Core',
