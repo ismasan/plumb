@@ -305,38 +305,60 @@ You rarely write `Types::Never` by hand — it's what an impossible intersection
 
 ## Built-in types
 
-* `Types::Value`
-* `Types::Array`
-* `Types::True`
-* `Types::Symbol`
-* `Types::Boolean`
-* `Types::Interface`
-* `Types::False`
-* `Types::Tuple`
-* `Types::Any`
-* `Types::Static`
-* `Types::Undefined`
-* `Types::Nil`
-* `Types::Integer`
-* `Types::Numeric`
+Top and bottom:
+
+* `Types::Any` — any value
+* `Types::Never` — no value (see [`Types::Never`](#typesnever))
+* `Types::Undefined` — the `Plumb::Undefined` sentinel (missing values)
+
+Scalars:
+
 * `Types::String`
-* `Types::Hash`
-* `Types::Range`
-* `Types::SymbolizedHash`
-* `Types::UUID::V4`
-* `Types::Email`
+* `Types::Symbol`
+* `Types::Numeric`
+* `Types::Integer`
+* `Types::Float`
+* `Types::Decimal` (`BigDecimal`)
+* `Types::Nil`
+* `Types::True`
+* `Types::False`
+* `Types::Boolean`
 * `Types::Date`
 * `Types::Time`
+* `Types::Email`
+* `Types::UUID::V4`
 * `Types::URI::Generic`
 * `Types::URI::HTTP`
 * `Types::URI::File`
-* `Types::Lax::Integer`
+
+Values and constraints:
+
+* `Types::Static`
+* `Types::Value`
+* `Types::Not`
+* `Types::Interface`
+* `Types::Each` (anything that responds to `#each`)
+* `Types::EachPair` (anything that responds to `#each_pair`)
+
+Composites:
+
+* `Types::Array`
+* `Types::Tuple`
+* `Types::Hash`
+* `Types::SymbolizedHash`
+* `Types::Stream`
+* `Types::Range`
+* `Types::Data`
+
+Lenient coercions:
+
 * `Types::Lax::String`
 * `Types::Lax::Symbol`
+* `Types::Lax::Numeric`
+* `Types::Lax::Integer`
+* `Types::Lax::Decimal`
 
 For parsing stringy formats (HTML forms, query strings) into these types — what the `Types::Forms` namespace used to do, one way — see `Plumb::Codec::Forms` under [Encoders and Codecs](#encoders-and-codecs).
-
-TODO: datetime, others.
 
 ## Policies
 
