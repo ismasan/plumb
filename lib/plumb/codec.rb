@@ -342,6 +342,10 @@ module Plumb
         enc = encoder_for(type, path)
         return replace(type, enc, path) if enc
 
+        # #resolved_output collapses `Person.where(...)` to the bare AVM. Encode it as
+        # its base: as a leaf it passes the noop check (struct <: Hash) unencoded.
+        return visit(type.type, path) if @direction == :encode && type.is_a?(AttributeValueMatch)
+
         case type
         when HashClass then visit_hash(type, path)
         when FilteredHash then visit_filtered_hash(type, path)
@@ -663,6 +667,11 @@ module Plumb
       def visit_intersection(type, path)
         steps = flatten_intersection(type)
         refinements, data = steps.partition { |s| pure_refinement?(s) }
+        # Multi-key `#where` resolves to a meet of AVMs only. Encode their base, as #visit does.
+        if @direction == :encode && data.empty? && (avm = refinements.find { |s| s.is_a?(AttributeValueMatch) })
+          return visit(avm.type, path)
+        end
+
         rewritten = data.map { |d| visit(d, path) }
         return type if rewritten.each_with_index.all? { |r, i| r.equal?(data[i]) }
 
@@ -702,9 +711,14 @@ module Plumb
       # `(opaque >> Integer)`, and rewriting that Integer into the codec's
       # `String -> Integer` step would feed it the generated Integer and reject
       # everything.
+      #
+      # ENCODE drops a refinement after a rewritten step: it would check the encoded
+      # form, e.g. `Person.where(name:)` is `And(Person, AVM)`, and `name` would hit the Hash.
       def visit_composition(type, path)
         left, right = type.children
         l = pure_refinement?(left) ? left : visit(left, path)
+        return l if @direction == :encode && pure_refinement?(right) && !l.equal?(left)
+
         r = pure_refinement?(right) || wire_consumed?(left, l) ? right : visit(right, path)
 
         l.equal?(left) && r.equal?(right) ? type : Conjunction.build(l, r)

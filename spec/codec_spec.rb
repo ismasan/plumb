@@ -946,6 +946,49 @@ module CodecSpecTypes
         expect((JSONCodec >> chain).parse('2024-01-01')).to eq(:'2024-01-01')
       end
 
+      # A struct is a step, not a matcher, so refining one builds a pipeline
+      # (`And(Struct, AVM)`), not a meet. Encoding rewrites the struct into a step
+      # producing its encoded Hash, which the refinement can never match.
+      describe 'a refined struct' do
+        let(:inner) { Types::Data[kind: String, on: Types::Date] }
+        let(:outer) do
+          refined = inner.where(kind: 'a')
+          Class.new(Types::Data) { attribute :inner, refined }
+        end
+
+        it 'encodes as a struct field' do
+          value = outer.new(inner: inner.new(kind: 'a', on: DATE))
+          expect((outer >> JSONCodec).parse(value)).to eq('inner' => { 'kind' => 'a', 'on' => '2024-01-01' })
+        end
+
+        it 'encodes as a record field' do
+          encoder = Types::Hash[inner: inner.where(kind: 'a')] >> JSONCodec
+          expect(encoder.parse({ inner: inner.new(kind: 'a', on: DATE) }))
+            .to eq('inner' => { 'kind' => 'a', 'on' => '2024-01-01' })
+        end
+
+        it 'encodes with several refinements, as a struct field and as a record field' do
+          refined = inner.where(kind: 'a', on: DATE)
+          struct = Class.new(Types::Data) { attribute :inner, refined }
+          value = inner.new(kind: 'a', on: DATE)
+          expected = { 'inner' => { 'kind' => 'a', 'on' => '2024-01-01' } }
+
+          expect((struct >> JSONCodec).parse(struct.new(inner: value))).to eq(expected)
+          expect((Types::Hash[inner: refined] >> JSONCodec).parse({ inner: value })).to eq(expected)
+        end
+
+        it 'encodes through Forms too' do
+          value = outer.new(inner: inner.new(kind: 'a', on: DATE))
+          expect((outer >> Plumb::Codec::Forms).parse(value)).to eq('inner' => { 'kind' => 'a', 'on' => '2024-01-01' })
+        end
+
+        it 'still applies the refinement when decoding' do
+          decoder = JSONCodec >> outer
+          expect(decoder.parse({ 'inner' => { 'kind' => 'a', 'on' => '2024-01-01' } }).inner.on).to eq(DATE)
+          expect(decoder.resolve({ 'inner' => { 'kind' => 'b', 'on' => '2024-01-01' } }).valid?).to be(false)
+        end
+      end
+
       # The meet case must be unaffected: there the sides all describe ONE value,
       # so flattening and reordering is sound and the refinement belongs with its
       # data type.
