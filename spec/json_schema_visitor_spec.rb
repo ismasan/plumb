@@ -284,6 +284,15 @@ RSpec.describe Plumb::JSONSchemaVisitor do
     )
   end
 
+  specify 'metadata does not leak the wrapped type\'s policy metadata' do
+    type = Types::String.options(%w[a b]).metadata(description: 'd')
+    expect(described_class.visit(type)).to eq(
+      'type' => 'string',
+      'enum' => %w[a b],
+      'description' => 'd'
+    )
+  end
+
   specify 'Types::Time' do
     type = Types::Time
     expect(described_class.visit(type)).to eq('type' => 'string', 'format' => 'date-time')

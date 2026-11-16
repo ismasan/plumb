@@ -500,8 +500,12 @@ module Plumb
     end
 
     on(:metadata) do |node, props|
-      #  TODO: here we should filter out the metadata that is not relevant for JSON Schema
-      props = props.merge(stringify_keys(node.metadata))
+      # Metadata#metadata includes the wrapped type's own (eg. `options` from a
+      # policy), which the wrapped type renders itself (`options` -> `enum`).
+      # Emit only what this node added or overrode.
+      inner = node.type.metadata
+      own = node.metadata.reject { |k, v| inner.key?(k) && inner[k] == v }
+      props = props.merge(stringify_keys(own))
       props.merge(visit(node.type, props))
     end
 
