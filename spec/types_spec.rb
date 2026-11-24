@@ -176,6 +176,32 @@ RSpec.describe Plumb::Types do
     expect(is_a_string.resolve(10).errors).to eq('not a string')
   end
 
+  describe '#check inspect' do
+    it 'renders the error message by default' do
+      expect(Types::String.check('nope') { true }.inspect).to eq("#{Types::String.inspect}.check(\"nope\")")
+    end
+
+    it 'renders a custom :inspect after the base type' do
+      expect(Types::String.check('nope', inspect: 'custom') { true }.inspect).to eq("#{Types::String.inspect}.custom")
+    end
+
+    it 'renders check-based policies like the call that built them' do
+      expect(Types::String.options(%w[a b]).inspect).to eq("#{Types::String.inspect}.options([\"a\", \"b\"])")
+      expect(Types::Array.options(%w[a b]).inspect).to eq("#{Types::Array.inspect}.options([\"a\", \"b\"])")
+      expect(Types::String.policy(excluded_from: %w[a]).inspect)
+        .to eq("#{Types::String.inspect}.excluded_from([\"a\"])")
+      expect(Types::String.present.options(%w[a]).inspect).to eq("#{Types::String.inspect}.present.options([\"a\"])")
+      expect(Types::Any.policy(respond_to: :upcase).inspect).to eq("#{Types::Any.inspect}.respond_to(:upcase)")
+    end
+
+    it 'uses both :inspect and the error message as identity' do
+      a = Types::String.check('e1', inspect: 'x') { true }
+      expect(a).to eq(Types::String.check('e1', inspect: 'x') { false })
+      expect(a).not_to eq(Types::String.check('e2', inspect: 'x') { true })
+      expect(a).not_to eq(Types::String.check('e1', inspect: 'y') { true })
+    end
+  end
+
   specify '#present' do
     assert_result(Types::Any.present.resolve, Plumb::Undefined, false)
     assert_result(Types::Any.present.resolve(''), '', false)

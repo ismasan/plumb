@@ -13,7 +13,7 @@ module Plumb
   # Usage:
   #   type = Types::Array.options(['a', 'b'])
   policy :options, helper: true, for_type: ::Array do |type, opts|
-    type.check("must be included in #{opts.inspect}") do |v|
+    type.check("must be included in #{opts.inspect}", inspect: "options(#{opts.inspect})") do |v|
       v.all? { |val| opts.include?(val) }
     end
   end
@@ -28,7 +28,7 @@ module Plumb
   #   type = Types::Integer.options(10..20)
   policy :options do |type, opts|
     if opts.is_a?(::Array)
-      type.check("must be included in #{opts.inspect}") do |v|
+      type.check("must be included in #{opts.inspect}", inspect: "options(#{opts.inspect})") do |v|
         opts.include?(v)
       end
     else
@@ -40,7 +40,7 @@ module Plumb
   # Usage:
   #   type = Types::Array.policy(excluded_from: ['a', 'b'])
   policy :excluded_from, for_type: ::Array do |type, opts|
-    type.check("must not be included in #{opts.inspect}") do |v|
+    type.check("must not be included in #{opts.inspect}", inspect: "excluded_from(#{opts.inspect})") do |v|
       v.none? { |val| opts.include?(val) }
     end
   end
@@ -48,7 +48,7 @@ module Plumb
   # Usage:
   #   type = Types::String.policy(excluded_from: ['a', 'b'])
   policy :excluded_from do |type, opts|
-    type.check("must not be included in #{opts.inspect}") do |v|
+    type.check("must not be included in #{opts.inspect}", inspect: "excluded_from(#{opts.inspect})") do |v|
       !opts.include?(v)
     end
   end
@@ -58,7 +58,7 @@ module Plumb
   #   Types::String.present
   #   Types::Array.present
   policy :present, helper: true do |type, *_args|
-    type.check('must be present') do |v|
+    type.check('must be present', inspect: 'present') do |v|
       if v.respond_to?(:empty?)
         !v.empty?
       else
@@ -82,7 +82,7 @@ module Plumb
   #  type = Types::Any.policy(respond_to: :upcase)
   #  type = Types::Any.policy(respond_to: [:upcase, :strip])
   policy :respond_to do |type, method_names|
-    type.check("must respond to #{method_names.inspect}") do |value|
+    type.check("must respond to #{method_names.inspect}", inspect: "respond_to(#{method_names.inspect})") do |value|
       Array(method_names).all? { |m| value.respond_to?(m) }
     end
   end
