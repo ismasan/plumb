@@ -516,12 +516,14 @@ module Plumb
     #   type = Types::String.check('must start with "Role:"') { |value| value.start_with?('Role:') }
     #
     # @param errors [String] error message to use when validation fails
+    # @param inspect [String, nil] how the check renders in #inspect, after the base type
+    #   (eg. `'options(["a"])'` => `Types::String.options(["a"])`). Policies set this.
     # @param block [Proc] a block that will be applied to the value
     # @return [Constraint]
-    def check(errors = 'did not pass the check', &block)
+    def check(errors = 'did not pass the check', inspect: nil, &block)
       # A refinement, not a sequence: build the matcher over `self` as its base so
       # the checked value keeps `self`'s type (`User.check { … }` is still a User).
-      Constraint.new(block, base: self, error: errors, label: errors)
+      Constraint.new(block, base: self, error: errors, label: inspect || "check(#{errors.inspect})")
     end
 
     # Return a new Step with added metadata, or build step metadata if no argument is provided.

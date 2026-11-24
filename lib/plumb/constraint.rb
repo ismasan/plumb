@@ -48,7 +48,13 @@ module Plumb
       @matcher_node = SemanticMatcher.wrap(matcher)
       @base = base
       @error = error.nil? ? build_error(matcher) : (error % matcher)
-      @label = matcher.is_a?(Class) ? matcher.inspect : "Constraint(#{label || @matcher.inspect})"
+      @label = if matcher.is_a?(Class)
+                 matcher.inspect
+               elsif base && matcher.is_a?(::Proc)
+                 label || matcher.inspect # rendered as `base.label`, see #_inspect
+               else
+                 "Constraint(#{label || @matcher.inspect})"
+               end
       @children = [matcher].freeze
       freeze
     end
@@ -167,16 +173,17 @@ module Plumb
 
     # Identity label for matchers without structural equality.
     protected def label = @label
+    protected def error = @error
 
     # Compares matchers and bases. Fresh Procs lack structural equality, so Proc
-    # matchers use their caller-supplied label as stable identity.
+    # matchers use their caller-supplied label and error as stable identity.
     # @param other [Object]
     # @return [Boolean]
     def ==(other)
       return false unless other.instance_of?(self.class) && other.base == base
 
       if matcher.is_a?(::Proc)
-        other.matcher.is_a?(::Proc) && other.label == label
+        other.matcher.is_a?(::Proc) && other.label == label && other.error == error
       else
         other.matcher == matcher
       end
@@ -223,6 +230,7 @@ module Plumb
 
     def _inspect
       return @label unless base
+      return "#{base.inspect}.#{@label}" if @matcher.is_a?(::Proc)
 
       "#{base.inspect}[#{@matcher.inspect}]"
     end
